@@ -69,6 +69,11 @@ decision-support value. That is the measured target for offsetting 20% of a
   still uses the underlying `priced-in-answer` diagnostic command as
   `minimum_useful_product.canonical_next_command`; it must not emit a status
   string as though it were a command.
+- Real product paths are real-results only. `radar`, `dashboard-tui`,
+  `agent-brief`, and `/api/agents/brief/run` do not auto-seed demo rows or
+  invent analysis. Empty or incomplete databases show `No real result yet` and
+  the next import/scan step; demo rows appear only after you explicitly run
+  `seed-dashboard-demo`.
 
 ### Safe Trial Boundary
 
@@ -730,7 +735,9 @@ Execution fails closed unless all explicit gates are set:
 `OPENAI_API_KEY=<secret>`. It also requires real scan rows in the local
 database, fresh model pricing, positive daily/monthly budgets, and an
 `agent_brief` daily cap. Even in execute mode, the agent receives only an
-allowlisted redacted snapshot and has no Polygon/Massive, SEC, Schwab, shell,
+allowlisted redacted snapshot and four read-only tools:
+`get_visible_scan_rows`, `get_candidate_detail`, `get_source_coverage`, and
+`get_real_results_status`. It has no Polygon/Massive, SEC, Schwab, shell,
 filesystem, web, or order-submission tools.
 
 Minimal `.env.local` values for real agent testing:
@@ -754,8 +761,10 @@ CATALYST_LLM_MONTHLY_BUDGET_USD=5
 CATALYST_LLM_TASK_DAILY_CAPS=agent_brief=1
 ```
 
-The TUI command `agent` previews the same gates. `agent execute` runs one
-credit-gated brief only after those gates pass.
+The TUI command `agent run` previews the same gates. `agent run AAPL` scopes the
+preview to one ticker. `agent run AAPL execute` runs one credit-gated brief only
+after real results, runtime gates, pricing, budgets, and the daily cap all pass.
+Preview and browsing remain zero-call.
 
 Other real-data credentials live in the same `.env.local` file:
 

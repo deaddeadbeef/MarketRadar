@@ -1204,8 +1204,105 @@ def test_dashboard_agent_page_shows_agent_brief(
     assert "openai=0" in output.out
     assert "OpenAI Agents SDK" in output.out
     assert "Copilot absent" in output.out
-    assert "specialist agents only" in output.out
+    assert "read only snapshot tools" in output.out
     assert "Priced-in answer is" in output.out
+
+
+def test_tui_agent_run_preview_is_zero_call() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    payload = _minimal_missing_real_results_payload()
+
+    update = _apply_command(
+        "agent run",
+        payload,
+        "agent",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({}),
+    )
+
+    assert update.page == "agent"
+    assert "Agent previewed" in update.message
+    assert "OpenAI calls=0" in update.message
+    assert "OpenAI calls planned" in update.message
+
+
+def test_tui_agent_run_execute_blocks_without_real_results() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    payload = _minimal_missing_real_results_payload()
+
+    update = _apply_command(
+        "agent run execute",
+        payload,
+        "agent",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({}),
+    )
+
+    assert update.page == "agent"
+    assert "Agent blocked" in update.message
+    assert "OpenAI calls=0" in update.message
+    assert "No real result yet" in update.message
+
+
+def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-dashboard.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "No real result yet" in output.out
+    assert "Required next step:" in output.out
+    assert "Provider calls made while viewing: 0" in output.out
+    assert "ACME" not in output.out
+    assert "Bullish not priced" not in output.out
+    assert "External calls made: 0" in output.out
+
+
+def _minimal_missing_real_results_payload() -> dict[str, object]:
+    return {
+        "schema_version": "dashboard-cli-snapshot-v1",
+        "controls": {},
+        "runtime_context": {},
+        "real_results": {
+            "schema_version": "dashboard-real-results-v1",
+            "status": "missing",
+            "headline": "No real result yet.",
+            "next_action": (
+                "Run/import real market data, then run "
+                "`catalyst-radar priced-in-answer --limit 50`."
+            ),
+            "source": "none",
+            "row_count": 0,
+            "missing": ["priced-in scan rows"],
+            "canned_data_allowed": False,
+        },
+        "readiness": {},
+        "operator_next_step": {},
+        "operator_work_queue": {"rows": []},
+        "call_plan": {"max_external_call_count": 0},
+        "priced_in_queue": {"rows": [], "total_count": 0},
+        "priced_in_source_coverage": {},
+        "priced_in_source_workflow": {},
+        "priced_in_preflight": {},
+        "priced_in_answer": {},
+        "priced_in_audit": {},
+        "candidates": {"rows": []},
+        "alerts": {"rows": []},
+        "broker": {"snapshot": {}, "exposure": {}},
+        "ops_health": {},
+        "telemetry": {},
+        "external_calls_made": 0,
+    }
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(

@@ -728,24 +728,28 @@ def _dashboard_real_results_payload(
     cutoff = latest.get("decision_available_at") or latest.get("finished_at")
     return {
         "schema_version": "dashboard-real-results-v1",
-        "status": "ready" if ready else "blocked",
+        "status": "ready" if ready else "missing",
         "headline": (
             f"Real scan context ready: {row_count} priced-in row(s)."
             if ready
-            else "No real scan result is ready for an agent execution yet."
+            else "No real result yet."
         ),
         "next_action": (
             "Review candidates, then run agent-brief --real --execute if desired."
             if ready
-            else "Run a full radar scan/import flow before executing real agents."
+            else (
+                "Run/import real market data, then run "
+                "`catalyst-radar priced-in-answer --limit 50`."
+            )
         ),
-        "source": "latest_radar_run" if latest else "none",
+        "source": "local_database_provider_backed_scan" if ready else "none",
         "row_count": row_count,
         "latest_run_id": latest.get("id"),
         "latest_run_status": latest.get("status"),
         "as_of": as_of.isoformat() if hasattr(as_of, "isoformat") else as_of,
         "cutoff": cutoff.isoformat() if hasattr(cutoff, "isoformat") else cutoff,
         "missing": missing,
+        "canned_data_allowed": False,
     }
 
 
@@ -2607,10 +2611,11 @@ def _execute_agent_command(
     try:
         tokens = shlex.split(value)
     except ValueError:
-        return "Usage: agent preview OR agent execute [max-openai-calls]."
+        return "Usage: agent run [TICKER] OR agent run [TICKER] execute [max-openai-calls]."
     lowered = [token.lower() for token in tokens]
     execute = "execute" in lowered
     max_calls = 3
+    ticker = ""
     for token in lowered:
         if token.isdigit():
             max_calls = max(1, min(8, int(token)))
@@ -2618,8 +2623,29 @@ def _execute_agent_command(
             _, _, raw = token.partition("=")
             if raw.isdigit():
                 max_calls = max(1, min(8, int(raw)))
+    command_words = {"run", "preview", "execute", "real", "agent"}
+    for token in tokens:
+        normalized = token.strip()
+        lowered_token = normalized.lower()
+        if (
+            not normalized
+            or lowered_token in command_words
+            or lowered_token.startswith("max=")
+            or lowered_token.isdigit()
+        ):
+            continue
+        ticker = normalized.upper()
+        break
+    run_payload = payload
+    if ticker:
+        run_payload = dashboard_snapshot_payload(
+            engine=engine,
+            config=config,
+            dotenv_loaded=True,
+            filters=DashboardFilters(ticker=ticker),
+        )
     brief = run_market_radar_agents(
-        payload,
+        run_payload,
         config,
         real=True,
         execute=execute,
@@ -2632,14 +2658,25 @@ def _execute_agent_command(
     action = "executed" if execute and brief.get("status") == "completed" else (
         "blocked" if execute else "previewed"
     )
+    next_execute = (
+        f"agent run {ticker} execute"
+        if ticker
+        else "agent run execute"
+    )
+    no_real_result = (
+        " No real result yet."
+        if str(real_results.get("status") or "") == "missing"
+        else ""
+    )
     return (
         f"Agent {action}: status={brief.get('status')}; "
         f"OpenAI calls={int(_number_or_zero(calls.get('openai')))}; "
+        f"OpenAI calls planned<={max_calls}; "
         f"real_results={real_results.get('status', 'unknown')} "
         f"rows={real_results.get('row_count', 0)}; "
         f"credit_gate={credit.get('status', 'unknown')} "
         f"estimated_cost_usd={credit.get('estimated_cost_usd', 0)}. "
-        "Use `agent execute` only after the preview matches your intent."
+        f"{no_real_result} Use `{next_execute}` only after the preview matches your intent."
     )
 
 
@@ -6319,8 +6356,43 @@ def _priced_in_mismatch_text(emotion: object, reaction: object, gap: object) -> 
     return " / ".join(parts)
 
 
+def _real_results_missing(payload: Mapping[str, object]) -> bool:
+    return str(_mapping(payload.get("real_results")).get("status") or "") == "missing"
+
+
+def _real_results_empty(payload: Mapping[str, object]) -> bool:
+    return _real_results_missing(payload) and not (
+        _rows(_mapping(payload.get("priced_in_queue")).get("rows"))
+        or _rows(_mapping(payload.get("candidates")).get("rows"))
+    )
+
+
+def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    real_results = _mapping(payload.get("real_results"))
+    missing = ", ".join(_texts(real_results.get("missing"))) or "real scan rows"
+    next_action = (
+        str(real_results.get("next_action") or "").strip()
+        or "Run/import real market data, then rerun the priced-in answer."
+    )
+    return [
+        "No real result yet.",
+        f"Required next step: {_clip(next_action, max(24, width - 21))}",
+        "Provider calls made while viewing: 0.",
+        f"Missing: {_clip(missing, max(24, width - 10))}",
+        (
+            "Demo rows are never loaded automatically; use seed-dashboard-demo only "
+            "when you intentionally want a demo."
+        ),
+    ]
+
+
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule(_overview_title(payload), width)]
+    if _real_results_empty(payload):
+        lines.extend(_no_real_result_lines(payload, width))
+        lines.append("")
+        lines.append(_overview_caption(payload))
+        return lines
     lines.append(
         "Latest scan results: each row asks: has market emotion been fully priced in?"
     )
@@ -6467,6 +6539,9 @@ def _review_lines(payload: Mapping[str, object], width: int) -> list[str]:
     answer = _mapping(payload.get("priced_in_answer"))
     readiness = _mapping(payload.get("readiness"))
     lines = [_rule("Decision Review - priced-in answer, not trade approval", width)]
+    if _real_results_empty(payload):
+        lines.extend(_no_real_result_lines(payload, width))
+        return lines
     lines.append(
         "Answer: "
         f"{answer.get('answer') or 'No priced-in answer.'} "
@@ -8271,7 +8346,7 @@ def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
         "_",
         " ",
     )
-    tools = str(runtime.get("tool_surface") or "specialist_agents_only").replace("_", " ")
+    tools = str(runtime.get("tool_surface") or "read_only_snapshot_tools").replace("_", " ")
     gate = str(runtime.get("real_mode_gate_status") or "unknown")
     real_results_gate = str(runtime.get("real_results_gate_status") or "unknown")
     credit_gate = str(runtime.get("credit_gate_status") or "unknown")
@@ -8298,6 +8373,9 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
         for index, row in enumerate(_candidate_rows(payload), start=1)
     ]
     lines = [_rule("Candidates", width)]
+    if _real_results_empty(payload):
+        lines.extend(_no_real_result_lines(payload, width))
+        return lines
     lines.extend(
         _table_lines(
             _indexed(rows),
@@ -9817,6 +9895,11 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
     calls = _mapping(brief.get("external_calls_made"))
     runtime = _mapping(brief.get("runtime"))
     lines = [_rule("Agent Brief", width)]
+    if _real_results_missing(payload):
+        lines.extend(_no_real_result_lines(payload, width))
+        lines.append(
+            "Agent preview is still safe: it reports gates and makes 0 OpenAI calls."
+        )
     lines.append(
         f"Mode: {brief.get('mode') or 'dry_run'} | "
         f"Status: {brief.get('status') or 'unknown'} | "

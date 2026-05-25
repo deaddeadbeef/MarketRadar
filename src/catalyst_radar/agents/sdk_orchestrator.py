@@ -16,6 +16,8 @@ from catalyst_radar.agents.models import (
     TokenUsage,
     budget_ledger_id,
 )
+from catalyst_radar.agents.run_audit import record_agent_run_audit
+from catalyst_radar.agents.tools import build_market_radar_agent_tools
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.security.redaction import redact_text, redact_value
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
@@ -33,7 +35,7 @@ ALLOWED_OPERATIONS = [
     "Read the redacted dashboard snapshot supplied by MarketRadar.",
     "Reason over readiness, candidates, alerts, broker context, and call-plan rows.",
     "Produce manual-review next actions and risk checks for a human operator.",
-    "Use OpenAI Agents SDK specialist agents only when real mode is explicitly enabled.",
+    "Use OpenAI Agents SDK read-only snapshot tools only when real mode is explicitly enabled.",
 ]
 
 BLOCKED_OPERATIONS = [
@@ -72,6 +74,7 @@ class MarketRadarAgentBrief(BaseModel):
     security_checks: list[SecurityCheck] = Field(default_factory=list)
     allowed_operations: list[str] = Field(default_factory=list)
     blocked_operations: list[str] = Field(default_factory=list)
+    external_calls_planned: dict[str, int] = Field(default_factory=dict)
     external_calls_made: dict[str, int] = Field(default_factory=dict)
 
 
@@ -111,7 +114,7 @@ def agent_sdk_gate_payload(config: AppConfig) -> dict[str, object]:
         "model_configured": bool(config.agent_sdk_model),
         "openai_key_configured": bool(config.openai_api_key),
         "max_turns": AGENT_SDK_MAX_TURNS,
-        "tool_surface": "specialist_agents_only",
+        "tool_surface": "read_only_snapshot_tools",
     }
 
 
@@ -312,6 +315,9 @@ def deterministic_agent_brief(
     alerts = _rows(_mapping(snapshot.get("alerts")).get("rows"))
     next_step = _mapping(snapshot.get("operator_next_step"))
     max_provider_calls = int(_number(call_plan.get("max_external_call_count")))
+    planned_openai_calls = (
+        int(_number(credit_gate.get("max_openai_calls"))) if mode in {"preview", "blocked"} else 0
+    )
     recommended_unblock_actions = _priced_in_recommended_unblock_actions(priced_in)
     answer_context = _mapping(priced_in.get("answer"))
     setup_blocker = _mapping(priced_in.get("setup_blocker"))
@@ -430,6 +436,11 @@ def deterministic_agent_brief(
         security_checks=checks,
         allowed_operations=list(ALLOWED_OPERATIONS),
         blocked_operations=list(BLOCKED_OPERATIONS),
+        external_calls_planned={
+            "openai": planned_openai_calls,
+            "market_data": 0,
+            "broker": 0,
+        },
         external_calls_made={"openai": 0, "market_data": 0, "broker": 0},
     )
     return _model_dump(brief)
@@ -507,6 +518,7 @@ def run_market_radar_agents(
             config=config,
             ledger_repo=ledger_repo,
             status=LLMCallStatus.COMPLETED,
+            operator_goal=operator_goal,
         )
         return brief
     except Exception as exc:  # pragma: no cover - exercised through integration boundary.
@@ -524,6 +536,7 @@ def run_market_radar_agents(
             config=config,
             ledger_repo=ledger_repo,
             status=LLMCallStatus.FAILED,
+            operator_goal=operator_goal,
         )
         return brief
 
@@ -542,59 +555,23 @@ def _run_agent_sdk_real(
         raise RuntimeError("openai-agents package is not installed") from exc
 
     model = config.agent_sdk_model
-    data_agent = Agent(
-        name="Data Sentinel",
-        model=model,
-        instructions=(
-            "You inspect only the supplied redacted MarketRadar snapshot. "
-            "Report data freshness, stale bars, provider-call budgets, and missing inputs. "
-            "Do not ask for or call external data."
-        ),
-    )
-    catalyst_agent = Agent(
-        name="Catalyst Analyst",
-        model=model,
-        instructions=(
-            "You inspect candidates and alerts from the supplied snapshot. "
-            "Identify what is worth human research and what evidence is missing. "
-            "Do not recommend trades."
-        ),
-    )
-    risk_agent = Agent(
-        name="Risk Officer",
-        model=model,
-        instructions=(
-            "You enforce MarketRadar safety boundaries. Check hard blocks, portfolio context, "
-            "order safety, and whether the output stays manual-review only."
-        ),
-    )
-
+    read_only_tools = build_market_radar_agent_tools(snapshot)
     operator_agent = Agent(
         name="MarketRadar Operator",
         model=model,
         output_type=MarketRadarAgentBrief,
         instructions=(
-            "You are the MarketRadar manager agent. You may use only the specialist agents "
-            "provided as tools. You have no tools for Polygon/Massive, SEC, Schwab, shell, "
-            "files, web browsing, or order submission. Use the supplied redacted snapshot as "
-            "the only market evidence. Return a structured brief for a human operator. "
+            "You are the MarketRadar manager agent. You may use only the four read-only "
+            "snapshot tools provided to you: get_visible_scan_rows, get_candidate_detail, "
+            "get_source_coverage, and get_real_results_status. You have no tools for "
+            "Polygon/Massive, SEC, Schwab, shell, files, web browsing, or order submission. "
+            "Use the supplied redacted snapshot as the only market evidence. Return a "
+            "structured brief for a human operator with separate Data Sentinel, Catalyst "
+            "Analyst, Risk Officer, and Operator contributions. "
             "Do not provide investment advice, do not say buy/sell/hold, and do not imply "
             "that stale or blocked data is actionable."
         ),
-        tools=[
-            data_agent.as_tool(
-                tool_name="data_sentinel",
-                tool_description="Review data freshness, readiness, and provider-call budget.",
-            ),
-            catalyst_agent.as_tool(
-                tool_name="catalyst_analyst",
-                tool_description="Review candidate and alert triage from the redacted snapshot.",
-            ),
-            risk_agent.as_tool(
-                tool_name="risk_officer",
-                tool_description="Review actionability, portfolio context, and order safety.",
-            ),
-        ],
+        tools=read_only_tools,
     )
     prompt = json.dumps(
         {
@@ -633,6 +610,11 @@ def _run_agent_sdk_real(
             "blocked_operations": list(BLOCKED_OPERATIONS),
             "external_calls_made": {
                 "openai": openai_calls,
+                "market_data": 0,
+                "broker": 0,
+            },
+            "external_calls_planned": {
+                "openai": int(_number(_mapping(gate.get("credit_gate")).get("max_openai_calls"))),
                 "market_data": 0,
                 "broker": 0,
             },
@@ -676,7 +658,7 @@ def _agent_runtime_payload(gate: Mapping[str, object], *, mode: str) -> dict[str
         "real_results_gate_status": str(real_results_gate.get("status") or "unknown"),
         "credit_gate_status": str(credit_gate.get("status") or "unknown"),
         "execute_required": mode == "preview",
-        "tool_surface": str(gate.get("tool_surface") or "specialist_agents_only"),
+        "tool_surface": str(gate.get("tool_surface") or "read_only_snapshot_tools"),
         NON_OPENAI_ASSISTANT_DEPENDENCY_KEY: "absent",
         "external_market_tools": False,
         "broker_tools": False,
@@ -711,6 +693,7 @@ def _record_agent_ledger_entry(
     config: AppConfig,
     ledger_repo: BudgetLedgerRepository | None,
     status: LLMCallStatus,
+    operator_goal: str | None = None,
 ) -> None:
     if ledger_repo is None:
         return
@@ -745,9 +728,10 @@ def _record_agent_ledger_entry(
         provider="openai",
         token_usage=estimated_usage,
         tool_calls=[
-            {"name": "data_sentinel", "type": "specialist_agent"},
-            {"name": "catalyst_analyst", "type": "specialist_agent"},
-            {"name": "risk_officer", "type": "specialist_agent"},
+            {"name": "get_visible_scan_rows", "type": "read_only_snapshot_tool"},
+            {"name": "get_candidate_detail", "type": "read_only_snapshot_tool"},
+            {"name": "get_source_coverage", "type": "read_only_snapshot_tool"},
+            {"name": "get_real_results_status", "type": "read_only_snapshot_tool"},
         ],
         prompt_version=AGENT_BRIEF_PROMPT_VERSION,
         schema_version=SCHEMA_VERSION,
@@ -766,6 +750,27 @@ def _record_agent_ledger_entry(
         },
     )
     ledger_repo.upsert_entry(entry)
+    record_agent_run_audit(
+        engine=ledger_repo.engine,
+        mode="real",
+        model=config.agent_sdk_model,
+        operator_goal=operator_goal,
+        snapshot_hash=str(entry.payload.get("snapshot_hash") or ""),
+        external_calls_planned={"openai": int(_number(credit_gate.get("max_openai_calls")))},
+        external_calls_made={
+            "openai": openai_calls,
+            "market_data": int(
+                _number(_mapping(brief.get("external_calls_made")).get("market_data"))
+            ),
+            "broker": int(
+                _number(_mapping(brief.get("external_calls_made")).get("broker"))
+            ),
+        },
+        token_usage=_token_usage_payload(estimated_usage),
+        status=status.value,
+        final_output_summary=_agent_brief_summary(brief),
+        safety_verdict=_agent_safety_verdict(brief),
+    )
 
 
 def _agent_estimated_usage(max_openai_calls: int) -> TokenUsage:
@@ -842,6 +847,29 @@ def _snapshot_available_at(snapshot: Mapping[str, object], fallback: datetime) -
 def _snapshot_hash(snapshot: Mapping[str, object]) -> str:
     canonical = json.dumps(snapshot, sort_keys=True, default=str, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+
+
+def _agent_brief_summary(brief: Mapping[str, object]) -> str:
+    insights = _texts(brief.get("insights"))
+    if insights:
+        return redact_text(insights[0])[:500]
+    actions = _texts(brief.get("next_actions"))
+    if actions:
+        return redact_text(actions[0])[:500]
+    return str(brief.get("status") or "unknown")[:500]
+
+
+def _agent_safety_verdict(brief: Mapping[str, object]) -> str:
+    statuses = {
+        str(row.get("status") or "").strip().lower()
+        for row in _rows(brief.get("security_checks"))
+        if isinstance(row, Mapping)
+    }
+    if "blocked" in statuses:
+        return "blocked"
+    if "warning" in statuses:
+        return "warning"
+    return "passed" if statuses else "unknown"
 
 
 def _aware_utc(value: datetime) -> datetime:
@@ -1489,7 +1517,7 @@ def _base_security_checks(
             status="pass",
             detail=(
                 "orchestrator=openai_agents_sdk; provider=openai; "
-                "co" "pilot_dependency=absent; tools=specialist_agents_only."
+                "co" "pilot_dependency=absent; tools=read_only_snapshot_tools."
             ),
         ),
         SecurityCheck(

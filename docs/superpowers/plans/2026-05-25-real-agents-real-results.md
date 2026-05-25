@@ -49,7 +49,7 @@ This contract is the acceptance gate for every task below.
 - Modify: `src/catalyst_radar/dashboard/data.py`
 - Test: `tests/integration/test_dashboard_data.py`
 
-- [ ] **Step 1: Write tests for real vs demo/canned provenance**
+- [x] **Step 1: Write tests for real vs demo/canned provenance**
 
 Add focused tests that build payloads with and without real scan provenance. Define this helper in the same test file:
 
@@ -96,7 +96,7 @@ def test_dashboard_payload_accepts_provider_backed_scan_rows(tmp_path, monkeypat
     assert payload["priced_in_queue"]["rows"][0]["ticker"] == "MSFT"
 ```
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -106,7 +106,7 @@ C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\
 
 Expected: fails because `real_results` is not present.
 
-- [ ] **Step 3: Implement minimal provenance payload**
+- [x] **Step 3: Implement minimal provenance payload**
 
 Add a `real_results` block to the dashboard payload:
 
@@ -130,11 +130,11 @@ Add a `real_results` block to the dashboard payload:
 
 Use existing scan/candidate counts from the payload; do not add a new database query unless the existing payload lacks the needed count.
 
-- [ ] **Step 4: Verify tests pass**
+- [x] **Step 4: Verify tests pass**
 
 Run the same pytest command and confirm pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
@@ -148,7 +148,7 @@ git commit -m "Add real-results provenance gate"
 - Modify: `src/catalyst_radar/cli.py`
 - Test: `tests/integration/test_dashboard_demo_seed_cli.py`
 
-- [ ] **Step 1: Write tests for empty real state**
+- [x] **Step 1: Write tests for empty real state**
 
 Add a TUI once-mode test using an empty local database:
 
@@ -166,7 +166,7 @@ def test_dashboard_once_empty_database_shows_no_real_result_not_demo(monkeypatch
     assert "External calls made: 0" in output
 ```
 
-- [ ] **Step 2: Run test and confirm failure**
+- [x] **Step 2: Run test and confirm failure**
 
 Run:
 
@@ -176,15 +176,15 @@ C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\
 
 Expected: fails until the TUI reads `real_results` and prints the real empty state.
 
-- [ ] **Step 3: Implement TUI empty state**
+- [x] **Step 3: Implement TUI empty state**
 
 On Insights, Candidates, Agent, and Review pages, if `payload["real_results"]["status"] == "missing"`, show the empty real-results message and the next action. Do not synthesize rows.
 
-- [ ] **Step 4: Keep explicit demo command isolated**
+- [x] **Step 4: Keep explicit demo command isolated**
 
 `seed-dashboard-demo` remains available for tests and demos, but the dashboard must never call it automatically and must never show demo rows unless the database actually contains those rows because the user explicitly ran the demo command.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -194,7 +194,7 @@ C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\
 
 Expected: all selected tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
@@ -210,7 +210,7 @@ git commit -m "Block canned dashboard fallbacks"
 - Test: `tests/integration/test_api_routes.py`
 - Test: `tests/unit/test_agent_sdk_orchestrator.py`
 
-- [ ] **Step 1: Write API tests**
+- [x] **Step 1: Write API tests**
 
 Add tests for preview and execute:
 
@@ -236,7 +236,7 @@ def test_agent_brief_real_execute_blocks_without_real_results(client):
     assert response.json()["detail"]["error"] == "real_results_required"
 ```
 
-- [ ] **Step 2: Add request model**
+- [x] **Step 2: Add request model**
 
 Add a request model with these fields:
 
@@ -252,11 +252,11 @@ class AgentBriefRunRequest(BaseModel):
     max_openai_calls: int = Field(default=4, ge=1, le=8)
 ```
 
-- [ ] **Step 3: Implement preview behavior**
+- [x] **Step 3: Implement preview behavior**
 
 If `execute` is false, return a preview object with planned calls and gate status. Preview must call zero OpenAI APIs.
 
-- [ ] **Step 4: Implement execute behavior**
+- [x] **Step 4: Implement execute behavior**
 
 If `execute` is true, require:
 
@@ -268,7 +268,7 @@ If `execute` is true, require:
 
 Then call `run_market_radar_agents(..., real=True, operator_goal=goal)`.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -277,7 +277,7 @@ C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\
 C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\unit\test_agent_sdk_orchestrator.py -q
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src\catalyst_radar\api\routes\agents.py src\catalyst_radar\cli.py src\catalyst_radar\agents\sdk_orchestrator.py tests\integration\test_api_routes.py tests\unit\test_agent_sdk_orchestrator.py
@@ -291,7 +291,7 @@ git commit -m "Add real agent execute contract"
 - Create: `src/catalyst_radar/agents/tools.py`
 - Test: `tests/unit/test_agent_sdk_orchestrator.py`
 
-- [ ] **Step 1: Define the allowlist**
+- [x] **Step 1: Define the allowlist**
 
 The only first-pass tools are:
 
@@ -304,7 +304,7 @@ get_real_results_status
 
 Each tool reads the current redacted snapshot or local database-derived payload. No tool may call Polygon, SEC, Schwab, broker order APIs, shell, filesystem writes, or network fetches.
 
-- [ ] **Step 2: Add tests that disallow provider and broker tools**
+- [x] **Step 2: Add tests that disallow provider and broker tools**
 
 ```python
 def test_real_agent_tool_allowlist_has_no_provider_or_broker_calls():
@@ -321,11 +321,11 @@ def test_real_agent_tool_allowlist_has_no_provider_or_broker_calls():
     assert "order" not in " ".join(names).lower()
 ```
 
-- [ ] **Step 3: Wire tools into the manager agent**
+- [x] **Step 3: Wire tools into the manager agent**
 
 Use the OpenAI Agents SDK function-tool mechanism for the four read-only tools. Keep specialist agents as tools or handoffs only after the manager tool path is stable.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -333,7 +333,7 @@ Run:
 C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\unit\test_agent_sdk_orchestrator.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src\catalyst_radar\agents\sdk_orchestrator.py src\catalyst_radar\agents\tools.py tests\unit\test_agent_sdk_orchestrator.py
@@ -347,7 +347,13 @@ git commit -m "Add read-only real-data agent tools"
 - Modify: `src/catalyst_radar/storage/schema.py`
 - Test: `tests/integration/test_agent_run_audit.py`
 
-- [ ] **Step 1: Write audit tests**
+Implementation note: the shipped slice reuses the existing append-only
+`audit_events` table through `run_audit.py` instead of adding a second audit
+table. This keeps the first real-test path smaller while still persisting run
+id, model, snapshot hash, planned/made call counts, token usage, status, summary,
+and safety verdict.
+
+- [x] **Step 1: Write audit tests**
 
 ```python
 def test_real_agent_run_audit_records_model_calls_and_snapshot_hash(tmp_path, monkeypatch):
@@ -368,7 +374,7 @@ def test_real_agent_run_audit_records_model_calls_and_snapshot_hash(tmp_path, mo
     assert row["external_calls_made"]["openai"] == 2
 ```
 
-- [ ] **Step 2: Implement schema/repository**
+- [x] **Step 2: Implement schema/repository**
 
 Persist:
 
@@ -385,7 +391,7 @@ Persist:
 - final output summary;
 - safety verdict.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 
@@ -393,7 +399,7 @@ Run:
 C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_agent_run_audit.py -q
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add src\catalyst_radar\agents\run_audit.py src\catalyst_radar\storage\schema.py tests\integration\test_agent_run_audit.py
@@ -406,7 +412,7 @@ git commit -m "Persist real agent run audits"
 - Modify: `src/catalyst_radar/dashboard/tui.py`
 - Test: `tests/integration/test_dashboard_demo_seed_cli.py`
 
-- [ ] **Step 1: Add command tests**
+- [x] **Step 1: Add command tests**
 
 ```python
 def test_tui_agent_run_preview_is_zero_call():
@@ -429,7 +435,7 @@ def test_tui_agent_run_execute_blocks_without_real_results():
     assert "No real result yet" in result.message
 ```
 
-- [ ] **Step 2: Implement commands**
+- [x] **Step 2: Implement commands**
 
 Support:
 
@@ -441,7 +447,7 @@ agent run <ticker> execute
 
 Preview is zero-call. Execute requires real-results readiness and Agents SDK gates.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 
@@ -449,7 +455,7 @@ Run:
 C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -k "agent_run" -q
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
@@ -462,7 +468,7 @@ git commit -m "Add TUI real agent run command"
 - Modify: `README.md`
 - Test: `scripts/debug-dashboard-e2e.ps1`
 
-- [ ] **Step 1: Document the real-results rule**
+- [x] **Step 1: Document the real-results rule**
 
 Add a short section:
 
@@ -472,7 +478,7 @@ Add a short section:
 `radar` does not show canned market analysis. It renders real rows from the local database, explicit user imports, and real provider-backed scans. If those are missing, the dashboard shows "No real result yet" and the exact next action. Demo rows are available only through explicit demo/test commands.
 ```
 
-- [ ] **Step 2: Run checks**
+- [x] **Step 2: Run checks**
 
 Run:
 
@@ -483,7 +489,7 @@ powershell -ExecutionPolicy Bypass -File scripts\debug-dashboard-e2e.ps1
 git diff --check
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```powershell
 git add README.md scripts\debug-dashboard-e2e.ps1
@@ -492,12 +498,12 @@ git commit -m "Document real-results agent workflow"
 
 ## Final Acceptance Checklist
 
-- [ ] `radar` startup makes zero OpenAI, Polygon, SEC, Schwab, broker, or order calls.
-- [ ] Empty or incomplete databases show "No real result yet" instead of demo rows.
-- [ ] Production dashboard pages do not display canned analysis.
-- [ ] Agent preview makes zero OpenAI calls.
-- [ ] Agent execute makes OpenAI calls only after explicit `execute=true` or `execute` command.
-- [ ] Agents never mutate deterministic scan `Gap`, `Score`, `priced_in_status`, or source rows.
-- [ ] Agents can only use read-only allowlisted tools.
-- [ ] Every real agent run is persisted with snapshot hash, model, call counts, and safety verdict.
-- [ ] Test/demo fixtures remain available only through explicit test/demo commands.
+- [x] `radar` startup makes zero OpenAI, Polygon, SEC, Schwab, broker, or order calls.
+- [x] Empty or incomplete databases show "No real result yet" instead of demo rows.
+- [x] Production dashboard pages do not display canned analysis.
+- [x] Agent preview makes zero OpenAI calls.
+- [x] Agent execute makes OpenAI calls only after explicit `execute=true` or `execute` command.
+- [x] Agents never mutate deterministic scan `Gap`, `Score`, `priced_in_status`, or source rows.
+- [x] Agents can only use read-only allowlisted tools.
+- [x] Every real agent run is persisted with snapshot hash, model, call counts, and safety verdict.
+- [x] Test/demo fixtures remain available only through explicit test/demo commands.

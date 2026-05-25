@@ -449,6 +449,47 @@ def test_post_agent_brief_run_preview_is_zero_call_and_explicit_execute(
     assert captured["agent_kwargs"]["ledger_repo"] is not None
 
 
+def test_post_agent_brief_run_real_preview_makes_zero_openai_calls(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "agent-brief-run-preview-real.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/agents/brief/run",
+        json={"mode": "real", "execute": False},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview"
+    assert payload["external_calls_planned"]["openai"] >= 1
+    assert payload["external_calls_made"]["openai"] == 0
+
+
+def test_post_agent_brief_run_execute_blocks_without_real_results(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "agent-brief-run-no-real-results.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/agents/brief/run",
+        json={"mode": "real", "execute": True, "max_openai_calls": 4},
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["detail"]["error"] == "real_results_required"
+    assert payload["detail"]["external_calls_made"]["openai"] == 0
+
+
 def test_post_agent_review_requires_analyst_when_auth_enabled(
     tmp_path,
     monkeypatch,

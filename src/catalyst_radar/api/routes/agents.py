@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.agents.review_service import run_agent_review
-from catalyst_radar.agents.sdk_orchestrator import run_market_radar_agents
+from catalyst_radar.agents.sdk_orchestrator import (
+    real_results_gate_payload,
+    redacted_operator_snapshot,
+    run_market_radar_agents,
+)
 from catalyst_radar.agents.tasks import DEFAULT_TASKS
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
@@ -40,10 +44,10 @@ class AgentBriefRunRequest(BaseModel):
     usefulness: str | None = None
     source_gap: str | None = None
     decision_gap: str | None = None
-    scan_limit: int = Field(default=50, ge=1, le=200)
+    scan_limit: int = Field(default=50, ge=1, le=50)
     scan_offset: int = Field(default=0, ge=0)
     telemetry_limit: int = Field(default=8, ge=1, le=200)
-    goal: str | None = None
+    goal: str | None = Field(default=None, max_length=500)
     max_openai_calls: int = Field(default=3, ge=1, le=8)
 
 
@@ -148,6 +152,17 @@ def agent_brief_run(request: AgentBriefRunRequest) -> dict[str, object]:
         dotenv_loaded=True,
         filters=filters,
     )
+    if request.execute:
+        real_gate = real_results_gate_payload(redacted_operator_snapshot(snapshot))
+        if real_gate.get("status") != "ready":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "real_results_required",
+                    "gate": real_gate,
+                    "external_calls_made": {"openai": 0, "market_data": 0, "broker": 0},
+                },
+            )
     return run_market_radar_agents(
         snapshot,
         config,
