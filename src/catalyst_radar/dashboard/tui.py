@@ -1692,12 +1692,15 @@ class MarketRadarDashboardApp(App[int]):
             self.query_one("#hero", Static).update(
                 "\n".join(
                     [
-                        "[bold #7ee787]MARKET RADAR[/] // [b]TUTORIAL[/b]",
+                        "[bold #7ee787]MARKET RADAR[/] // [b]START[/b]",
                         (
                             "This walkthrough teaches the controls. "
                             "It does not run providers, trade, or change data."
                         ),
-                        "[bold #58a6ff]Do next[/] Read the rows below, then press 1 for Insights.",
+                        (
+                            "[bold #58a6ff]Do next[/] Read the rows below, "
+                            "then press 1 for Scan Results."
+                        ),
                     ]
                 )
             )
@@ -1705,13 +1708,78 @@ class MarketRadarDashboardApp(App[int]):
                 _metric_text("Step 1", "Learn controls", "mouse, keys, commands")
             )
             self.query_one("#metric-market", Static).update(
-                _metric_text("Step 2", "Open Insights", "press 1")
+                _metric_text("Step 2", "Open Scan Results", "press 1")
             )
             self.query_one("#metric-calls", Static).update(
                 _metric_text("Safety", "0 calls", "tutorial is local")
             )
             self.query_one("#metric-broker", Static).update(
                 _metric_text("Orders", "Disabled", "no real trades")
+            )
+            return
+
+        if active_page == "overview":
+            cards = _novice_cockpit_cards(self.payload)
+            card_by_label = {str(card.get("label")): card for card in cards}
+            can_act_card = _mapping(card_by_label.get("Can I act?"))
+            next_card = _mapping(card_by_label.get("Best next step"))
+            rows_card = _mapping(card_by_label.get("Rows"))
+            next_value = _clip(
+                next_card.get("value") or next_action or "No operator action.",
+                118,
+            )
+            self.query_one("#hero", Static).update(
+                "\n".join(
+                    [
+                        "[bold #7ee787]MARKET RADAR[/] // [b]SCAN RESULTS[/b]",
+                        (
+                            "MarketRadar answers one question: has market emotion "
+                            "been fully priced in?"
+                        ),
+                        (
+                            f"[bold]Can I act?[/] {can_act_card.get('value') or can_act}; "
+                            f"[bold]Rows[/] {rows_card.get('value') or '0 scan row(s)'}; "
+                            f"[bold]View[/] {view_label}; "
+                            f"[dim]{self.payload.get('external_calls_made', 0)} "
+                            "calls while viewing[/dim]"
+                        ),
+                        (
+                            f"[bold #58a6ff]Best next step[/] {next_value}"
+                        ),
+                    ]
+                )
+            )
+            self.query_one("#metric-readiness", Static).update(
+                _metric_text(
+                    "Can I act?",
+                    can_act_card.get("value") or can_act,
+                    _clip(can_act_card.get("detail") or answer_status, 52),
+                )
+            )
+            self.query_one("#metric-market", Static).update(
+                _metric_text(
+                    "Scan rows",
+                    rows_card.get("value") or "0 scan row(s)",
+                    (
+                        f"fresh bars "
+                        f"{database.get('active_security_with_latest_daily_bar_count')}/"
+                        f"{database.get('active_security_count')}"
+                    ),
+                )
+            )
+            self.query_one("#metric-calls", Static).update(
+                _metric_text(
+                    "Cost before execute",
+                    "0 browsing calls",
+                    _execution_cost_summary(self.payload),
+                )
+            )
+            self.query_one("#metric-broker", Static).update(
+                _metric_text(
+                    "Orders",
+                    "Disabled",
+                    f"broker {broker.get('connection_status') or 'n/a'}",
+                )
             )
             return
 
@@ -1789,12 +1857,12 @@ class MarketRadarDashboardApp(App[int]):
         if page == "tutorial":
             return "\n".join(
                 [
-                    "[bold #7ee787]TUTORIAL[/]  Do these in order. Nothing external runs here.",
-                    "[bold]1.[/] Press 1 or click Insights to see what needs attention.",
+                    "[bold #7ee787]START[/]  Do these in order. Nothing external runs here.",
+                    "[bold]1.[/] Press 1 or click Scan Results to see what needs attention.",
                     "[bold]2.[/] Press D for decision-ready rows, M for broader mismatches.",
                     (
-                        "[bold]3.[/] Press 2 for blockers, 4 for candidates, "
-                        "or 3 to review the run plan; "
+                        "[bold]3.[/] Press 2 for Evidence Gaps, 4 for Candidate Review, "
+                        "or 3 for Safe Run; "
                         "type run execute only by intent."
                     ),
                 ]
@@ -1851,13 +1919,18 @@ class MarketRadarDashboardApp(App[int]):
             return "\n".join(
                 [
                     (
-                        f"[bold #7ee787]LATEST SCAN RESULTS[/]  Each ticker row asks: "
+                        f"[bold #7ee787]SCAN RESULTS[/]  MarketRadar asks: "
                         f"has market emotion been fully priced in? {mode} is {mode_help}."
                     ),
                     (
+                        f"[bold]Can I act?[/] {_decision_label(readiness)}. "
                         f"[bold]Coverage:[/] scanned "
                         f"{scanned_rows} row(s) from {active_rows} "
                         f"active securities; ranked {total}; visible page {count}."
+                    ),
+                    (
+                        "[bold]Legend:[/] Emotion = market mood; Price reaction = price move; "
+                        "Gap = emotion - reaction; Decision-ready = enough evidence."
                     ),
                     (
                         f"[bold]Scope:[/] {scope_text}"

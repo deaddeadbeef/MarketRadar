@@ -178,6 +178,72 @@ Copy-Item .env.example .env.local
 pytest
 ```
 
+### Real testing credentials
+
+Use `.env.local` for real credentials. Do not put keys in PowerShell profile
+aliases, scripts, README edits, commits, or command history. Start with low
+budgets and one-call caps; dashboard browsing and preview commands still spend
+`$0`.
+
+Open the file:
+
+```powershell
+notepad .env.local
+```
+
+For OpenAI Agents SDK testing, fill only these values first:
+
+```dotenv
+CATALYST_ENABLE_PREMIUM_LLM=true
+CATALYST_LLM_PROVIDER=openai
+CATALYST_ENABLE_AGENT_SDK=true
+CATALYST_AGENT_SDK_MODEL=<model available in your OpenAI API account>
+OPENAI_API_KEY=<your real OpenAI API key>
+
+# Required cost gate. Use current prices from your OpenAI account.
+CATALYST_LLM_INPUT_COST_PER_1M=<input dollars per 1M tokens>
+CATALYST_LLM_CACHED_INPUT_COST_PER_1M=<cached input dollars per 1M tokens>
+CATALYST_LLM_OUTPUT_COST_PER_1M=<output dollars per 1M tokens>
+CATALYST_LLM_PRICING_UPDATED_AT=2026-05-25T00:00:00+00:00
+
+# First real test budget. Increase only after you see the audit trail.
+CATALYST_LLM_DAILY_BUDGET_USD=1
+CATALYST_LLM_MONTHLY_BUDGET_USD=5
+CATALYST_LLM_TASK_DAILY_CAPS=agent_brief=1
+```
+
+For real market data, add Polygon/Massive only when you intend to call it:
+
+```dotenv
+CATALYST_DAILY_MARKET_PROVIDER=polygon
+CATALYST_POLYGON_API_KEY=<your Polygon/Massive key>
+CATALYST_POLYGON_TICKERS_MAX_PAGES=1
+```
+
+For SEC live filings, use a real contact User-Agent:
+
+```dotenv
+CATALYST_SEC_ENABLE_LIVE=true
+CATALYST_SEC_USER_AGENT=MarketRadar/0.1 your-email@example.com
+```
+
+For Schwab, keep the broker read-only while testing:
+
+```dotenv
+SCHWAB_CLIENT_ID=<your Schwab app client id>
+SCHWAB_CLIENT_SECRET=<your Schwab app client secret>
+SCHWAB_REDIRECT_URI=<your Schwab callback URI>
+SCHWAB_ORDER_SUBMISSION_ENABLED=false
+```
+
+After editing `.env.local`, restart the PowerShell session that runs `radar`.
+Preview with `catalyst-radar agent-brief --real --json`; it makes zero OpenAI
+calls. The first paid path is explicit:
+
+```powershell
+catalyst-radar agent-brief --real --execute --max-openai-calls 1 --json
+```
+
 ### Local database
 
 SQLite is the default local database:

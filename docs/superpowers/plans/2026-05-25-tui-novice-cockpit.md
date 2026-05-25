@@ -170,7 +170,7 @@ Cost before execute: provider calls X, OpenAI calls Y, DB writes Z.
 
 Keep the existing command parser and cost counters.
 
-- [ ] **Step 3: Verify execute paths still require explicit commands**
+- [x] **Step 3: Verify execute paths still require explicit commands**
 
 Run tests covering `run execute`, `agent execute`, `bars saved capture confirm`, and empty browsing.
 
@@ -228,7 +228,7 @@ radar --once --page overview
 
 and that browsing remains zero-call.
 
-- [ ] **Step 2: Run verification**
+- [x] **Step 2: Run verification**
 
 Run:
 

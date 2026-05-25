@@ -556,6 +556,7 @@ def _run_agent_sdk_real(
 
     model = config.agent_sdk_model
     read_only_tools = build_market_radar_agent_tools(snapshot)
+    specialist_tools = _build_specialist_agent_tools(Agent, model)
     operator_agent = Agent(
         name="MarketRadar Operator",
         model=model,
@@ -571,7 +572,7 @@ def _run_agent_sdk_real(
             "Do not provide investment advice, do not say buy/sell/hold, and do not imply "
             "that stale or blocked data is actionable."
         ),
-        tools=read_only_tools,
+        tools=[*read_only_tools, *specialist_tools],
     )
     prompt = json.dumps(
         {
@@ -629,6 +630,65 @@ def _run_agent_sdk_real(
     checks.extend(_base_security_checks(snapshot, gate, mode="real"))
     payload["security_checks"] = [_model_dump(row) for row in checks]
     return _model_dump(MarketRadarAgentBrief.model_validate(payload))
+
+
+def _build_specialist_agent_tools(agent_cls: type, model: str | None) -> list[object]:
+    """Build model-only specialist agents exposed to the manager as tools."""
+    specialist_contract = (
+        "Use only the text the manager provides and the already-redacted MarketRadar "
+        "snapshot context. Do not request or perform provider calls, broker calls, "
+        "web browsing, filesystem access, shell commands, or order submission. "
+        "Return concise decision-support observations for manual review only."
+    )
+    specialists = [
+        agent_cls(
+            name="Data Sentinel",
+            model=model,
+            instructions=(
+                f"{specialist_contract} Focus on freshness, provenance, source "
+                "coverage, stale data, and whether the result is safe to inspect."
+            ),
+        ),
+        agent_cls(
+            name="Catalyst Analyst",
+            model=model,
+            instructions=(
+                f"{specialist_contract} Focus on the priced-in mismatch explanation, "
+                "catalyst evidence, and missing evidence that could invalidate the signal."
+            ),
+        ),
+        agent_cls(
+            name="Risk Officer",
+            model=model,
+            instructions=(
+                f"{specialist_contract} Focus on actionability, position-risk language, "
+                "and the no-autonomous-trading boundary."
+            ),
+        ),
+    ]
+    return [
+        specialists[0].as_tool(
+            tool_name="data_sentinel_review",
+            tool_description=(
+                "Ask the Data Sentinel agent for freshness and provenance review."
+            ),
+            max_turns=1,
+        ),
+        specialists[1].as_tool(
+            tool_name="catalyst_analyst_review",
+            tool_description=(
+                "Ask the Catalyst Analyst agent for priced-in evidence review."
+            ),
+            max_turns=1,
+        ),
+        specialists[2].as_tool(
+            tool_name="risk_officer_review",
+            tool_description=(
+                "Ask the Risk Officer agent for manual-review and trading-boundary checks."
+            ),
+            max_turns=1,
+        ),
+    ]
 
 
 def _coerce_brief(value: object) -> MarketRadarAgentBrief:
