@@ -382,24 +382,25 @@ PAGE_ALIASES: Mapping[str, str] = {
 }
 
 NAVIGATION_TEXT = (
-    "0 Tutorial | 1 Insights | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
-    "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | 10 Agent | 11 Review | "
+    "0 Start | 1 Scan Results | 2 Evidence Gaps | 3 Safe Run | "
+    "4 Candidate Review | 5 Alerts | "
+    "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | 10 Agent Coach | 11 Review | "
     "features | help | q"
 )
 
 MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
-    ("tutorial", "0", "Tutorial"),
-    ("overview", "1", "Insights"),
-    ("readiness", "2", "Readiness"),
-    ("run", "3", "Run"),
-    ("candidates", "4", "Candidates"),
+    ("tutorial", "0", "Start"),
+    ("overview", "1", "Scan Results"),
+    ("readiness", "2", "Evidence Gaps"),
+    ("run", "3", "Safe Run"),
+    ("candidates", "4", "Candidate Review"),
     ("review", "11", "Decision Review"),
     ("alerts", "5", "Alerts"),
     ("ipo", "6", "IPO/S-1"),
     ("broker", "7", "Broker"),
     ("ops", "8", "Ops"),
     ("telemetry", "9", "Telemetry"),
-    ("agent", "10", "Agent"),
+    ("agent", "10", "Agent Coach"),
     ("features", "F", "Features"),
     ("help", "?", "Help"),
 )
@@ -1604,8 +1605,8 @@ class MarketRadarDashboardApp(App[int]):
 
     def _navigation_text(self) -> str:
         return (
-            "[bold #58a6ff]KEYS[/] 1 insights | 4 candidates | D ready | "
-            "11 review | M full/mismatch | next/prev rows | Ctrl+N/P page\n"
+            "[bold #58a6ff]KEYS[/] 0 start | 1 scan results | 2 evidence gaps | "
+            "3 safe run | 4 candidate review | D ready | M full/mismatch\n"
             "[bold #58a6ff]MOUSE[/] click sidebar/table | Tab focus | "
             "Up/Down on sidebar | Enter open | Esc command | q quit\n"
         )
@@ -1648,8 +1649,8 @@ class MarketRadarDashboardApp(App[int]):
             "Use the sidebar, page keys, or Ctrl+N/Ctrl+P to move; type a command below.",
         )
         return (
-            "[bold #7ee787]NEXT ACTION[/]\n"
-            f"{page_action}"
+            "[bold #7ee787]NEXT SAFE ACTION[/]\n"
+            f"{page_action} Cost before execute: {_execution_cost_summary(self.payload)}"
         )
 
     def _refresh_header(self) -> None:
@@ -2456,7 +2457,7 @@ def render_dashboard_tui(
         lines.extend(_feature_lines(payload, resolved_width))
     else:
         lines.extend(_help_lines(resolved_width))
-    lines.extend(_footer_lines(resolved_width))
+    lines.extend(_footer_lines(resolved_width, payload=payload, page=page))
     return "\n".join(lines)
 
 
@@ -6388,8 +6389,13 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule(_overview_title(payload), width)]
+    lines.extend(_novice_cockpit_lines(payload, width))
+    lines.append(_priced_in_beginner_legend(width))
+    lines.append("")
     if _real_results_empty(payload):
         lines.extend(_no_real_result_lines(payload, width))
+        lines.append("")
+        lines.extend(_novice_empty_scan_lines(width))
         lines.append("")
         lines.append(_overview_caption(payload))
         return lines
@@ -6513,25 +6519,124 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     decision_summary = _decision_readiness_summary(payload)
     if decision_summary:
         lines.append(f"Decision readiness: {decision_summary}")
-    lines.extend(
-        _table_lines(
-            _priced_in_overview_rows(payload),
-            [
-                ("rank", "#", 3),
-                ("ticker", "Ticker", 6),
-                ("signal", "Signal", 19),
-                ("emotion_reaction_gap", "Gap", 5),
-                ("data_coverage", "Data gaps", 14),
-                ("why_now", "Why now", 27),
-                ("next_action", "Next action", 25),
-            ],
-            width=width,
-            limit=50,
+    overview_rows = _priced_in_overview_rows(payload)
+    if overview_rows:
+        lines.extend(
+            _table_lines(
+                overview_rows,
+                [
+                    ("rank", "#", 3),
+                    ("ticker", "Ticker", 6),
+                    ("signal", "Signal", 19),
+                    ("emotion_reaction_gap", "Gap", 5),
+                    ("data_coverage", "Data gaps", 14),
+                    ("why_now", "Why now", 27),
+                    ("next_action", "Next action", 25),
+                ],
+                width=width,
+                limit=50,
+            )
         )
-    )
+    else:
+        lines.extend(_novice_empty_scan_lines(width))
     lines.append("")
     lines.append(_overview_caption(payload))
     return lines
+
+
+def _novice_cockpit_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    lines = [
+        "MarketRadar answers one question: has market emotion toward a stock already "
+        "been priced in?",
+        "Core question: has market emotion been fully priced in?",
+    ]
+    for card in _novice_cockpit_cards(payload):
+        lines.append(
+            f"{card['label']}: "
+            f"{_clip(str(card['value']), max(16, width - len(str(card['label'])) - 4))}"
+        )
+        detail = str(card.get("detail") or "").strip()
+        if detail:
+            lines.append(f"  {_clip(detail, max(20, width - 4))}")
+    lines.append(
+        f"Browsing this dashboard made {int(_number_or_zero(payload.get('external_calls_made')))} "
+        "calls and 0 order submissions."
+    )
+    return lines
+
+
+def _novice_cockpit_cards(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    answer = _mapping(payload.get("priced_in_answer"))
+    readiness = _mapping(payload.get("readiness"))
+    real_results = _mapping(payload.get("real_results"))
+    next_step = _priced_in_operator_step(payload) or _mapping(
+        payload.get("operator_next_step")
+    )
+    queue = _mapping(payload.get("priced_in_queue"))
+    row_count = int(_number_or_zero(queue.get("total_count") or queue.get("count")))
+    safe = bool(readiness.get("safe_to_make_investment_decision"))
+    answer_text = (
+        answer.get("answer")
+        or answer.get("headline")
+        or readiness.get("headline")
+        or "Evidence is not ready."
+    )
+    next_action = (
+        next_step.get("action")
+        or answer.get("next_action")
+        or readiness.get("next_action")
+        or "Open Scan Results."
+    )
+    return [
+        {
+            "label": "What this is",
+            "value": "MarketRadar answers one question",
+            "detail": "Has market emotion toward a stock already been priced in?",
+        },
+        {
+            "label": "Can I act?",
+            "value": "No - research only" if not safe else "Manual review only",
+            "detail": answer_text,
+        },
+        {
+            "label": "Best next step",
+            "value": next_action,
+            "detail": (
+                next_step.get("expected_response")
+                or real_results.get("next_action")
+                or "Browsing does not spend provider, OpenAI, broker, or order calls."
+            ),
+        },
+        {
+            "label": "Rows",
+            "value": f"{row_count} scan row(s)",
+            "detail": (
+                "No scan rows yet"
+                if row_count == 0
+                else "Open a row to inspect evidence before deciding anything."
+            ),
+        },
+    ]
+
+
+def _priced_in_beginner_legend(width: int) -> str:
+    return _clip(
+        "Legend: Emotion = market mood; Price reaction = price move; "
+        "Gap = emotion - reaction; Decision-ready = enough evidence.",
+        width,
+    )
+
+
+def _novice_empty_scan_lines(width: int) -> list[str]:
+    return [
+        "",
+        _rule("No scan rows yet", width),
+        "No scan rows yet. Start here:",
+        "1. Import or fetch a ticker universe.",
+        "2. Fill fresh market bars.",
+        "3. Run a capped scan.",
+        "Nothing on this page is a trade signal until scan rows and evidence exist.",
+    ]
 
 
 def _review_lines(payload: Mapping[str, object], width: int) -> list[str]:
@@ -10050,11 +10155,54 @@ def _compact_detail(row: Mapping[str, object]) -> Mapping[str, object]:
     return compact
 
 
-def _footer_lines(width: int) -> list[str]:
+def _footer_lines(
+    width: int,
+    *,
+    payload: Mapping[str, object] | None = None,
+    page: str = "overview",
+) -> list[str]:
+    snapshot = _mapping(payload)
+    action = _footer_next_action(snapshot, page)
     return [
+        _rule("Next Safe Action", width),
+        f"NEXT SAFE ACTION: {_clip(action, max(20, width - 19))}",
+        f"Cost before execute: {_execution_cost_summary(snapshot)}",
+        _rule("Last Response", width),
+        "LAST RESPONSE: Ready. No command has run in this view.",
         _rule("Commands", width),
         "Type a page name, number, filter command, refresh, json, help, or q.",
     ]
+
+
+def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
+    if page == "overview":
+        next_step = _priced_in_operator_step(payload) or _mapping(
+            payload.get("operator_next_step")
+        )
+        return str(
+            next_step.get("action")
+            or _mapping(payload.get("priced_in_answer")).get("next_action")
+            or "Open Scan Results and inspect rows."
+        )
+    if page == "run":
+        return "Review the call budget; type run execute only if it matches your intent."
+    if page == "agent":
+        return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
+    return "Use the workflow navigation or open the highlighted row."
+
+
+def _execution_cost_summary(payload: Mapping[str, object]) -> str:
+    call_plan = _mapping(payload.get("call_plan"))
+    agent = _mapping(payload.get("agent_brief"))
+    credit = _mapping(agent.get("credit_gate"))
+    provider_calls = int(_number_or_zero(call_plan.get("max_external_call_count")))
+    openai_cap = int(_number_or_zero(credit.get("max_openai_calls")))
+    estimated_cost = credit.get("estimated_cost_usd", 0)
+    return (
+        f"provider calls {provider_calls}; OpenAI calls 0 while browsing"
+        f"{f' (agent execute cap {openai_cap})' if openai_cap else ''}; "
+        f"estimated OpenAI cost ${estimated_cost}; DB writes shown by each command."
+    )
 
 
 def _candidate_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
