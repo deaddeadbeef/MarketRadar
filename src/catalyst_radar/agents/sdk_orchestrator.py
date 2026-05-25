@@ -224,10 +224,17 @@ def real_results_gate_payload(snapshot: Mapping[str, object]) -> dict[str, objec
     real_results = _mapping(snapshot.get("real_results"))
     missing = _texts(real_results.get("missing"))
     status = _text(real_results.get("status"))
-    ready = status == "ready" and not missing
     if not status:
         missing.append("real_results snapshot marker")
+    if bool(real_results.get("canned_data_allowed")):
+        missing.append("canned data disabled")
+    if bool(real_results.get("canned_data_detected")):
+        missing.append("live source modes")
+    source_modes = _mapping(real_results.get("source_modes"))
+    source_mode_missing = _real_results_source_mode_blockers(source_modes)
+    missing.extend(source_mode_missing)
     missing = list(dict.fromkeys(missing))
+    ready = status == "ready" and not missing
     return {
         "schema_version": "agent-real-results-gate-v1",
         "status": "ready" if ready else "blocked",
@@ -249,12 +256,26 @@ def real_results_gate_payload(snapshot: Mapping[str, object]) -> dict[str, objec
         ),
         "missing": missing,
         "source": _text(real_results.get("source")) or "unknown",
+        "source_modes": dict(source_modes),
         "row_count": int(_number(real_results.get("row_count"))),
         "latest_run_id": _text(real_results.get("latest_run_id")) or None,
         "latest_run_status": _text(real_results.get("latest_run_status")) or None,
         "as_of": _text(real_results.get("as_of")) or None,
         "cutoff": _text(real_results.get("cutoff")) or None,
     }
+
+
+def _real_results_source_mode_blockers(
+    source_modes: Mapping[str, object],
+) -> list[str]:
+    missing: list[str] = []
+    market_mode = _text(source_modes.get("market")).lower()
+    event_mode = _text(source_modes.get("events")).lower()
+    if market_mode != "live":
+        missing.append("live market data source")
+    if event_mode != "live":
+        missing.append("live catalyst event source")
+    return missing
 
 
 def redacted_operator_snapshot(payload: Mapping[str, object]) -> dict[str, object]:
@@ -995,6 +1016,9 @@ def _real_results_context(row: Mapping[str, object]) -> dict[str, object]:
             "as_of",
             "cutoff",
             "missing",
+            "canned_data_allowed",
+            "canned_data_detected",
+            "source_modes",
         ),
     )
 

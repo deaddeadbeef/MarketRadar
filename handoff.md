@@ -1,6 +1,63 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-25 20:45:00 +08:00
+Last updated: 2026-05-26 00:40:00 +08:00
+
+## Latest Real-Results Runtime Audit Slice
+
+Goal alignment / drift check:
+
+- Current product goal remains the full-market priced-in/emotion radar: find
+  stocks where market emotion may not yet be fully priced into price action.
+- This slice does not add new scoring, UI chrome, provider calls, broker
+  behavior, or LLM autonomy. It tightens the runtime truth boundary so the
+  dashboard/API/agent surfaces cannot present canned or fixture-backed rows as
+  real product-ready results.
+
+Useful definition:
+
+- Useful means a human can open the dashboard or execute a real agent preview
+  and immediately trust whether the rows are live-provider backed.
+- Existing scan rows are not enough. A real result now requires all of:
+  successful latest radar run, priced-in rows, live market-data source mode, and
+  live catalyst-event source mode.
+- Fixture, demo, sample, csv, and news-fixture modes can still exist for tests
+  and explicit development commands, but they keep normal runtime readiness
+  blocked.
+
+Fix in this slice:
+
+- `dashboard_snapshot_payload(...).real_results` now carries source-mode
+  evidence from the discovery snapshot.
+- The dashboard marks real results missing when market or event source modes
+  are not live, even if candidate/priced-in rows exist.
+- The real Agents SDK execution gate now receives the same source-mode evidence
+  through the redacted operator snapshot and blocks fixture/canned source modes
+  before any OpenAI call can be made.
+- README documents the real-results-only runtime contract.
+
+Safety/call boundary:
+
+- No provider calls, Schwab calls, broker/order writes, OpenAI calls, or
+  operator database writes are required for this slice.
+- The change is read-boundary/gate-only plus tests; fixtures remain available
+  only in tests and explicit dev commands.
+
+Verification completed so far:
+
+- `pytest tests\integration\test_dashboard_data.py -k "real_results or dashboard_payload_accepts_provider_backed_scan_rows or blocks_fixture_sources" -q`
+- `pytest tests\unit\test_agent_sdk_orchestrator.py -k "real_results" -q`
+- `pytest tests\integration\test_api_routes.py -k "agent_brief_run" -q`
+- `pytest tests\unit\test_agent_sdk_orchestrator.py -q`
+- `ruff check src\catalyst_radar\dashboard\tui.py src\catalyst_radar\agents\sdk_orchestrator.py tests\integration\test_dashboard_data.py tests\unit\test_agent_sdk_orchestrator.py`
+- `compileall -q src\catalyst_radar\dashboard\tui.py src\catalyst_radar\agents\sdk_orchestrator.py tests\integration\test_dashboard_data.py tests\unit\test_agent_sdk_orchestrator.py`
+- `git diff --check`
+- Read-only operator DB smoke using this worktree's `src`: `dashboard-snapshot
+  --json` returned `real_results_status=missing`,
+  `missing=successful latest radar run`, `source_modes=polygon/sec live`, and
+  `external_calls_made=0`.
+- Read-only real-agent execute smoke using this worktree's `src`: `agent-brief
+  --real --execute --json` returned `status=blocked`, `mode=blocked`, and
+  OpenAI/market/broker calls all `0`.
 
 ## Latest Goal-Mode P0/P1 Status Slice
 
