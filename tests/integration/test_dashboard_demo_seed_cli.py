@@ -1421,6 +1421,58 @@ def test_dashboard_tui_once_defaults_to_latest_scan_results(
     assert "Tutorial - your first 90 seconds" not in output.out
 
 
+def test_dashboard_tui_overview_is_novice_first_on_empty_database(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "overview"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "MarketRadar answers one question" in output.out
+    assert "Can I act?" in output.out
+    assert "Best next step" in output.out
+    assert "No scan rows yet" in output.out
+    assert "Start here:" in output.out
+    assert "Browsing this dashboard made 0 calls" in output.out
+    assert "0 Start" in output.out
+    assert "1 Scan Results" in output.out
+    assert "2 Evidence Gaps" in output.out
+    assert "3 Safe Run" in output.out
+    assert "4 Candidate Review" in output.out
+    assert "10 Agent Coach" in output.out
+
+
+def test_dashboard_tui_overview_explains_scan_legend_for_novices(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["dashboard-tui", "--once", "--scan-mode", "all", "--page", "overview"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "MarketRadar answers one question" in output.out
+    assert "Legend:" in output.out
+    assert "Emotion" in output.out
+    assert "Price reaction" in output.out
+    assert "Gap" in output.out
+    assert "Decision-ready" in output.out
+    assert "NEXT SAFE ACTION" in output.out
+    assert "LAST RESPONSE" in output.out
+    assert "Cost before execute" in output.out
+
+
 def test_run_mission_brief_useful_next_prefers_operator_step() -> None:
     payload = {
         "priced_in_answer": {

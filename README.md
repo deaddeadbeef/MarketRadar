@@ -525,29 +525,29 @@ launcher leaves a new `dashboard-tui` child process behind.
 ### Terminal dashboard basics
 
 The TUI is the operational replacement surface for the web dashboard. It loads
-the same command-center data helpers and provides pages for tutorial, insights,
-readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
-themes, validation, costs, and current feature inventory. The Run page now
-starts with a Mission Brief: the priced-in question, current trusted-answer
-state, scan progress, first trust blocker, useful next action, and the zero-call
-boundary before the call-plan details. `radar` opens on
-`1 Insights` by default, so the first screen shows the latest scan-result rows
-instead of the tutorial or command reference. Press `0` or run
+the same command-center data helpers and opens as a novice-first market insight
+cockpit. The first screen now answers: what MarketRadar is trying to decide,
+whether you can act, the best next step, how many scan rows exist, and the
+zero-call browsing boundary. Navigation labels use workflow language:
+`0 Start`, `1 Scan Results`, `2 Evidence Gaps`, `3 Safe Run`,
+`4 Candidate Review`, and `10 Agent Coach`. Press `0` or run
 `radar --page tutorial` for the walkthrough.
-The insights page is the full-market priced-in queue by default: the table reports scan
-coverage, then candidate rows show emotion score, price-reaction score,
-emotion-minus-reaction gap, priced-in status, why the mismatch matters, and the
-next action. Candidate rows open the candidate evidence detail, alert rows open
-alert detail, blocker rows open readiness or ops, and refresh rows open the
-guarded run plan. Click or press `Enter` on an insight row to open the right
-operational view. Inside the
+
+The Scan Results page is the full-market priced-in queue by default. It includes
+a legend for Emotion, Price reaction, Gap, and Decision-ready before the table.
+Candidate rows open the candidate evidence detail, alert rows open alert detail,
+blocker rows open readiness or ops, and refresh rows open the guarded run plan.
+When there are no scan rows yet, the empty state gives the beginner path:
+import or fetch a universe, fill fresh market bars, then run a capped scan.
+Click or press `Enter` on an insight row to open the right operational view. Inside the
 TUI, the left sidebar is the primary navigation: click a row, press a page
 number, use `Ctrl+N` / `Ctrl+P`, or focus the sidebar and use `Up` / `Down`
 plus `Enter`. The compact `KEYS` / `MOUSE` guide keeps shortcuts visible
 without adding a second navigation system. Candidate and alert rows are
-mouse-selectable in Windows Terminal. The `NEXT ACTION` card shows the useful
+mouse-selectable in Windows Terminal. The `NEXT SAFE ACTION` card shows the useful
 operator move for the current page; the `LAST RESPONSE` card shows what the
-dashboard just did. Type `now` or `what-now` for the single priced-in action,
+dashboard just did. The footer always shows cost before execute so action,
+response, and spend are visually separate. Type `now` or `what-now` for the single priced-in action,
 expected response, approval requirement, provider-call count, and database-write
 count. Use `ticker <SYMBOL|all>` and `available-at <ISO|latest>`
 to filter, `json` to print the redacted machine-readable snapshot, `refresh`
