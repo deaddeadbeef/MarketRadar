@@ -940,6 +940,12 @@ The `active_universe_repair` decision option includes a zero-write
 `preview_command`, a guarded `execute_command` with `--expect-missing-count`
 and `--expect-eligible-count`, matching API request bodies, and the local DB
 write count that would be required only if the operator approves execute.
+The same guarded packet is also promoted to top-level
+`approval_required_unblock`, `preview_command`, `execute_command`,
+`expected_missing_count`, `expected_eligible_count`,
+`external_calls_required`, `db_writes_required_to_execute`, and
+`post_execute_verification_command` so CLI/API/TUI clients do not have to dig
+through nested decision options to find the exact approval boundary.
 `priced-in-preflight --json` uses the same market-bar residual-review command as
 its `first_blocker` when this is the current blocker, and includes
 `external_calls_made=0` plus `db_writes_made=0` at top level. It also exposes

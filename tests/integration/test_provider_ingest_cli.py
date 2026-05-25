@@ -1625,6 +1625,27 @@ def test_market_bars_residual_review_cli_flags_zero_liquidity_saved_gap(
     assert active_repair["preview_would_clear_market_bars"] is True
     assert active_repair["db_writes_required"] == 0
     assert active_repair["db_writes_required_to_execute"] == 1
+    approval = review_payload["approval_required_unblock"]
+    assert approval["schema_version"] == "market-bars-residual-review-approval-v1"
+    assert approval["status"] == "ready_to_execute"
+    assert approval["approval_required"] is True
+    assert approval["local_write_required"] is True
+    assert approval["provider_call_required"] is False
+    assert approval["preview_command"] == active_repair["preview_command"]
+    assert approval["execute_command"] == active_repair["execute_command"]
+    assert approval["expected_missing_count"] == 1
+    assert approval["expected_eligible_count"] == 1
+    assert approval["external_calls_required"] == 0
+    assert approval["db_writes_required_to_execute"] == 1
+    assert approval["post_execute_verification_command"] == (
+        "catalyst-radar market-bars status --expected-as-of 2026-05-08 --json"
+    )
+    assert review_payload["approval_required"] is True
+    assert review_payload["preview_command"] == active_repair["preview_command"]
+    assert review_payload["execute_command"] == active_repair["execute_command"]
+    assert review_payload["db_write_required"] is True
+    assert review_payload["external_calls_required"] == 0
+    assert review_payload["db_writes_required_to_execute"] == 1
     assert review_payload["external_calls_made"] == 0
     assert review_payload["db_writes_made"] == 0
 
@@ -1639,6 +1660,7 @@ def test_market_bars_residual_review_cli_flags_zero_liquidity_saved_gap(
 
     assert human_code == 0
     human_output = capsys.readouterr().out
+    assert "approval_required_unblock status=ready_to_execute" in human_output
     assert "active_universe_repair" in human_output
     assert "--expect-missing-count 1 --expect-eligible-count 1 --execute --json" in (
         human_output

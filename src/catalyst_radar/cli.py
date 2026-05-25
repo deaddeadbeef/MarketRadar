@@ -5988,6 +5988,25 @@ def _print_market_bars_residual_review(payload: Mapping[str, object]):
             f"template={_compact_cli_text(manual.get('template_command'))} "
             f"preview={_compact_cli_text(manual.get('import_preview_command'))}"
         )
+    approval = _mapping_value(payload.get("approval_required_unblock"))
+    if approval:
+        print(
+            "approval_required_unblock "
+            f"status={approval.get('status')} "
+            f"approval_required={str(bool(approval.get('approval_required'))).lower()} "
+            f"expected_missing={approval.get('expected_missing_count')} "
+            f"expected_eligible={approval.get('expected_eligible_count')} "
+            f"external_calls={approval.get('external_calls_required')} "
+            "db_writes_if_execute="
+            f"{approval.get('db_writes_required_to_execute')}"
+        )
+        print(
+            "approval_commands "
+            f"preview={_compact_cli_text(approval.get('preview_command'))} "
+            f"execute={_compact_cli_text(approval.get('execute_command'))} "
+            "verify="
+            f"{_compact_cli_text(approval.get('post_execute_verification_command'))}"
+        )
     options = _sequence_value(payload.get("decision_options"))
     if options:
         option_kinds = ",".join(

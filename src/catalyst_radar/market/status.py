@@ -312,6 +312,16 @@ def market_bars_residual_review_payload(
             "stale or unsupported active-universe rows, fix the universe source "
             "and rerun status. Until then, the full-market answer remains blocked."
         )
+    decision_options = _residual_review_decision_options(
+        engine,
+        status_payload,
+        expected_as_of_text=expected_text,
+        stocks_only=stocks_only,
+    )
+    approval_packet = _residual_review_approval_packet(
+        decision_options,
+        expected_as_of_text=expected_text,
+    )
     return {
         "schema_version": "market-bars-residual-review-v1",
         "status": status,
@@ -380,11 +390,21 @@ def market_bars_residual_review_payload(
             "fill_progress": dict(_mapping(manual.get("fill_progress"))),
             "external_calls_made": 0,
         },
-        "decision_options": _residual_review_decision_options(
-            engine,
-            status_payload,
-            expected_as_of_text=expected_text,
-            stocks_only=stocks_only,
+        "decision_options": decision_options,
+        "approval_required_unblock": approval_packet,
+        "approval_required": approval_packet.get("approval_required"),
+        "preview_command": approval_packet.get("preview_command"),
+        "execute_command": approval_packet.get("execute_command"),
+        "expected_missing_count": approval_packet.get("expected_missing_count"),
+        "expected_eligible_count": approval_packet.get("expected_eligible_count"),
+        "provider_call_required": approval_packet.get("provider_call_required"),
+        "external_calls_required": approval_packet.get("external_calls_required"),
+        "db_write_required": approval_packet.get("db_write_required"),
+        "db_writes_required_to_execute": approval_packet.get(
+            "db_writes_required_to_execute"
+        ),
+        "post_execute_verification_command": approval_packet.get(
+            "post_execute_verification_command"
         ),
         "safe_default": (
             "Keep market_bars blocked; do not treat the full-market priced-in "
@@ -1859,6 +1879,83 @@ def _residual_review_decision_options(
         }
     )
     return options
+
+
+def _residual_review_approval_packet(
+    decision_options: list[dict[str, object]],
+    *,
+    expected_as_of_text: str,
+) -> dict[str, object]:
+    active_repair = {}
+    for option in decision_options:
+        if option.get("kind") == "active_universe_repair":
+            active_repair = option
+            break
+    if not active_repair:
+        return {
+            "schema_version": "market-bars-residual-review-approval-v1",
+            "status": "not_available",
+            "approval_required": False,
+            "reason": "No active-universe repair option is available.",
+            "external_calls_required": 0,
+            "db_writes_required_to_execute": 0,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+
+    expected_missing = _int_payload_value(
+        active_repair.get("expected_missing_count")
+    )
+    expected_eligible = _int_payload_value(
+        active_repair.get("expected_eligible_count")
+    )
+    external_calls_required = _int_payload_value(
+        active_repair.get("external_calls_required")
+    )
+    db_writes_required = _int_payload_value(
+        active_repair.get("db_writes_required_to_execute")
+    )
+    would_clear = bool(active_repair.get("preview_would_clear_market_bars"))
+    if db_writes_required > 0 and would_clear:
+        status = "ready_to_execute"
+    elif db_writes_required > 0:
+        status = "partial_repair_available"
+    else:
+        status = "blocked"
+
+    post_execute_verification = "catalyst-radar market-bars status --json"
+    if expected_as_of_text:
+        post_execute_verification = (
+            "catalyst-radar market-bars status "
+            f"--expected-as-of {expected_as_of_text} --json"
+        )
+    return {
+        "schema_version": "market-bars-residual-review-approval-v1",
+        "status": status,
+        "approval_required": db_writes_required > 0,
+        "local_write_required": db_writes_required > 0,
+        "db_write_required": db_writes_required > 0,
+        "provider_call_required": external_calls_required > 0,
+        "preview_command": active_repair.get("preview_command"),
+        "execute_command": active_repair.get("execute_command"),
+        "expected_missing_count": expected_missing,
+        "expected_eligible_count": expected_eligible,
+        "preview_would_clear_market_bars": would_clear,
+        "external_calls_required": external_calls_required,
+        "db_writes_required_to_execute": db_writes_required,
+        "post_execute_verification_command": post_execute_verification,
+        "post_execute_priced_in_command": "catalyst-radar priced-in-answer --json",
+        "api": active_repair.get("api"),
+        "api_preview_request_body": active_repair.get("api_preview_request_body"),
+        "api_execute_request_body": active_repair.get("api_execute_request_body"),
+        "safe_default": (
+            "Preview only unless the operator explicitly approves the execute "
+            "command with the expected missing and eligible counts."
+        ),
+        "reason": active_repair.get("when"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
 
 
 def _residual_review_command(expected_as_of: date | None, *, stocks_only: bool) -> str:
