@@ -112,6 +112,9 @@ def agent_sdk_gate_payload(config: AppConfig) -> dict[str, object]:
         "agent_sdk_enabled": config.enable_agent_sdk,
         "premium_llm_enabled": config.enable_premium_llm,
         "model_configured": bool(config.agent_sdk_model),
+        "fast_model_configured": bool(config.agent_sdk_fast_model),
+        "agent_sdk_model": config.agent_sdk_model,
+        "agent_sdk_fast_model": config.agent_sdk_fast_model or config.agent_sdk_model,
         "openai_key_configured": bool(config.openai_api_key),
         "max_turns": AGENT_SDK_MAX_TURNS,
         "tool_surface": "read_only_snapshot_tools",
@@ -576,8 +579,13 @@ def _run_agent_sdk_real(
         raise RuntimeError("openai-agents package is not installed") from exc
 
     model = config.agent_sdk_model
+    fast_model = config.agent_sdk_fast_model or model
     read_only_tools = build_market_radar_agent_tools(snapshot)
-    specialist_tools = _build_specialist_agent_tools(Agent, model)
+    specialist_tools = _build_specialist_agent_tools(
+        Agent,
+        analytical_model=model,
+        fast_model=fast_model,
+    )
     operator_agent = Agent(
         name="MarketRadar Operator",
         model=model,
@@ -653,7 +661,12 @@ def _run_agent_sdk_real(
     return _model_dump(MarketRadarAgentBrief.model_validate(payload))
 
 
-def _build_specialist_agent_tools(agent_cls: type, model: str | None) -> list[object]:
+def _build_specialist_agent_tools(
+    agent_cls: type,
+    *,
+    analytical_model: str | None,
+    fast_model: str | None,
+) -> list[object]:
     """Build model-only specialist agents exposed to the manager as tools."""
     specialist_contract = (
         "Use only the text the manager provides and the already-redacted MarketRadar "
@@ -664,7 +677,7 @@ def _build_specialist_agent_tools(agent_cls: type, model: str | None) -> list[ob
     specialists = [
         agent_cls(
             name="Data Sentinel",
-            model=model,
+            model=fast_model,
             instructions=(
                 f"{specialist_contract} Focus on freshness, provenance, source "
                 "coverage, stale data, and whether the result is safe to inspect."
@@ -672,7 +685,7 @@ def _build_specialist_agent_tools(agent_cls: type, model: str | None) -> list[ob
         ),
         agent_cls(
             name="Catalyst Analyst",
-            model=model,
+            model=analytical_model,
             instructions=(
                 f"{specialist_contract} Focus on the priced-in mismatch explanation, "
                 "catalyst evidence, and missing evidence that could invalidate the signal."
@@ -680,7 +693,7 @@ def _build_specialist_agent_tools(agent_cls: type, model: str | None) -> list[ob
         ),
         agent_cls(
             name="Risk Officer",
-            model=model,
+            model=fast_model,
             instructions=(
                 f"{specialist_contract} Focus on actionability, position-risk language, "
                 "and the no-autonomous-trading boundary."
@@ -740,6 +753,13 @@ def _agent_runtime_payload(gate: Mapping[str, object], *, mode: str) -> dict[str
         "credit_gate_status": str(credit_gate.get("status") or "unknown"),
         "execute_required": mode == "preview",
         "tool_surface": str(gate.get("tool_surface") or "read_only_snapshot_tools"),
+        "models": {
+            "primary": _text(gate.get("agent_sdk_model")) or None,
+            "fast": _text(gate.get("agent_sdk_fast_model"))
+            or _text(gate.get("agent_sdk_model"))
+            or None,
+            "fast_fallback_to_primary": not bool(_text(gate.get("agent_sdk_fast_model"))),
+        },
         NON_OPENAI_ASSISTANT_DEPENDENCY_KEY: "absent",
         "external_market_tools": False,
         "broker_tools": False,

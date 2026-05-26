@@ -202,14 +202,16 @@ For OpenAI Agents SDK testing, fill only these values first:
 CATALYST_ENABLE_PREMIUM_LLM=true
 CATALYST_LLM_PROVIDER=openai
 CATALYST_ENABLE_AGENT_SDK=true
-CATALYST_AGENT_SDK_MODEL=<model available in your OpenAI API account>
+CATALYST_AGENT_SDK_MODEL=gpt-5.5
+CATALYST_AGENT_SDK_FAST_MODEL=gpt-5.4-mini
 OPENAI_API_KEY=<your real OpenAI API key>
 
-# Required cost gate. Use current prices from your OpenAI account.
-CATALYST_LLM_INPUT_COST_PER_1M=<input dollars per 1M tokens>
-CATALYST_LLM_CACHED_INPUT_COST_PER_1M=<cached input dollars per 1M tokens>
-CATALYST_LLM_OUTPUT_COST_PER_1M=<output dollars per 1M tokens>
-CATALYST_LLM_PRICING_UPDATED_AT=2026-05-25T00:00:00+00:00
+# Required cost gate. This prices the run at the primary analytical model rate;
+# fast subagent calls should be cheaper.
+CATALYST_LLM_INPUT_COST_PER_1M=5
+CATALYST_LLM_CACHED_INPUT_COST_PER_1M=0.5
+CATALYST_LLM_OUTPUT_COST_PER_1M=30
+CATALYST_LLM_PRICING_UPDATED_AT=2026-05-26T00:00:00+00:00
 
 # First real test budget. Increase only after you see the audit trail.
 CATALYST_LLM_DAILY_BUDGET_USD=1
@@ -802,8 +804,9 @@ catalyst-radar agent-brief --real --execute --max-openai-calls 3 --json
 
 Execution fails closed unless all explicit gates are set:
 `CATALYST_ENABLE_AGENT_SDK=true`, `CATALYST_ENABLE_PREMIUM_LLM=true`,
-`CATALYST_LLM_PROVIDER=openai`, `CATALYST_AGENT_SDK_MODEL=<model>`, and
-`OPENAI_API_KEY=<secret>`. It also requires real scan rows in the local
+`CATALYST_LLM_PROVIDER=openai`, `CATALYST_AGENT_SDK_MODEL=gpt-5.5`,
+`CATALYST_AGENT_SDK_FAST_MODEL=gpt-5.4-mini`, and `OPENAI_API_KEY=<secret>`.
+It also requires real scan rows in the local
 database, fresh model pricing, positive daily/monthly budgets, and an
 `agent_brief` daily cap. Even in execute mode, the agent receives only an
 allowlisted redacted snapshot and four read-only tools:
@@ -817,14 +820,16 @@ Minimal `.env.local` values for real agent testing:
 CATALYST_ENABLE_PREMIUM_LLM=true
 CATALYST_LLM_PROVIDER=openai
 CATALYST_ENABLE_AGENT_SDK=true
-CATALYST_AGENT_SDK_MODEL=<your OpenAI model>
+CATALYST_AGENT_SDK_MODEL=gpt-5.5
+CATALYST_AGENT_SDK_FAST_MODEL=gpt-5.4-mini
 OPENAI_API_KEY=<your real OpenAI API key>
 
-# Copy current prices from your OpenAI account pricing page.
-CATALYST_LLM_INPUT_COST_PER_1M=<input dollars per 1M tokens>
-CATALYST_LLM_CACHED_INPUT_COST_PER_1M=<cached input dollars per 1M tokens>
-CATALYST_LLM_OUTPUT_COST_PER_1M=<output dollars per 1M tokens>
-CATALYST_LLM_PRICING_UPDATED_AT=2026-05-25T00:00:00+00:00
+# Cost gate prices the whole run at the primary analytical model rate;
+# fast subagent calls should be cheaper.
+CATALYST_LLM_INPUT_COST_PER_1M=5
+CATALYST_LLM_CACHED_INPUT_COST_PER_1M=0.5
+CATALYST_LLM_OUTPUT_COST_PER_1M=30
+CATALYST_LLM_PRICING_UPDATED_AT=2026-05-26T00:00:00+00:00
 
 # Start low. Preview still costs 0; execute is blocked if these are 0.
 CATALYST_LLM_DAILY_BUDGET_USD=1

@@ -20456,6 +20456,10 @@ def _activation_env_purpose(name: str) -> str:
         ),
         "CATALYST_ENABLE_PREMIUM_LLM": "Optional switch for real model-backed review.",
         "CATALYST_LLM_PROVIDER": "Model provider for optional agent review.",
+        "CATALYST_AGENT_SDK_MODEL": "Primary analytical model for Agents SDK briefs.",
+        "CATALYST_AGENT_SDK_FAST_MODEL": (
+            "Cheaper fast model for bounded Agents SDK subagent checks."
+        ),
         "CATALYST_LLM_SKEPTIC_MODEL": "Model name for skeptic_review tasks.",
         "OPENAI_API_KEY": "OpenAI credential for optional real agent review.",
         "CATALYST_LLM_INPUT_COST_PER_1M": "Pricing guardrail for LLM input tokens.",
