@@ -39,6 +39,11 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
     assert brief["runtime"]["orchestrator"] == "openai_agents_sdk"
     assert brief["runtime"]["provider"] == "openai"
     assert brief["runtime"]["mode"] == "dry_run"
+    assert brief["runtime"]["models"] == {
+        "primary": None,
+        "fast": None,
+        "fast_fallback_to_primary": True,
+    }
     assert brief["runtime"]["real_mode_gate_status"] == "blocked"
     assert brief["runtime"]["credit_gate_status"] == "blocked"
     assert brief["runtime"]["copilot_dependency"] == "absent"
@@ -267,6 +272,11 @@ def test_agent_sdk_real_mode_preview_never_calls_openai_when_gates_are_ready(
     assert brief["status"] == "preview"
     assert brief["external_calls_made"]["openai"] == 0
     assert brief["runtime"]["execute_required"] is True
+    assert brief["runtime"]["models"] == {
+        "primary": "gpt-test",
+        "fast": "gpt-test-mini",
+        "fast_fallback_to_primary": False,
+    }
     assert brief["real_results"]["status"] == "ready"
     assert brief["credit_gate"]["status"] == "ready"
     assert brief["external_calls_planned"]["openai"] >= 1
@@ -377,6 +387,7 @@ def test_agent_sdk_execute_blocks_when_budget_is_zero() -> None:
             "CATALYST_ENABLE_PREMIUM_LLM": "true",
             "CATALYST_LLM_PROVIDER": "openai",
             "CATALYST_AGENT_SDK_MODEL": "gpt-test",
+            "CATALYST_AGENT_SDK_FAST_MODEL": "gpt-test-mini",
             "OPENAI_API_KEY": "sk-test-secret",
             "CATALYST_LLM_INPUT_COST_PER_1M": "1",
             "CATALYST_LLM_CACHED_INPUT_COST_PER_1M": "0.1",
@@ -815,6 +826,7 @@ def _openai_config() -> AppConfig:
             "CATALYST_ENABLE_PREMIUM_LLM": "true",
             "CATALYST_LLM_PROVIDER": "openai",
             "CATALYST_AGENT_SDK_MODEL": "gpt-test",
+            "CATALYST_AGENT_SDK_FAST_MODEL": "gpt-test-mini",
             "OPENAI_API_KEY": "sk-test-secret",
             "CATALYST_LLM_INPUT_COST_PER_1M": "1",
             "CATALYST_LLM_CACHED_INPUT_COST_PER_1M": "0.1",

@@ -71,6 +71,7 @@ def test_llm_config_defaults_fail_closed() -> None:
     assert config.enable_premium_llm is False
     assert config.enable_agent_sdk is False
     assert config.agent_sdk_model is None
+    assert config.agent_sdk_fast_model is None
     assert config.llm_provider == "none"
     assert config.llm_evidence_model is None
     assert config.llm_skeptic_model is None
@@ -90,6 +91,7 @@ def test_llm_config_reads_pricing_and_caps() -> None:
             "CATALYST_ENABLE_AGENT_SDK": "true",
             "CATALYST_LLM_PROVIDER": "openai",
             "CATALYST_AGENT_SDK_MODEL": "agent-model",
+            "CATALYST_AGENT_SDK_FAST_MODEL": "fast-agent-model",
             "CATALYST_LLM_EVIDENCE_MODEL": "model-review",
             "CATALYST_LLM_SKEPTIC_MODEL": "model-skeptic",
             "CATALYST_LLM_DECISION_CARD_MODEL": "model-decision",
@@ -109,6 +111,7 @@ def test_llm_config_reads_pricing_and_caps() -> None:
     assert config.enable_agent_sdk is True
     assert config.llm_provider == "openai"
     assert config.agent_sdk_model == "agent-model"
+    assert config.agent_sdk_fast_model == "fast-agent-model"
     assert config.llm_evidence_model == "model-review"
     assert config.llm_skeptic_model == "model-skeptic"
     assert config.llm_decision_card_model == "model-decision"

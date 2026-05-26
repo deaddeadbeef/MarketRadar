@@ -1,6 +1,50 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-26 00:40:00 +08:00
+Last updated: 2026-05-26 21:28:00 +08:00
+
+## Latest Agents SDK Model Split Slice
+
+Goal alignment / drift check:
+
+- Current goal remains getting MarketRadar usable soon as a real, cautious
+  priced-in/emotion radar. This slice only configures the model split for
+  future real agent briefs; it does not make provider, broker, or OpenAI calls.
+
+Useful definition:
+
+- Useful means the expensive model is reserved for ambiguous analytical work,
+  while bounded checks use a cheaper fast model and the credit gate remains
+  conservative.
+
+Fix in this slice:
+
+- `CATALYST_AGENT_SDK_MODEL` remains the primary analytical Agents SDK model.
+- New optional `CATALYST_AGENT_SDK_FAST_MODEL` configures the cheaper fast model
+  used by bounded Data Sentinel and Risk Officer subagents.
+- The MarketRadar manager agent and Catalyst Analyst stay on the primary model.
+- Runtime payloads now expose `runtime.models.primary`,
+  `runtime.models.fast`, and `runtime.models.fast_fallback_to_primary`.
+- README and `.env.example` document `gpt-5.5` primary plus `gpt-5.4-mini`
+  fast model. The documented credit gate prices the whole run at the primary
+  `gpt-5.5` rate so estimates stay conservative.
+
+Safety/call boundary:
+
+- Preview and verification made 0 OpenAI calls.
+- No provider, Schwab, broker/order, or operator database writes were made.
+- Root `.env.local` could not be edited by automation because the AgentOS hook
+  blocks file edits on `main`; paste the model block into the already-open file
+  after this PR is merged.
+
+Verification completed:
+
+- `pytest tests\unit\test_config.py tests\unit\test_env_example.py tests\unit\test_agent_sdk_orchestrator.py -q`
+- `ruff check src\catalyst_radar\core\config.py src\catalyst_radar\agents\sdk_orchestrator.py src\catalyst_radar\dashboard\data.py tests\unit\test_config.py tests\unit\test_env_example.py tests\unit\test_agent_sdk_orchestrator.py`
+- `compileall -q src\catalyst_radar\core\config.py src\catalyst_radar\agents\sdk_orchestrator.py src\catalyst_radar\dashboard\data.py tests\unit\test_config.py tests\unit\test_env_example.py tests\unit\test_agent_sdk_orchestrator.py`
+- `git diff --check`
+- Preview smoke with dummy key and model env returned `runtime_gate=ready`,
+  `runtime.models.primary=gpt-5.5`, `runtime.models.fast=gpt-5.4-mini`,
+  `credit_gate=ready`, and `openai_calls=0`.
 
 ## Latest Real-Results Runtime Audit Slice
 
