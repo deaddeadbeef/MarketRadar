@@ -6033,6 +6033,23 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> 4  Candidate Review" in frame
 
+            assert await pilot.click("#nav-broker")
+            await pilot.pause()
+            assert app.page == "broker"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Broker safety and Schwab sync status" in frame
+            assert "Schwab connection" in frame
+            assert "Order safety" in frame
+            assert "No Schwab call made" not in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Broker row selected:" in frame
+            assert "No Schwab call made" in frame
+            assert "Authenticate Schwab" in frame
+
             assert await pilot.click("#nav-ops")
             await pilot.pause()
             assert app.page == "ops"
