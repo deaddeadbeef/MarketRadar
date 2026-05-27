@@ -5964,6 +5964,19 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> 5  Alerts [1]" in frame
 
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.page == "alert:demo-alert-acme"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Alert demo-alert-acme" in frame
+            assert "Why did I get this?" in frame
+            assert "Is this a trade signal?" in frame
+            assert "Next safe action" in frame
+            assert "Feedback command" in frame
+            assert "not trade approval" in frame
+            assert "feedback demo-alert-acme" in frame
+
             await pilot.press("ctrl+p")
             await pilot.pause()
             assert app.page == "review"

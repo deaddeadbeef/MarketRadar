@@ -2468,12 +2468,11 @@ class MarketRadarDashboardApp(App[int]):
         self,
         alert_id: str,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
-        rows = _rows(_mapping(self.payload.get("alerts")).get("rows"))
-        row = next((item for item in rows if str(item.get("id") or "") == alert_id), {})
+        row = _alert_detail_row(self.payload, alert_id)
         return (
             f"Alert {alert_id}",
-            [("key", "Field", 24), ("value", "Value", 110)],
-            _mapping_items(_compact_detail(row)),
+            [("key", "Alert question", 24), ("value", "Answer", 110)],
+            _alert_case_detail_table_rows(row),
             "Use feedback <alert-id|#> <label> [notes] to record alert usefulness.",
         )
 
@@ -9223,6 +9222,65 @@ def _candidate_detail_lines(
     return lines
 
 
+def _alert_detail_row(payload: Mapping[str, object], alert_id: str) -> Mapping[str, object]:
+    rows = _rows(_mapping(payload.get("alerts")).get("rows"))
+    return next((item for item in rows if str(item.get("id") or "") == alert_id), {})
+
+
+def _alert_case_detail_table_rows(row: Mapping[str, object]) -> list[Mapping[str, object]]:
+    if not row:
+        return _mapping_items(_compact_detail(row))
+    pairs = (*_alert_case_summary_kv_pairs(row), *_alert_detail_kv_pairs(row))
+    return [{"key": key, "value": value} for key, value in pairs]
+
+
+def _alert_case_summary_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
+    alert_id = str(row.get("id") or "<alert-id>").strip()
+    ticker = str(row.get("ticker") or "n/a").strip().upper()
+    reason = (
+        row.get("summary")
+        or row.get("reason")
+        or row.get("title")
+        or _alert_evidence_summary(row)
+        or "No plain-language reason captured."
+    )
+    trigger = _join_nonempty(
+        (row.get("trigger_kind"), row.get("route"), row.get("priority")),
+        separator=" / ",
+    )
+    feedback_command = f"feedback {alert_id} useful|noisy|acted [notes]"
+    return (
+        ("Why did I get this?", reason),
+        ("Is this a trade signal?", "No - alert rows are review prompts, not trade approval."),
+        (
+            "Next safe action",
+            f"Open the {ticker} candidate case, then record feedback after review.",
+        ),
+        ("Feedback command", feedback_command),
+        ("Trigger", trigger),
+    )
+
+
+def _alert_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
+    return (
+        ("Ticker", row.get("ticker")),
+        ("Status", row.get("status")),
+        ("Route", row.get("route")),
+        ("Priority", row.get("priority")),
+        ("Title", row.get("title")),
+        ("Reason", row.get("reason") or row.get("summary")),
+        ("Created", row.get("created_at")),
+        ("Feedback", row.get("feedback_label") or row.get("feedback")),
+    )
+
+
+def _alert_evidence_summary(row: Mapping[str, object]) -> str:
+    payload = _mapping(row.get("payload"))
+    evidence = _rows(payload.get("evidence"))
+    titles = [str(item.get("title") or "").strip() for item in evidence]
+    return "; ".join(title for title in titles if title)
+
+
 def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = _rows(_mapping(payload.get("alerts")).get("rows"))
     lines = [_rule("Alerts", width)]
@@ -9250,23 +9308,14 @@ def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
 
 
 def _alert_detail_lines(payload: Mapping[str, object], alert_id: str, width: int) -> list[str]:
-    rows = _rows(_mapping(payload.get("alerts")).get("rows"))
-    row = next((item for item in rows if str(item.get("id") or "") == alert_id), {})
+    row = _alert_detail_row(payload, alert_id)
     lines = [_rule(f"Alert {alert_id or 'n/a'}", width)]
     if not row:
         lines.append("Alert not found for the current filters.")
         return lines
     lines.extend(
         _kv_lines(
-            (
-                ("Ticker", row.get("ticker")),
-                ("Status", row.get("status")),
-                ("Route", row.get("route")),
-                ("Priority", row.get("priority")),
-                ("Title", row.get("title")),
-                ("Reason", row.get("reason")),
-                ("Created", row.get("created_at")),
-            ),
+            (*_alert_case_summary_kv_pairs(row), *_alert_detail_kv_pairs(row)),
             width=width,
         )
     )
