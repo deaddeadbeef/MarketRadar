@@ -598,24 +598,27 @@ launcher leaves a new `dashboard-tui` child process behind.
 ### Terminal dashboard basics
 
 The TUI is the operational replacement surface for the web dashboard. It loads
-the same command-center data helpers and opens as a novice-first market insight
-cockpit. The first screen now answers: what MarketRadar is trying to decide,
-whether you can act, the best next step, how many scan rows exist, and the
-zero-call browsing boundary. Navigation labels use workflow language:
-`0 Start`, `1 Scan Results`, `2 Evidence Gaps`, `3 Safe Run`,
-`4 Candidate Review`, and `10 Agent Coach`. Press `0` or run
-`radar --page tutorial` for the walkthrough.
+the same command-center data helpers and opens as a Market Inbox: scan results
+arrive as messages to triage instead of raw backend rows. The first screen now
+answers: what MarketRadar is trying to decide, whether you can act, the best
+next step, how many scan messages exist, and the zero-call browsing boundary.
+Navigation labels use workflow language: `0 Start`, `1 Inbox`,
+`2 Evidence Gaps`, `3 Safe Run`, `4 Candidate Review`, and `10 Agent Coach`.
+Press `0` or run `radar --page tutorial` for the walkthrough.
 
-The Scan Results page is the full-market priced-in queue by default. It includes
-a legend for Emotion, Price reaction, Gap, and Decision-ready before the table.
-Candidate rows open the candidate evidence detail, alert rows open alert detail,
-blocker rows open readiness or ops, and refresh rows open the guarded run plan.
+The Inbox is the full-market priced-in queue by default. It groups messages into
+`Urgent`, `Worth Reading`, `Waiting Evidence`, `Blocked`, and `Monitor`, then
+shows the subject, why it reached you, missing evidence, and next safe action.
+The guide still defines Emotion, Price reaction, Gap, and data gaps before the
+table. Candidate rows open the candidate evidence case file, alert rows open
+alert detail, blocker rows open readiness or ops, and refresh rows open the
+guarded run plan.
 When there are no scan rows yet, the empty state gives the beginner path:
 import or fetch a universe, fill fresh market bars, then run a capped scan.
-Click or press `Enter` on an insight row to open the right operational view. Inside the
-TUI, the left sidebar is the primary navigation: click a row, press a page
-number, use `Ctrl+N` / `Ctrl+P`, or focus the sidebar and use `Up` / `Down`
-plus `Enter`. The compact `KEYS` / `MOUSE` guide keeps shortcuts visible
+Click or press `Enter` on an inbox message to open the right operational view.
+Inside the TUI, the left sidebar is the primary navigation: click a sidebar row,
+press a page number, use `Ctrl+N` / `Ctrl+P`, or focus the sidebar and use
+`Up` / `Down` plus `Enter`. The compact `KEYS` / `MOUSE` guide keeps shortcuts visible
 without adding a second navigation system. Candidate and alert rows are
 mouse-selectable in Windows Terminal. The `NEXT SAFE ACTION` card shows the useful
 operator move for the current page; the `LAST RESPONSE` card shows what the

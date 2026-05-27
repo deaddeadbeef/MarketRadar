@@ -336,8 +336,11 @@ PAGE_ALIASES: Mapping[str, str] = {
     "tutorial": "tutorial",
     "1": "overview",
     "home": "overview",
+    "inbox": "overview",
     "insight": "overview",
     "insights": "overview",
+    "mail": "overview",
+    "messages": "overview",
     "o": "overview",
     "overview": "overview",
     "2": "readiness",
@@ -382,7 +385,7 @@ PAGE_ALIASES: Mapping[str, str] = {
 }
 
 NAVIGATION_TEXT = (
-    "0 Start | 1 Scan Results | 2 Evidence Gaps | 3 Safe Run | "
+    "0 Start | 1 Inbox | 2 Evidence Gaps | 3 Safe Run | "
     "4 Candidate Review | 5 Alerts | "
     "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | 10 Agent Coach | 11 Review | "
     "features | help | q"
@@ -390,7 +393,7 @@ NAVIGATION_TEXT = (
 
 MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
     ("tutorial", "0", "Start"),
-    ("overview", "1", "Scan Results"),
+    ("overview", "1", "Inbox"),
     ("readiness", "2", "Evidence Gaps"),
     ("run", "3", "Safe Run"),
     ("candidates", "4", "Candidate Review"),
@@ -1159,7 +1162,7 @@ class MarketRadarDashboardApp(App[int]):
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
         Binding("0", "go('tutorial')", "Tutorial", priority=True),
-        Binding("1", "go('overview')", "Insights", priority=True),
+        Binding("1", "go('overview')", "Inbox", priority=True),
         Binding("2", "go('readiness')", "Readiness", priority=True),
         Binding("3", "go('run')", "Run", priority=True),
         Binding("4", "go('candidates')", "Candidates", priority=True),
@@ -1204,7 +1207,7 @@ class MarketRadarDashboardApp(App[int]):
         yield Header(show_clock=True)
         with Horizontal(id="workspace"):
             with Vertical(id="sidebar"):
-                yield Static("MRDR // MARKET RADAR", classes="brand")
+                yield Static("MRDR // MARKET INBOX", classes="brand")
                 for page_key, shortcut, label in MODERN_PAGES:
                     if page_key == "tutorial":
                         yield Static("LEARN", classes="side-section")
@@ -1253,7 +1256,7 @@ class MarketRadarDashboardApp(App[int]):
                     yield Static(id="operator-response")
                 yield Input(
                     placeholder=(
-                        "Type a command or click a row. Try: stocks, ready, full, mismatches, "
+                        "Type a command or click a message. Try: inbox, ready, full, mismatches, "
                         "2, 4, run, refresh, help, q"
                     ),
                     id="command",
@@ -1611,6 +1614,11 @@ class MarketRadarDashboardApp(App[int]):
             return ""
         if page_key == "candidates":
             return f" [{_mapping(self.payload.get('candidates')).get('count') or 0}]"
+        if page_key == "overview":
+            queue = _mapping(self.payload.get("priced_in_queue"))
+            count = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
+            if count:
+                return f" [{count}]"
         if page_key == "alerts":
             return f" [{_mapping(self.payload.get('alerts')).get('count') or 0}]"
         if page_key == "ipo":
@@ -1654,8 +1662,8 @@ class MarketRadarDashboardApp(App[int]):
 
     def _navigation_text(self) -> str:
         return (
-            "[bold #58a6ff]KEYS[/] 0 start | 1 scan results | 2 evidence gaps | "
-            "3 safe run | 4 candidate review | D ready | M full/mismatch\n"
+            "[bold #58a6ff]KEYS[/] 0 tutorial | 1 inbox | 2 evidence gaps | "
+            "3 safe run | 4 candidates | D urgent | M all/worth-reading\n"
             "[bold #58a6ff]MOUSE[/] click sidebar/table | Tab focus | "
             "Up/Down on sidebar | Enter open | Esc command | q quit\n"
         )
@@ -1679,9 +1687,9 @@ class MarketRadarDashboardApp(App[int]):
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
             "overview": (
-                "These are the latest scan results. Select a row to inspect why it is "
-                "or is not priced in. Press M or click SCAN to switch between "
-                f"Mismatches and Full Scan.{page_text}"
+                "Treat this like email: clear Urgent first, open Worth Reading next, "
+                "and leave Waiting Evidence until the missing source is filled. "
+                f"Select a message to open its case file.{page_text}"
             ),
             "review": (
                 "Review decision-ready priced-in rows. Press Enter to open the "
@@ -1748,7 +1756,7 @@ class MarketRadarDashboardApp(App[int]):
                         ),
                         (
                             "[bold #58a6ff]Do next[/] Read the rows below, "
-                            "then press 1 for Scan Results."
+                            "then press 1 for Inbox."
                         ),
                     ]
                 )
@@ -1757,7 +1765,7 @@ class MarketRadarDashboardApp(App[int]):
                 _metric_text("Step 1", "Learn controls", "mouse, keys, commands")
             )
             self.query_one("#metric-market", Static).update(
-                _metric_text("Step 2", "Open Scan Results", "press 1")
+                _metric_text("Step 2", "Open Inbox", "press 1")
             )
             self.query_one("#metric-calls", Static).update(
                 _metric_text("Safety", "0 calls", "tutorial is local")
@@ -1773,21 +1781,25 @@ class MarketRadarDashboardApp(App[int]):
             can_act_card = _mapping(card_by_label.get("Can I act?"))
             next_card = _mapping(card_by_label.get("Best next step"))
             rows_card = _mapping(card_by_label.get("Rows"))
+            inbox_rows = _market_inbox_rows(self.payload)
+            inbox_counts = _market_inbox_counts(inbox_rows)
             next_value = _clip(
                 next_card.get("value") or next_action or "No operator action.",
                 118,
             )
+            inbox_summary = _market_inbox_count_summary(inbox_counts)
+            inbox_value = inbox_summary or rows_card.get("value") or "0 messages"
             self.query_one("#hero", Static).update(
                 "\n".join(
                     [
-                        "[bold #7ee787]MARKET RADAR[/] // [b]SCAN RESULTS[/b]",
+                        "[bold #7ee787]MARKET INBOX[/] // [b]ATTENTION QUEUE[/b]",
                         (
-                            "MarketRadar answers one question: has market emotion "
-                            "been fully priced in?"
+                            "Every message is a scan result asking whether market emotion "
+                            "has outrun price reaction."
                         ),
                         (
                             f"[bold]Can I act?[/] {can_act_card.get('value') or can_act}; "
-                            f"[bold]Rows[/] {rows_card.get('value') or '0 scan row(s)'}; "
+                            f"[bold]Inbox[/] {inbox_value}; "
                             f"[bold]View[/] {view_label}; "
                             f"[dim]{self.payload.get('external_calls_made', 0)} "
                             "calls while viewing[/dim]"
@@ -1800,15 +1812,15 @@ class MarketRadarDashboardApp(App[int]):
             )
             self.query_one("#metric-readiness", Static).update(
                 _metric_text(
-                    "Can I act?",
+                    "Trade safety",
                     can_act_card.get("value") or can_act,
                     _clip(can_act_card.get("detail") or answer_status, 52),
                 )
             )
             self.query_one("#metric-market", Static).update(
                 _metric_text(
-                    "Scan rows",
-                    rows_card.get("value") or "0 scan row(s)",
+                    "Inbox",
+                    inbox_summary or rows_card.get("value") or "0 messages",
                     (
                         f"fresh bars "
                         f"{database.get('active_security_with_latest_daily_bar_count')}/"
@@ -1907,7 +1919,7 @@ class MarketRadarDashboardApp(App[int]):
             return "\n".join(
                 [
                     "[bold #7ee787]START[/]  Do these in order. Nothing external runs here.",
-                    "[bold]1.[/] Press 1 or click Scan Results to see what needs attention.",
+                    "[bold]1.[/] Press 1 or click Inbox to see what needs attention.",
                     "[bold]2.[/] Press D for decision-ready rows, M for broader mismatches.",
                     (
                         "[bold]3.[/] Press 2 for Evidence Gaps, 4 for Candidate Review, "
@@ -1968,8 +1980,12 @@ class MarketRadarDashboardApp(App[int]):
             return "\n".join(
                 [
                     (
-                        f"[bold #7ee787]SCAN RESULTS[/]  MarketRadar asks: "
-                        f"has market emotion been fully priced in? {mode} is {mode_help}."
+                        f"[bold #7ee787]MARKET INBOX[/]  Latest scan results are grouped "
+                        f"like messages. {mode} is {mode_help}."
+                    ),
+                    (
+                        "[bold]Core question:[/] has market emotion been fully priced in, "
+                        "or is price still behind mood?"
                     ),
                     (
                         f"[bold]Can I act?[/] {_decision_label(readiness)}. "
@@ -1978,8 +1994,13 @@ class MarketRadarDashboardApp(App[int]):
                         f"active securities; ranked {total}; visible page {count}."
                     ),
                     (
+                        "[bold]Mailboxes:[/] Urgent = decision-useful mismatch; "
+                        "Worth Reading = research-useful mismatch; Waiting Evidence = "
+                        "missing/stale data; Monitor = keep on radar."
+                    ),
+                    (
                         "[bold]Legend:[/] Emotion = market mood; Price reaction = price move; "
-                        "Gap = emotion - reaction; Decision-ready = enough evidence."
+                        "Gap = emotion - reaction; Data gaps are missing or stale evidence."
                     ),
                     (
                         f"[bold]Scope:[/] {scope_text}"
@@ -1990,7 +2011,7 @@ class MarketRadarDashboardApp(App[int]):
                     ),
                     (
                         f"[bold]Priced-in answer:[/] "
-                        f"{answer.get('answer') or 'Open Insights for current answer.'}"
+                        f"{answer.get('answer') or 'Open Inbox for current answer.'}"
                     ),
                     (
                         f"[bold]Trial gate:[/] "
@@ -2009,9 +2030,10 @@ class MarketRadarDashboardApp(App[int]):
                         f"{_overview_source_workflow_hint(self.payload)}"
                     ),
                     (
-                        f"[bold]Controls:[/] M toggles view; next/prev pages rows; "
-                        f"export full prints all ranked rows; these tickers are only "
-                        f"the current page; {can_act}; "
+                        f"[bold]Controls:[/] click a message or press Enter to open the "
+                        f"case file; M toggles view; next/prev pages rows; export full "
+                        f"prints all ranked rows; these tickers are only the current page; "
+                        f"{can_act}; "
                         f"{blocked_layers or 0} useful layer(s) blocked."
                     ),
                 ]
@@ -2105,7 +2127,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"market {calls.get('market_data', 0)}, broker {calls.get('broker', 0)}."
                     ),
                     f"[bold]Runtime:[/] {_agent_runtime_label(runtime)}.",
-                    "[bold]Do next:[/] follow the first Next Action row, then return to Insights.",
+                    "[bold]Do next:[/] follow the first Next Action row, then return to Inbox.",
                 ]
             )
         if page == "broker":
@@ -2144,7 +2166,7 @@ class MarketRadarDashboardApp(App[int]):
         return "\n".join(
             [
                 "[bold #7ee787]USE THIS PAGE[/] Inspect this evidence before acting elsewhere.",
-                "[bold]Do next:[/] click rows when available, or return to Insights with 1.",
+                "[bold]Do next:[/] click rows when available, or return to Inbox with 1.",
                 "[bold]Reminder:[/] navigation and filtering make 0 provider calls.",
             ]
         )
@@ -2361,18 +2383,17 @@ class MarketRadarDashboardApp(App[int]):
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
         return (
-            _latest_scan_results_title(self.payload),
+            _market_inbox_title(self.payload),
             [
-                ("rank", "#", 3),
+                ("mailbox", "Mailbox", 16),
                 ("ticker", "Ticker", 6),
-                ("signal", "Signal", 19),
-                ("emotion_reaction_gap", "Gap", 5),
-                ("data_coverage", "Data gaps", 14),
-                ("why_now", "Why now", 27),
-                ("next_action", "Next action", 25),
+                ("subject", "Subject", 24),
+                ("why", "Why this reached you", 36),
+                ("missing", "Missing / waiting", 22),
+                ("next", "Next safe action", 30),
             ],
-            _priced_in_overview_rows(self.payload),
-            _overview_caption(self.payload),
+            _market_inbox_rows(self.payload),
+            _market_inbox_caption(self.payload),
         )
 
     def _review_model(
@@ -2430,12 +2451,12 @@ class MarketRadarDashboardApp(App[int]):
             {"command": "0, 1..10, Ctrl+A, f, ?", "meaning": "Keyboard page shortcuts."},
             {
                 "command": "start / insights / tutorial",
-                "meaning": "Start on latest scan results; open tutorial only when needed.",
+                "meaning": "Start on Market Inbox; open tutorial only when needed.",
             },
             {
                 "command": "stocks / ready / full / mismatches",
                 "meaning": (
-                    "Switch Insights between stock-like rows, decision-ready rows, "
+                    "Switch Inbox between stock-like rows, decision-ready rows, "
                     "full universe rows, and the broader mismatch queue."
                 ),
             },
@@ -5847,7 +5868,7 @@ def _tutorial_control_rows() -> list[Mapping[str, object]]:
     return [
         {
             "step": "1",
-            "do": "Press 1 or click Insights",
+            "do": "Press 1 or click Inbox",
             "result": "See the current insight queue: ticker, signal, why, and action.",
         },
         {
@@ -6028,6 +6049,98 @@ def _priced_in_gap_summary(row: Mapping[str, object]) -> str:
     if not parts:
         return "none"
     return "; ".join(parts)
+
+
+def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    messages: list[Mapping[str, object]] = []
+    for row in _priced_in_overview_rows(payload):
+        ticker = str(row.get("ticker") or "").strip().upper()
+        signal = str(row.get("signal") or "Market signal").strip()
+        gap = row.get("emotion_reaction_gap")
+        gap_text = "" if gap in (None, "") else f" | gap {gap}"
+        subject = _clip(f"{signal}{gap_text}", 80)
+        missing = str(row.get("data_coverage") or "unknown").strip() or "unknown"
+        next_action = str(row.get("next_action") or "").strip()
+        if next_action == "Open candidate detail and review the evidence.":
+            next_action = "Open the case file and review evidence."
+        message = dict(row)
+        message.update(
+            {
+                "mailbox": _market_inbox_mailbox(row),
+                "subject": subject,
+                "why": row.get("why_now") or "No explanation recorded.",
+                "missing": "No current data gap" if missing == "none" else missing,
+                "next": next_action or "Open the case file and review evidence.",
+                "status_message": (
+                    f"Opened Market Inbox case for {ticker}. "
+                    "Review evidence before any action."
+                ),
+            }
+        )
+        messages.append(message)
+    return messages
+
+
+def _market_inbox_mailbox(row: Mapping[str, object]) -> str:
+    usefulness = _mapping(row.get("usefulness"))
+    usefulness_status = str(usefulness.get("status") or "").strip().lower()
+    signal = str(row.get("signal") or "").strip().lower()
+    coverage = str(row.get("data_coverage") or "").strip().lower()
+    decision_ready = (
+        bool(usefulness.get("decision_ready"))
+        or usefulness_status == "decision_useful"
+    )
+    blocked = bool(row.get("blocked")) or "blocked" in signal
+    waiting_for_evidence = (
+        coverage not in {"", "none"}
+        and any(token in coverage for token in ("missing", "stale", "unknown"))
+    )
+    mismatch = "not priced" in signal or "mismatch" in signal
+    if decision_ready and not blocked:
+        return "Urgent"
+    if waiting_for_evidence:
+        return "Waiting Evidence"
+    if blocked:
+        return "Blocked"
+    if usefulness_status in {"research_useful", "watch_useful"} or mismatch:
+        return "Worth Reading"
+    return "Monitor"
+
+
+def _market_inbox_counts(
+    rows: Sequence[Mapping[str, object]],
+) -> Mapping[str, int]:
+    counts = {
+        "Urgent": 0,
+        "Worth Reading": 0,
+        "Waiting Evidence": 0,
+        "Blocked": 0,
+        "Monitor": 0,
+    }
+    for row in rows:
+        mailbox = str(row.get("mailbox") or "Monitor")
+        counts[mailbox] = counts.get(mailbox, 0) + 1
+    return counts
+
+
+def _market_inbox_count_summary(counts: Mapping[str, int]) -> str:
+    total = sum(counts.values())
+    if total <= 0:
+        return ""
+    parts = [
+        f"{counts[label]} {label.lower()}"
+        for label in ("Urgent", "Worth Reading", "Waiting Evidence")
+        if counts.get(label)
+    ]
+    if not parts:
+        parts.append(f"{total} message(s)")
+    priority_total = sum(
+        counts.get(label, 0)
+        for label in ("Urgent", "Worth Reading", "Waiting Evidence")
+    )
+    if parts and total > priority_total:
+        parts.append(f"{total} total")
+    return ", ".join(parts)
 
 
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
@@ -6333,7 +6446,7 @@ def _full_scan_coverage_row(
         "next_action": next_action,
         "target_page": "ops",
         "status_message": (
-            "Opened Ops coverage. The full ranked scan stays on Insights; "
+            "Opened Ops coverage. The full ranked scan stays on Inbox; "
             "page it with next/prev/offset."
         ),
     }
@@ -6510,7 +6623,7 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
-    lines = [_rule(_overview_title(payload), width)]
+    lines = [_rule(_market_inbox_title(payload), width)]
     lines.extend(_novice_cockpit_lines(payload, width))
     lines.append(_priced_in_beginner_legend(width))
     lines.append("")
@@ -6519,11 +6632,16 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append("")
         lines.extend(_novice_empty_scan_lines(width))
         lines.append("")
-        lines.append(_overview_caption(payload))
+        lines.append(_market_inbox_caption(payload))
         return lines
     lines.append(
-        "Latest scan results: each row asks: has market emotion been fully priced in?"
+        "Latest scan results now arrive in Market Inbox as messages to triage."
     )
+    inbox_counts = _market_inbox_count_summary(
+        _market_inbox_counts(_market_inbox_rows(payload))
+    )
+    if inbox_counts:
+        lines.append(f"Inbox summary: {inbox_counts}.")
     minimum_stop = _minimum_product_stop_line_summary(payload)
     if minimum_stop:
         lines.append(
@@ -6641,19 +6759,18 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     decision_summary = _decision_readiness_summary(payload)
     if decision_summary:
         lines.append(f"Decision readiness: {decision_summary}")
-    overview_rows = _priced_in_overview_rows(payload)
+    overview_rows = _market_inbox_rows(payload)
     if overview_rows:
         lines.extend(
             _table_lines(
                 overview_rows,
                 [
-                    ("rank", "#", 3),
+                    ("mailbox", "Mailbox", 16),
                     ("ticker", "Ticker", 6),
-                    ("signal", "Signal", 19),
-                    ("emotion_reaction_gap", "Gap", 5),
-                    ("data_coverage", "Data gaps", 14),
-                    ("why_now", "Why now", 27),
-                    ("next_action", "Next action", 25),
+                    ("subject", "Subject", 24),
+                    ("why", "Why this reached you", 31),
+                    ("missing", "Missing / waiting", 20),
+                    ("next", "Next safe action", 27),
                 ],
                 width=width,
                 limit=50,
@@ -6662,7 +6779,7 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     else:
         lines.extend(_novice_empty_scan_lines(width))
     lines.append("")
-    lines.append(_overview_caption(payload))
+    lines.append(_market_inbox_caption(payload))
     return lines
 
 
@@ -6707,7 +6824,7 @@ def _novice_cockpit_cards(payload: Mapping[str, object]) -> list[Mapping[str, ob
         next_step.get("action")
         or answer.get("next_action")
         or readiness.get("next_action")
-        or "Open Scan Results."
+        or "Open Inbox."
     )
     return [
         {
@@ -7449,6 +7566,10 @@ def _overview_title(payload: Mapping[str, object]) -> str:
     return _latest_scan_results_title(payload)
 
 
+def _market_inbox_title(payload: Mapping[str, object]) -> str:
+    return f"Market Inbox - {_latest_scan_results_title(payload)}"
+
+
 def _latest_scan_results_title(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
     total = int(_number_or_zero(queue.get("total_count")))
@@ -7495,6 +7616,17 @@ def _latest_scan_results_title(payload: Mapping[str, object]) -> str:
             f"{scope_text}{suffix}"
         )
     return "Latest scan results - no rows yet; run or import scan evidence first"
+
+
+def _market_inbox_caption(payload: Mapping[str, object]) -> str:
+    rows = _market_inbox_rows(payload)
+    count_summary = _market_inbox_count_summary(_market_inbox_counts(rows))
+    count_text = f" Current queue: {count_summary}." if count_summary else ""
+    return (
+        "Market Inbox groups the latest scan results into triage messages: "
+        "Urgent first, Worth Reading second, Waiting Evidence only after data "
+        f"repair.{count_text} {_overview_caption(payload)}"
+    )
 
 
 def _priced_in_scope_title_suffix(
@@ -10164,8 +10296,8 @@ def _help_lines(width: int) -> list[str]:
         ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),
         ("ready", "Show only decision-useful not-priced-in rows from the full scan."),
         ("now", "Show the single next priced-in action, response, and cost."),
-        ("usefulness <status|all>", "Filter Insights by usefulness verdict."),
-        ("source-gap <source|all>", "Filter Insights by missing/stale data source."),
+        ("usefulness <status|all>", "Filter Inbox by usefulness verdict."),
+        ("source-gap <source|all>", "Filter Inbox by missing/stale data source."),
         ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),
         ("batch <source> execute", "Run only the next guarded source-fill chunk."),
         ("batch <source> execute 3", "Run a capped source-fill batch set."),
@@ -10183,10 +10315,10 @@ def _help_lines(width: int) -> list[str]:
         ("options import", "Preview or explicitly execute options fixture import."),
         ("agent", "Preview real Agents SDK gates with zero OpenAI calls."),
         ("agent execute", "Run one credit-gated OpenAI Agents SDK brief."),
-        ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
-        ("next / prev", "Page through the current Insights scan rows."),
+        ("decision-gap <gap|all>", "Filter Inbox by missing decision evidence."),
+        ("next / prev", "Page through the current Inbox scan rows."),
         ("offset <row>", "Jump to a 1-based full-scan row number."),
-        ("limit <1-200>", "Change Insights rows per page."),
+        ("limit <1-200>", "Change Inbox rows per page."),
         ("alert-status <status|all>", "Filter alerts by status."),
         ("alert-route <route|all>", "Filter alerts by route."),
         ("refresh", "Reload the local database snapshot."),
@@ -10304,7 +10436,7 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         return str(
             next_step.get("action")
             or _mapping(payload.get("priced_in_answer")).get("next_action")
-            or "Open Scan Results and inspect rows."
+            or "Open Inbox and inspect messages."
         )
     if page == "run":
         return "Review the call budget; type run execute only if it matches your intent."
