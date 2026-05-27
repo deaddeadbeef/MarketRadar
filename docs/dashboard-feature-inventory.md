@@ -1,6 +1,6 @@
 # Dashboard Feature Inventory
 
-Last updated: 2026-05-19
+Last updated: 2026-05-28
 
 This inventory tracks the current Market Radar dashboard features and where the
 terminal dashboard exposes them. The TUI uses the same dashboard data helpers as
@@ -29,8 +29,8 @@ Inside `dashboard-tui`, use page numbers or names to navigate, `open <#|ticker>`
 from the candidates page, `open <#|alert-id>` from the alerts page, `ticker
 <SYMBOL|all>`, `available-at <ISO|latest>`, `alert-status <status|all>`,
 `alert-route <route|all>`, `refresh`, `json`, `run`, `run execute`,
-`clear-filters`, `help`, and `q`. The default TUI entry page is `0 Tutorial`;
-press `1` or use `--page overview` to open the full ranked Insights scan. Type
+`clear-filters`, `help`, and `q`. The default TUI entry page is the Inbox /
+overview page; press `0` or use `--page tutorial` for the walkthrough. Type
 `ready` or press `D` in the TUI only when you intentionally want the
 decision-useful subset from that full scan; the API equivalent is
 `GET /api/radar/priced-in?decision_ready=true`; type `stocks` to focus common

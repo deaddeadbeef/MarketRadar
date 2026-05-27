@@ -1623,6 +1623,20 @@ class MarketRadarDashboardApp(App[int]):
             if row:
                 self.status_message = _telemetry_row_status_message(row)
                 self.refresh_view()
+        elif self.page == "themes":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _theme_row_status_message(row)
+                self.refresh_view()
+        elif self.page in {"validation", "costs"}:
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                detail_kind = "Validation" if self.page == "validation" else "Costs"
+                self.status_message = _detail_row_status_message(
+                    detail_kind,
+                    row,
+                )
+                self.refresh_view()
         elif self.page == "features":
             row = self._row_by_key(event.row_key.value)
             if row:
@@ -2440,6 +2454,33 @@ class MarketRadarDashboardApp(App[int]):
                 ],
                 _telemetry_event_rows(telemetry),
                 f"{telemetry.get('headline') or ''} Next: {telemetry.get('next_action') or ''}",
+            )
+        if page == "themes":
+            return (
+                "Themes - clustered catalyst patterns",
+                [
+                    ("theme", "Theme", 26),
+                    ("candidate_count", "Candidates", 12),
+                    ("avg_score", "Avg score", 12),
+                    ("top_tickers", "Top tickers", 24),
+                    ("states", "States", 44),
+                ],
+                _rows(_mapping(self.payload.get("themes")).get("rows")),
+                "Theme rows are local candidate clusters. Selecting a row makes no calls.",
+            )
+        if page == "validation":
+            return (
+                "Validation - useful-alert evidence",
+                [("key", "Question", 28), ("value", "Answer", 104)],
+                _validation_status_rows(_mapping(self.payload.get("validation"))),
+                "Validation rows summarize stored replay/report evidence only.",
+            )
+        if page == "costs":
+            return (
+                "Costs and value proof",
+                [("key", "Question", 30), ("value", "Answer", 102)],
+                _cost_status_rows(self.payload),
+                "Costs rows are local budget/value evidence; writes require explicit commands.",
             )
         if page == "agent":
             brief = _mapping(self.payload.get("agent_brief"))
@@ -6537,6 +6578,14 @@ def _telemetry_row_status_message(row: Mapping[str, object]) -> str:
     )
 
 
+def _theme_row_status_message(row: Mapping[str, object]) -> str:
+    theme = str(row.get("theme") or "Theme").strip()
+    count = int(_number_or_zero(row.get("candidate_count")))
+    tickers = ", ".join(_texts(row.get("top_tickers"))[:4])
+    ticker_text = f" Top: {tickers}." if tickers else ""
+    return f"Theme selected: No calls. {theme}; candidates={count}.{ticker_text}"
+
+
 def _feature_row_target_page(row: Mapping[str, object]) -> str:
     page_hint = str(row.get("page") or "").strip()
     if not page_hint:
@@ -6568,6 +6617,75 @@ def _help_row_status_message(row: Mapping[str, object]) -> str:
         f"Help row selected: {command}. No calls made; type the command in "
         f"the bottom box or use the matching shortcut.{meaning_text}"
     )
+
+
+def _validation_status_rows(validation: Mapping[str, object]) -> list[Mapping[str, object]]:
+    latest_run = _mapping(validation.get("latest_run"))
+    report = _mapping(validation.get("report"))
+    return [
+        {"key": "Latest run", "value": latest_run.get("id") or "n/a"},
+        {"key": "Run status", "value": latest_run.get("status") or "n/a"},
+        {"key": "Candidate count", "value": report.get("candidate_count") or 0},
+        {"key": "Useful alert rate", "value": report.get("useful_alert_rate")},
+        {"key": "False positives", "value": report.get("false_positive_count") or 0},
+        {
+            "key": "Unsupported claim rate",
+            "value": report.get("unsupported_claim_rate"),
+        },
+        {
+            "key": "Next safe action",
+            "value": (
+                "Run validation replay/report before trusting measured usefulness."
+                if not latest_run
+                else "Review validation report before changing score policy."
+            ),
+        },
+    ]
+
+
+def _cost_status_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    costs = _mapping(payload.get("costs"))
+    value_ledger = _mapping(payload.get("value_ledger"))
+    value_report = _mapping(payload.get("value_report"))
+    candidate_coverage = _mapping(value_report.get("candidate_ledger_coverage"))
+    outcome_coverage = _mapping(value_report.get("value_outcome_coverage"))
+    validation_evidence = _mapping(value_report.get("validation_evidence"))
+    return [
+        {"key": "Actual cost", "value": costs.get("total_actual_cost_usd") or 0},
+        {
+            "key": "Estimated cost",
+            "value": costs.get("total_estimated_cost_usd") or 0,
+        },
+        {"key": "Useful alerts", "value": costs.get("useful_alert_count") or 0},
+        {
+            "key": "Cost per useful alert",
+            "value": costs.get("cost_per_useful_alert"),
+        },
+        {
+            "key": "Weighted value",
+            "value": value_ledger.get("confidence_weighted_value_usd") or 0,
+        },
+        {
+            "key": "Monthly value verdict",
+            "value": value_report.get("verdict") or value_report.get("status") or "n/a",
+        },
+        {
+            "key": "Candidate ledger coverage",
+            "value": _candidate_ledger_coverage_text(candidate_coverage),
+        },
+        {
+            "key": "Value outcome coverage",
+            "value": _value_outcome_coverage_text(outcome_coverage),
+        },
+        {
+            "key": "Validation evidence",
+            "value": validation_evidence.get("status") or "n/a",
+        },
+        {
+            "key": "Next safe action",
+            "value": value_report.get("canonical_next_action") or "Review value coverage.",
+        },
+    ]
 
 
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
