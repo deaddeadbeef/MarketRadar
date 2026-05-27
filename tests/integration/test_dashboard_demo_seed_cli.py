@@ -6384,6 +6384,64 @@ def test_modern_dashboard_command_navigation_reports_response(
     asyncio.run(run_app())
 
 
+def test_modern_dashboard_open_command_accepts_global_text_identifiers(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+
+    async def run_command(initial_page: str, command: str) -> MarketRadarDashboardApp:
+        app = MarketRadarDashboardApp(
+            engine=engine,
+            config=AppConfig.from_env(),
+            dotenv_loaded=False,
+            filters=DashboardFilters(),
+            initial_page=initial_page,
+        )
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            command_input = app.query_one("#command")
+            command_input.focus()
+            command_input.value = command
+            await pilot.press("enter")
+            await pilot.pause()
+            return app
+
+    async def run_app() -> None:
+        for initial_page in ("readiness", "run", "agent", "ops"):
+            app = await run_command(initial_page, "open ACME")
+            assert app.page == "candidate:ACME"
+            assert app.status_message == (
+                "Opened candidate ACME. No calls. Review evidence before action."
+            )
+
+        app = await run_command("readiness", "open demo-alert-acme")
+        assert app.page == "alert:demo-alert-acme"
+        assert app.status_message == (
+            "Opened alert demo-alert-acme. No calls. Record feedback after review."
+        )
+
+        app = await run_command("readiness", "open 1")
+        assert app.page == "readiness"
+        assert app.status_message == "Nothing to open."
+
+    asyncio.run(run_app())
+
+
 def test_modern_dashboard_tui_paints_before_snapshot_load(
     tmp_path: Path,
     monkeypatch,
