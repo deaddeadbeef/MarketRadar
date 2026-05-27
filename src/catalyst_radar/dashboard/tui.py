@@ -1163,7 +1163,7 @@ class MarketRadarDashboardApp(App[int]):
         ("r", "refresh", "Refresh"),
         Binding("0", "go('tutorial')", "Tutorial", priority=True),
         Binding("1", "go('overview')", "Inbox", priority=True),
-        Binding("2", "go('readiness')", "Readiness", priority=True),
+        Binding("2", "go('readiness')", "Evidence Gaps", priority=True),
         Binding("3", "go('run')", "Run", priority=True),
         Binding("4", "go('candidates')", "Candidates", priority=True),
         Binding("5", "go('alerts')", "Alerts", priority=True),
@@ -1941,7 +1941,9 @@ class MarketRadarDashboardApp(App[int]):
             self.payload.get("operator_next_step")
         )
         can_act = _decision_label(readiness)
-        next_action = next_step.get("action") or readiness.get("next_action") or "Open Readiness."
+        next_action = (
+            next_step.get("action") or readiness.get("next_action") or "Open Evidence Gaps."
+        )
         usefulness = _mapping(readiness.get("market_radar_usefulness"))
         blocked_layers = usefulness.get("blocked_layers")
         if page == "tutorial":
@@ -2238,7 +2240,7 @@ class MarketRadarDashboardApp(App[int]):
             return self._review_model()
         if page == "readiness":
             return (
-                "Readiness checklist",
+                "Evidence Gaps - blockers before any decision",
                 [
                     ("area", "Area", 18),
                     ("status", "Status", 14),
@@ -2246,7 +2248,7 @@ class MarketRadarDashboardApp(App[int]):
                     ("next_action", "Next action", 58),
                 ],
                 _rows(_mapping(self.payload.get("readiness")).get("readiness_checklist")),
-                "Use this page to decide what blocks a human investment decision.",
+                "Use this page to see which evidence gaps block a human decision.",
             )
         if page == "run":
             call_plan = _mapping(self.payload.get("call_plan"))
@@ -5902,7 +5904,7 @@ def _tutorial_control_rows() -> list[Mapping[str, object]]:
         },
         {
             "step": "2",
-            "do": "Press 2 or click Readiness",
+            "do": "Press 2 or click Evidence Gaps",
             "result": "See exactly what blocks a decision-useful workflow.",
         },
         {
@@ -6255,8 +6257,7 @@ def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
         )
     if blocked:
         return (
-            "Rows are blocked. Open Readiness or Evidence Gaps before relying on "
-            "this scan."
+            "Rows are blocked. Open Evidence Gaps before relying on this scan."
         )
     return (
         "Monitor only. Do nothing until new evidence creates an Urgent or Worth "
@@ -6450,7 +6451,7 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
                     "why_now": decision_readiness.get("summary")
                     or "Decision readiness is available.",
                     "next_action": recommended_gap.get("next_action")
-                    or "Open Readiness or Ops to clear decision blockers.",
+                    or "Open Evidence Gaps or Ops to clear decision blockers.",
                     "target_page": "ops",
                     "status_message": "Opened Ops. Clear the recommended decision gap first.",
                 }
@@ -6558,9 +6559,11 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
                 "scope": "ALL",
                 "signal": can_act,
                 "why_now": readiness_reason,
-                "next_action": readiness.get("next_action") or "Open Readiness.",
+                "next_action": readiness.get("next_action") or "Open Evidence Gaps.",
                 "target_page": "readiness",
-                "status_message": "Opened Readiness. Clear blockers before relying on output.",
+                "status_message": (
+                    "Opened Evidence Gaps. Clear blockers before relying on output."
+                ),
             }
         )
 
@@ -8069,7 +8072,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     latest_shadow = _mapping(shadow_mode.get("latest"))
     boundary = _mapping(shadow.get("call_boundary"))
     queue = _mapping(payload.get("operator_work_queue"))
-    lines = [_rule("Readiness And Work Queue", width)]
+    lines = [_rule("Evidence Gaps And Work Queue", width)]
     lines.extend(
         _kv_lines(
             (
