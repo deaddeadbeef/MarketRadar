@@ -6330,6 +6330,37 @@ def test_modern_dashboard_command_navigation_reports_response(
             else:
                 raise AssertionError("dashboard snapshot did not load")
 
+            for key, expected_page, expected_response in (
+                ("2", "readiness", "Opened Evidence Gaps. No calls."),
+                ("3", "run", "Opened Safe Run. No calls."),
+                ("4", "candidates", "Opened Candidate Review. No calls."),
+            ):
+                await pilot.press(key)
+                await pilot.pause()
+                assert app.page == expected_page
+                assert app.status_message == expected_response
+                frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+                assert expected_response in frame
+
+            assert await pilot.click("#nav-alerts")
+            await pilot.pause()
+            assert app.page == "alerts"
+            assert app.status_message == "Opened Alerts. No calls."
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Opened Alerts. No calls." in frame
+
+            await pilot.press("ctrl+n")
+            await pilot.pause()
+            assert app.page == "ipo"
+            assert app.status_message == "Opened IPO/S-1. No calls."
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Opened IPO/S-1. No calls." in frame
+
+            await pilot.press("ctrl+p")
+            await pilot.pause()
+            assert app.page == "alerts"
+            assert app.status_message == "Opened Alerts. No calls."
+
             for command, expected_page, expected_response in (
                 ("features", "features", "Opened Features. No calls."),
                 ("themes", "themes", "Opened Themes. No calls."),
