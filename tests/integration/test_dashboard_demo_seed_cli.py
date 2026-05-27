@@ -1230,15 +1230,17 @@ def test_tui_agent_run_preview_is_zero_call() -> None:
     assert "Agent previewed" in update.message
     assert "OpenAI calls=0" in update.message
     assert "OpenAI calls planned" in update.message
+    assert "Use `agent execute`" in update.message
+    assert "agent run execute" not in update.message
 
 
-def test_tui_agent_run_execute_blocks_without_real_results() -> None:
+def test_tui_agent_execute_blocks_without_real_results() -> None:
     engine = create_engine("sqlite:///:memory:", future=True)
     create_schema(engine)
     payload = _minimal_missing_real_results_payload()
 
     update = _apply_command(
-        "agent run execute",
+        "agent execute",
         payload,
         "agent",
         DashboardFilters(),
@@ -1250,6 +1252,8 @@ def test_tui_agent_run_execute_blocks_without_real_results() -> None:
     assert "Agent blocked" in update.message
     assert "OpenAI calls=0" in update.message
     assert "No real result yet" in update.message
+    assert "Use `agent execute`" in update.message
+    assert "agent run execute" not in update.message
 
 
 def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
