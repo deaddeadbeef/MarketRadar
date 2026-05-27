@@ -3194,7 +3194,7 @@ def test_evidence_gaps_footer_names_first_must_fix_gap() -> None:
 
     readiness = render_dashboard_tui(payload, page="readiness", width=150)
 
-    assert "Readiness And Work Queue" in readiness
+    assert "Evidence Gaps And Work Queue" in readiness
     assert "First must fix: Live market scan" in readiness
     assert "Research-only" in readiness
     assert "Use the workflow navigation or open the highlighted row" not in readiness
@@ -5876,7 +5876,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             assert app.page == "readiness"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Readiness checklist" in frame
+            assert "Evidence Gaps - blockers before any decision" in frame
             assert "First must fix:" in frame
             assert "Research-only" in frame
 
