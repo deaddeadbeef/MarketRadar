@@ -3156,6 +3156,46 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     assert "Current queue: 2 waiting evidence" not in overview
 
 
+def test_evidence_gaps_footer_names_first_must_fix_gap() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {
+            "status": "research_only",
+            "decision_mode": "research_only",
+            "headline": "Evidence gaps remain.",
+            "next_action": "Clear source gaps before acting.",
+            "readiness_checklist": [],
+        },
+        "shadow_readiness": {},
+        "operator_work_queue": {
+            "status": "blocked",
+            "headline": "2 setup blockers remain.",
+            "rows": [
+                {
+                    "priority": "attention",
+                    "area": "Research loop",
+                    "item": "No telemetry yet.",
+                    "next_action": "Run the radar once in dry-run mode.",
+                },
+                {
+                    "priority": "must_fix",
+                    "area": "Live market scan",
+                    "item": "Market bars are incomplete.",
+                    "next_action": "Fill market bars or open Ops for the source plan.",
+                },
+            ],
+        },
+    }
+
+    readiness = render_dashboard_tui(payload, page="readiness", width=150)
+
+    assert "Readiness And Work Queue" in readiness
+    assert "First must fix: Live market scan" in readiness
+    assert "Research-only" in readiness
+    assert "Use the workflow navigation or open the highlighted row" not in readiness
+
+
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
@@ -5827,6 +5867,18 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "REVIEW" in frame
             assert "OPERATE" in frame
             assert "Up/Down on sidebar" in frame
+
+            await pilot.press("2")
+            await pilot.pause()
+            assert app.page == "readiness"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Readiness checklist" in frame
+            assert "First must fix: Live market scan" in frame
+            assert "Research-only" in frame
+
+            await pilot.press("1")
+            await pilot.pause()
+            assert app.page == "overview"
 
             await pilot.press("m")
             await wait_for_payload()

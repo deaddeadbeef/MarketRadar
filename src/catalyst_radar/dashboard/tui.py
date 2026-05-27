@@ -1702,6 +1702,7 @@ class MarketRadarDashboardApp(App[int]):
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
             "overview": f"{inbox_action}{page_text}",
+            "readiness": _readiness_next_safe_action(self.payload),
             "review": (
                 "Review decision-ready priced-in rows. Press Enter to open the "
                 f"candidate and Decision Card context.{page_text}"
@@ -6318,6 +6319,37 @@ def _candidate_case_source_gap_summary(
     return "; ".join(parts) if parts else "none"
 
 
+def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
+    queue = _mapping(payload.get("operator_work_queue"))
+    rows = _rows(queue.get("rows"))
+    priority_order = {"must_fix": 0, "blocked": 1, "attention": 2, "research": 3}
+    actionable_rows = sorted(
+        rows,
+        key=lambda row: priority_order.get(
+            str(row.get("priority") or "").strip().lower(),
+            9,
+        ),
+    )
+    if actionable_rows:
+        row = actionable_rows[0]
+        priority = str(row.get("priority") or "gap").replace("_", " ")
+        area = str(row.get("area") or row.get("item") or "Evidence gap").strip()
+        action = str(row.get("next_action") or row.get("action") or "").strip()
+        action_text = f" {_clip(action, 104)}" if action else ""
+        return (
+            f"Research-only. First {priority}: "
+            f"{area}.{action_text}"
+        )
+    readiness = _mapping(payload.get("readiness"))
+    next_action = str(readiness.get("next_action") or "").strip()
+    if next_action:
+        return (
+            f"Research-only until clear. Clear readiness before acting: "
+            f"{_clip(next_action, 118)}"
+        )
+    return "No evidence gaps are listed. Return to Inbox or Decision Review."
+
+
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -10614,6 +10646,8 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
             or _mapping(payload.get("priced_in_answer")).get("next_action")
             or "Open Inbox and inspect messages."
         )
+    if page == "readiness":
+        return _readiness_next_safe_action(payload)
     if page == "run":
         return "Review the call budget; type run execute only if it matches your intent."
     if page == "agent":
