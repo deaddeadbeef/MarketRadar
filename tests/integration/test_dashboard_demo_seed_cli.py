@@ -3063,6 +3063,12 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "ACME" in overview
     assert "BETA" in overview
 
+    case = render_dashboard_tui(payload, page="candidate:ACME", width=180)
+    assert "Candidate ACME" in case
+    assert "ACME: no trade decision yet" in case
+    assert "Fix source gaps" in case
+    assert "Use the workflow navigation or open the highlighted row" not in case
+
     inbox_rows = _market_inbox_rows(payload)
     assert [row["mailbox"] for row in inbox_rows] == ["Urgent", "Waiting Evidence"]
     assert inbox_rows[0]["subject"].startswith("Bullish not priced")
@@ -5843,6 +5849,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "candidate:ACME"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
+            assert "ACME: no trade decision yet" in frame
+            assert "Fix source gaps" in frame
 
             await pilot.press("1")
             await pilot.pause()
@@ -5853,6 +5861,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "candidate:ACME"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
+            assert "ACME: no trade decision yet" in frame
             assert ">> 4  Candidate Review" in frame
 
             assert await pilot.click("#nav-alerts")
