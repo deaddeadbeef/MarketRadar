@@ -1563,6 +1563,11 @@ class MarketRadarDashboardApp(App[int]):
             if row:
                 self.status_message = _run_row_status_message(row)
                 self.refresh_view()
+        elif self.page == "agent":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _agent_row_status_message(row)
+                self.refresh_view()
         elif self.page == "ops":
             row = self._row_by_key(event.row_key.value)
             source = str(row.get("source") or "").strip()
@@ -6394,6 +6399,17 @@ def _run_row_status_message(row: Mapping[str, object]) -> str:
     )
 
 
+def _agent_row_status_message(row: Mapping[str, object]) -> str:
+    kind = str(row.get("kind") or "Agent").strip()
+    item = str(row.get("item") or "step").strip()
+    detail = str(row.get("detail") or "").strip()
+    detail_text = f" Detail: {_clip(detail, 96)}" if detail else ""
+    return (
+        f"Agent step selected: {kind} / {item}. No calls made; "
+        f"agent execute is required to spend OpenAI budget.{detail_text}"
+    )
+
+
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -8871,7 +8887,7 @@ def _evidence_plan_step_rows(
 
 
 def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]:
-    rows: list[Mapping[str, object]] = []
+    rows: list[Mapping[str, object]] = _agent_coach_summary_rows(brief)
     runtime = _mapping(brief.get("runtime"))
     if runtime:
         rows.append(
@@ -8940,6 +8956,64 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
             }
         )
     return rows
+
+
+def _agent_coach_summary_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]:
+    runtime = _mapping(brief.get("runtime"))
+    real_results = _mapping(brief.get("real_results"))
+    credit_gate = _mapping(brief.get("credit_gate"))
+    next_actions = _texts(brief.get("next_actions"))
+    blocked_tools = []
+    for key, label in (
+        ("external_market_tools", "market"),
+        ("broker_tools", "broker"),
+        ("shell_tools", "shell"),
+        ("web_tools", "web"),
+    ):
+        if runtime.get(key) is False:
+            blocked_tools.append(label)
+    blocked = ", ".join(blocked_tools) or "none"
+    next_action = str(
+        _first_nonblank(
+            credit_gate.get("next_action"),
+            real_results.get("next_action"),
+            next_actions[0] if next_actions else None,
+        )
+        or "Stay in preview until gates are ready."
+    )
+    credit_status = credit_gate.get("status") or runtime.get("credit_gate_status") or "unknown"
+    return [
+        {
+            "kind": "Start",
+            "item": "What can the agent do?",
+            "detail": (
+                "Read the local dashboard snapshot and propose research next actions; "
+                "it cannot trade from this page."
+            ),
+        },
+        {
+            "kind": "Cost",
+            "item": "OpenAI calls",
+            "detail": (
+                "No calls made in preview; agent execute is required and still passes "
+                "through the credit gate."
+            ),
+        },
+        {
+            "kind": "Safety",
+            "item": "What is blocked?",
+            "detail": (
+                f"real gate={runtime.get('real_mode_gate_status') or 'unknown'}; "
+                f"credit={credit_status}; "
+                f"blocked tools={blocked}."
+            ),
+        },
+        {
+            "kind": "Next",
+            "item": "Safe next action",
+            "detail": next_action,
+        },
+    ]
 
 
 def _agent_runtime_name(value: object) -> str:
