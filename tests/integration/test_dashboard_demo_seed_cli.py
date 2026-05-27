@@ -5990,6 +5990,24 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> 5  Alerts [1]" in frame
 
+            assert await pilot.click("#nav-ipo")
+            await pilot.pause()
+            assert app.page == "ipo"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "IPO / S-1 catalyst evidence" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "SEC row selected." in frame
+            assert "No call made" in frame
+            assert "Next safe action" in frame
+
+            assert await pilot.click("#nav-alerts")
+            await pilot.pause()
+            assert app.page == "alerts"
+
             app.query_one("#data-table").focus()
             await pilot.press("enter")
             await pilot.pause()
