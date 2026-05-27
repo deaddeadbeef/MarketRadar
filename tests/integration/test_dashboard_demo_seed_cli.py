@@ -729,6 +729,21 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
         "--source options --execute-next"
     ) in overview.message
 
+    invalid = _apply_command(
+        "batch nonsense",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine(database_url, future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert invalid.page == "ops"
+    assert "Unsupported batch source: nonsense" in invalid.message
+    assert "No calls made" in invalid.message
+    assert "Use one of: market_bars" in invalid.message
+    assert "batch all" in invalid.message
+
     full_plan = _apply_command(
         "batch options all",
         {},
