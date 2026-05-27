@@ -1549,6 +1549,11 @@ class MarketRadarDashboardApp(App[int]):
                 self.page = f"alert:{alert_id}"
                 self.status_message = f"Opened alert {alert_id}."
                 self.refresh_view()
+        elif self.page == "readiness":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _readiness_row_status_message(row)
+                self.refresh_view()
         elif self.page == "ops":
             row = self._row_by_key(event.row_key.value)
             source = str(row.get("source") or "").strip()
@@ -1566,8 +1571,11 @@ class MarketRadarDashboardApp(App[int]):
 
     def _row_by_key(self, key: object) -> Mapping[str, object]:
         key_text = str(key)
-        for row in self._current_rows():
+        for index, row in enumerate(self._current_rows(), start=1):
             if str(row.get("_row_key") or "") == key_text:
+                return row
+            generated = str(row.get("ticker") or row.get("id") or index)
+            if generated == key_text:
                 return row
         return {}
 
@@ -6348,6 +6356,19 @@ def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
             f"{_clip(next_action, 118)}"
         )
     return "No evidence gaps are listed. Return to Inbox or Decision Review."
+
+
+def _readiness_row_status_message(row: Mapping[str, object]) -> str:
+    area = str(row.get("area") or row.get("code") or row.get("item") or "Evidence gap")
+    status = str(row.get("status") or row.get("priority") or "needs review")
+    finding = str(row.get("finding") or row.get("item") or "").strip()
+    next_action = str(row.get("next_action") or row.get("action") or "").strip()
+    finding_text = f" Finding: {_clip(finding, 90)}" if finding else ""
+    next_text = f" Next: {_clip(next_action, 110)}" if next_action else ""
+    return (
+        f"Research-only blocker selected: {area} ({status})."
+        f"{finding_text}{next_text}"
+    )
 
 
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
