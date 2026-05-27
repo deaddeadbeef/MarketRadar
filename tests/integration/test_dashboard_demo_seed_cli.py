@@ -6217,6 +6217,89 @@ def test_modern_dashboard_reference_rows_explain_enter_action(
     asyncio.run(run_app())
 
 
+def test_modern_dashboard_feature_inventory_routes_to_real_pages(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+
+    async def open_feature(
+        area: str,
+        *,
+        expected_page: str,
+        expected_title: str,
+        expected_row_response: str,
+    ) -> None:
+        app = MarketRadarDashboardApp(
+            engine=engine,
+            config=AppConfig.from_env(),
+            dotenv_loaded=False,
+            filters=DashboardFilters(),
+            initial_page="features",
+        )
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            rows = app._current_rows()
+            row_index = next(
+                index
+                for index, row in enumerate(rows)
+                if str(row.get("area")) == area
+            )
+            app.query_one("#data-table").focus()
+            for _ in range(row_index):
+                await pilot.press("down")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.page == expected_page
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert expected_title in frame
+            assert "Feature selected:" in frame
+            assert "No calls" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert expected_row_response in frame
+            assert "No calls" in frame
+
+    async def run_app() -> None:
+        await open_feature(
+            "Themes",
+            expected_page="themes",
+            expected_title="Themes - clustered catalyst patterns",
+            expected_row_response="Theme selected:",
+        )
+        await open_feature(
+            "Validation",
+            expected_page="validation",
+            expected_title="Validation - useful-alert evidence",
+            expected_row_response="Validation selected:",
+        )
+        await open_feature(
+            "Costs",
+            expected_page="costs",
+            expected_title="Costs and value proof",
+            expected_row_response="Costs selected:",
+        )
+
+    asyncio.run(run_app())
+
+
 def test_modern_dashboard_tui_paints_before_snapshot_load(
     tmp_path: Path,
     monkeypatch,
