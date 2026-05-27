@@ -6094,6 +6094,82 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
     asyncio.run(run_app())
 
 
+def test_modern_dashboard_reference_rows_explain_enter_action(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="features",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Feature inventory" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.page == "overview"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Feature selected:" in frame
+            assert "No calls" in frame
+            assert "research-only vs" in frame
+
+            await pilot.press("?")
+            await pilot.pause()
+            assert app.page == "help"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Help" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Help row selected: Click sidebar row" in frame
+            assert "No calls made" in frame
+            assert "Switch pages with mouse support" in frame
+
+            await pilot.press("9")
+            await pilot.pause()
+            assert app.page == "telemetry"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Telemetry audit tape" in frame
+            assert "No telemetry yet" in frame
+            assert "No local audit events" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Telemetry row selected:" in frame
+            assert "No local audit events" in frame
+            assert "No calls" in frame
+            assert "Refresh after run" in frame
+
+    asyncio.run(run_app())
+
+
 def test_modern_dashboard_tui_paints_before_snapshot_load(
     tmp_path: Path,
     monkeypatch,
