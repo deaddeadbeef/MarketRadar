@@ -5782,6 +5782,33 @@ def test_tui_rejected_operator_commands_report_no_side_effects():
     assert "open <alert-id>" in feedback_update.message
 
 
+def test_tui_invalid_commands_report_no_side_effects():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    config = AppConfig.from_env({})
+    expected = "No API calls/orders/writes."
+
+    commands = [
+        "offset nope",
+        "limit nope",
+        "available-at nope",
+        "export maybe",
+        "batch",
+        'agent "',
+        "unknowncommand",
+    ]
+
+    for command in commands:
+        update = _apply_command(
+            command,
+            {},
+            "overview",
+            DashboardFilters(),
+            engine=engine,
+            config=config,
+        )
+        assert expected in update.message
+
+
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(
     tmp_path: Path,
     monkeypatch,
@@ -6527,6 +6554,51 @@ def test_modern_dashboard_open_command_accepts_global_text_identifiers(
         assert "No local candidate or alert matched NOPE" in app.status_message
         assert "No calls made" in app.status_message
         assert "refresh" in app.status_message
+
+    asyncio.run(run_app())
+
+
+def test_modern_dashboard_invalid_command_explains_no_side_effects(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="overview",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            command_input = app.query_one("#command")
+            command_input.focus()
+            command_input.value = "unknowncommand"
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert "Unknown command: unknowncommand" in app.status_message
+            assert "No API calls/orders/writes." in app.status_message
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Unknown command: unknowncommand" in frame
+            assert "No API calls/orders/writes." in frame
 
     asyncio.run(run_app())
 
