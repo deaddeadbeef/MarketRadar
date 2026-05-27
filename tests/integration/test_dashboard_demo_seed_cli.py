@@ -5879,6 +5879,27 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "11 Decision Review" not in frame
             assert "Up/Down on sidebar" in frame
 
+            await pilot.press("ctrl+a")
+            await pilot.pause()
+            assert app.page == "agent"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Agent brief - preview by default" in frame
+            assert "What can the agent do?" in frame
+            assert "OpenAI calls" in frame
+            assert "No calls made" in frame
+            assert "Safe next action" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Agent step selected:" in frame
+            assert "agent execute" in frame
+
+            await pilot.press("1")
+            await pilot.pause()
+            assert app.page == "overview"
+
             assert await pilot.click("#action-run-page")
             await pilot.pause()
             assert app.page == "run"
