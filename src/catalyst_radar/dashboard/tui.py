@@ -1532,7 +1532,27 @@ class MarketRadarDashboardApp(App[int]):
             self.refresh_view()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if self.page in {"overview", "review"}:
+        if self.page == "tutorial":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                target_page = str(row.get("_target_page") or "").strip()
+                self.status_message = _tutorial_row_status_message(
+                    row,
+                    target_page=target_page,
+                )
+                if target_page:
+                    old_filters = self.filters
+                    self.page = target_page
+                    self.filters = dashboard_filters_for_page(self.filters, self.page)
+                    if self.filters != old_filters:
+                        self._start_snapshot_reload(
+                            loading_message=self.status_message,
+                            success_message=self.status_message,
+                            clear_payload=True,
+                        )
+                        return
+                self.refresh_view()
+        elif self.page in {"overview", "review"}:
             row = self._row_by_key(event.row_key.value)
             target_page = str(row.get("target_page") or "").strip()
             if target_page:
@@ -5949,26 +5969,31 @@ def _tutorial_mission_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
 def _tutorial_control_rows() -> list[Mapping[str, object]]:
     return [
         {
+            "_target_page": "overview",
             "step": "1",
             "do": "Press 1 or click Inbox",
             "result": "See the current insight queue: ticker, signal, why, and action.",
         },
         {
+            "_target_page": "readiness",
             "step": "2",
             "do": "Press 2 or click Evidence Gaps",
             "result": "See exactly what blocks a decision-useful workflow.",
         },
         {
+            "_target_page": "review",
             "step": "3",
             "do": "Press D or click Decision-ready",
             "result": "Show only not-priced-in rows that passed the usefulness gate.",
         },
         {
+            "_target_page": "candidates",
             "step": "4",
             "do": "Press 4 or click Candidates",
             "result": "Review companies. These are research rows, not trade signals.",
         },
         {
+            "_target_page": "run",
             "step": "5",
             "do": "Press 3 or click Run",
             "result": "Review external-call budget before running anything.",
@@ -6426,6 +6451,19 @@ def _readiness_row_status_message(row: Mapping[str, object]) -> str:
         f"Research-only blocker selected: {area} ({status})."
         f"{finding_text}{next_text}"
     )
+
+
+def _tutorial_row_status_message(
+    row: Mapping[str, object],
+    *,
+    target_page: str = "",
+) -> str:
+    step = str(row.get("step") or "Tutorial").strip()
+    action = str(row.get("do") or "Read this row").strip()
+    result = str(row.get("result") or "").strip()
+    route = f" Opened {target_page}." if target_page else ""
+    result_text = f" Result: {_clip(result, 76)}" if result else ""
+    return f"Tutorial row selected: No calls. {step} - {_clip(action, 42)}.{route}{result_text}"
 
 
 def _detail_row_status_message(kind: str, row: Mapping[str, object]) -> str:

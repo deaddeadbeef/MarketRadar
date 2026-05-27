@@ -5843,6 +5843,26 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "LEARN" in frame
             assert app.page == "tutorial"
 
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Tutorial row selected:" in frame
+            assert "No calls" in frame
+
+            step_one_index = next(
+                index
+                for index, row in enumerate(app._current_rows())
+                if str(row.get("step")) == "1"
+            )
+            app.query_one("#data-table").focus()
+            for _ in range(step_one_index):
+                await pilot.press("down")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.page == "overview"
+            assert "Opened overview" in app.status_message
+
             await pilot.press("1")
             await pilot.pause()
             assert app.page == "overview"
