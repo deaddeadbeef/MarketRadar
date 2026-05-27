@@ -1578,6 +1578,24 @@ class MarketRadarDashboardApp(App[int]):
             if row:
                 self.status_message = _broker_row_status_message(row)
                 self.refresh_view()
+        elif self.page == "telemetry":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _telemetry_row_status_message(row)
+                self.refresh_view()
+        elif self.page == "features":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                target_page = _feature_row_target_page(row)
+                self.status_message = _feature_row_status_message(row)
+                if target_page:
+                    self.page = target_page
+                self.refresh_view()
+        elif self.page == "help":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _help_row_status_message(row)
+                self.refresh_view()
         elif self.page == "ops":
             row = self._row_by_key(event.row_key.value)
             source = str(row.get("source") or "").strip()
@@ -2380,7 +2398,7 @@ class MarketRadarDashboardApp(App[int]):
                     ("status", "Status", 12),
                     ("summary", "Summary", 72),
                 ],
-                _rows(telemetry.get("events")),
+                _telemetry_event_rows(telemetry),
                 f"{telemetry.get('headline') or ''} Next: {telemetry.get('next_action') or ''}",
             )
         if page == "agent":
@@ -6443,6 +6461,51 @@ def _broker_row_status_message(row: Mapping[str, object]) -> str:
     )
 
 
+def _telemetry_row_status_message(row: Mapping[str, object]) -> str:
+    event = str(row.get("event") or "Telemetry event").strip()
+    status = str(row.get("status") or "review").strip()
+    summary = str(row.get("summary") or "").strip()
+    summary_text = f" Summary: {_clip(summary, 104)}" if summary else ""
+    return (
+        f"Telemetry row selected: No calls. Refresh after run. "
+        f"{event} ({status})."
+        f"{summary_text}"
+    )
+
+
+def _feature_row_target_page(row: Mapping[str, object]) -> str:
+    page_hint = str(row.get("page") or "").strip()
+    if not page_hint:
+        return ""
+    for raw_part in page_hint.split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        target = _normalize_page(part)
+        if target != "help" or part.lower() in {"?", "help"}:
+            return target
+    return ""
+
+
+def _feature_row_status_message(row: Mapping[str, object]) -> str:
+    area = str(row.get("area") or "Feature").strip()
+    use = str(row.get("use") or "").strip()
+    if "research-only" in use and "decision-useful" in use:
+        use = "research-only vs decision-useful"
+    summary = _clip(use or area, 60)
+    return f"Feature selected: No calls. {summary}. Area: {area}."
+
+
+def _help_row_status_message(row: Mapping[str, object]) -> str:
+    command = str(row.get("command") or "help").strip()
+    meaning = str(row.get("meaning") or "").strip()
+    meaning_text = f" Meaning: {_clip(meaning, 112)}" if meaning else ""
+    return (
+        f"Help row selected: {command}. No calls made; type the command in "
+        f"the bottom box or use the matching shortcut.{meaning_text}"
+    )
+
+
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -9867,6 +9930,23 @@ def _broker_status_rows(broker: Mapping[str, object]) -> list[Mapping[str, objec
     return rows
 
 
+def _telemetry_event_rows(telemetry: Mapping[str, object]) -> list[Mapping[str, object]]:
+    events = _rows(telemetry.get("events"))
+    if events:
+        return events
+    return [
+        {
+            "_row_key": "telemetry-empty",
+            "occurred_at": "No telemetry yet",
+            "event": "No local audit events",
+            "status": "waiting",
+            "summary": (
+                "Nothing has recorded telemetry locally. Refresh after an intentional run."
+            ),
+        }
+    ]
+
+
 def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
     broker = _mapping(payload.get("broker"))
     snapshot = _mapping(broker.get("snapshot"))
@@ -10744,7 +10824,7 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append("")
     lines.extend(
         _table_lines(
-            _rows(telemetry.get("events")),
+            _telemetry_event_rows(telemetry),
             [
                 ("occurred_at", "Occurred", 24),
                 ("event", "Event", 24),
