@@ -2450,10 +2450,10 @@ class MarketRadarDashboardApp(App[int]):
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
         ticker = ticker.upper()
         row = _candidate_detail_row(self.payload, ticker)
-        rows = _candidate_detail_table_rows(row)
+        rows = _candidate_case_detail_table_rows(self.payload, ticker, row)
         return (
             f"Candidate {ticker}",
-            [("key", "Field", 24), ("value", "Value", 110)],
+            [("key", "Case question", 24), ("value", "Answer", 110)],
             rows,
             "Verify the evidence, then decide watch, trigger, ticket, or dismiss.",
         )
@@ -9049,10 +9049,48 @@ def _candidate_detail_row(payload: Mapping[str, object], ticker: str) -> Mapping
     return {}
 
 
-def _candidate_detail_table_rows(row: Mapping[str, object]) -> list[Mapping[str, object]]:
+def _candidate_case_detail_table_rows(
+    payload: Mapping[str, object],
+    ticker: str,
+    row: Mapping[str, object],
+) -> list[Mapping[str, object]]:
     if not row:
         return _mapping_items(_compact_detail(row))
-    return [{"key": key, "value": value} for key, value in _candidate_detail_kv_pairs(row)]
+    pairs = (
+        *_candidate_case_summary_kv_pairs(payload, ticker, row),
+        *_candidate_detail_kv_pairs(row),
+    )
+    return [{"key": key, "value": value} for key, value in pairs]
+
+
+def _candidate_case_summary_kv_pairs(
+    payload: Mapping[str, object],
+    ticker: str,
+    row: Mapping[str, object],
+) -> tuple[tuple[str, object], ...]:
+    readiness = _mapping(payload.get("readiness"))
+    safe = bool(readiness.get("safe_to_make_investment_decision"))
+    brief = _mapping(row.get("priced_in_evidence_brief"))
+    source_gaps = _candidate_case_source_gap_summary(row, brief)
+    why = (
+        _priced_in_reason(row)
+        or brief.get("why_now")
+        or row.get("top_event_title")
+        or row.get("top_catalyst")
+        or row.get("risk_or_gap")
+        or "No plain-language reason captured."
+    )
+    can_act = (
+        "No - research only until readiness says this is decision-ready."
+        if not safe
+        else "Not trade approval; verify the evidence before any action."
+    )
+    return (
+        ("Can I act now?", can_act),
+        ("What happened?", why),
+        ("What is missing?", source_gaps or "none"),
+        ("Next safe action", _candidate_case_next_safe_action(payload, ticker)),
+    )
 
 
 def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
@@ -9166,7 +9204,15 @@ def _candidate_detail_lines(
     if not row:
         lines.append("Candidate not found for the current filters.")
         return lines
-    lines.extend(_kv_lines(_candidate_detail_kv_pairs(row), width=width))
+    lines.extend(
+        _kv_lines(
+            (
+                *_candidate_case_summary_kv_pairs(payload, ticker, row),
+                *_candidate_detail_kv_pairs(row),
+            ),
+            width=width,
+        )
+    )
     return lines
 
 
