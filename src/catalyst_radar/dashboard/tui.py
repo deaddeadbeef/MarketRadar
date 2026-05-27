@@ -1691,6 +1691,14 @@ class MarketRadarDashboardApp(App[int]):
             else ""
         )
         inbox_action = _market_inbox_next_safe_action(self.payload)
+        candidate_action = (
+            _candidate_case_next_safe_action(
+                self.payload,
+                self.page.split(":", 1)[1] if ":" in self.page else "",
+            )
+            if page == "candidate"
+            else ""
+        )
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
             "overview": f"{inbox_action}{page_text}",
@@ -1704,6 +1712,7 @@ class MarketRadarDashboardApp(App[int]):
             "agent": "Review the dry-run multi-agent brief; it makes zero provider calls.",
             "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
             "help": "Use the help table as the command reference.",
+            "candidate": candidate_action,
         }.get(
             page,
             "Use the sidebar, page keys, or Ctrl+N/Ctrl+P to move; type a command below.",
@@ -6241,6 +6250,74 @@ def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
     )
 
 
+def _candidate_case_next_safe_action(payload: Mapping[str, object], ticker: str) -> str:
+    ticker = ticker.strip().upper()
+    row = _candidate_detail_row(payload, ticker)
+    if not row:
+        return (
+            f"{ticker or 'Candidate'} is not visible in the current scan filters. "
+            "Return to Inbox or clear filters before acting."
+        )
+    brief = _mapping(row.get("priced_in_evidence_brief"))
+    top_evidence = ""
+    if brief:
+        evidence_rows = _rows(brief.get("evidence"))
+        top_evidence = str(
+            _first_nonblank(
+                *[item.get("title") for item in evidence_rows[:1] if item.get("title")],
+                brief.get("top_catalyst"),
+            )
+            or ""
+        ).strip()
+    next_step = str(
+        _first_nonblank(
+            brief.get("next_step") if brief else None,
+            row.get("priced_in_next_step"),
+            row.get("next_step"),
+            row.get("decision_next_step"),
+        )
+        or ""
+    ).strip()
+    source_gaps = _candidate_case_source_gap_summary(row, brief)
+    has_source_gaps = source_gaps not in {"", "none", "n/a"}
+    evidence_target = f"Top evidence: {_clip(top_evidence, 52)}. " if top_evidence else ""
+    if has_source_gaps:
+        return (
+            f"{ticker}: no trade decision yet. Fix source gaps after evidence check. "
+            f"{evidence_target}Gaps: {_clip(source_gaps, 80)}."
+        )
+    if next_step:
+        return (
+            f"{ticker}: no trade decision yet. Verify evidence first. "
+            f"{evidence_target}Then: {_clip(next_step, 80)}."
+        )
+    return (
+        f"{ticker}: no trade decision yet. Verify evidence first, then return to "
+        "Inbox or Decision Review."
+    )
+
+
+def _candidate_case_source_gap_summary(
+    row: Mapping[str, object],
+    brief: Mapping[str, object],
+) -> str:
+    if brief:
+        source_actions = _candidate_source_action_summary(brief)
+        if source_actions not in {"", "none", "n/a"}:
+            return source_actions
+    data_sources = row.get("priced_in_data_sources") or row.get("data_sources")
+    if not isinstance(data_sources, Mapping):
+        return "none"
+    missing = _texts(data_sources.get("missing"))
+    stale = _texts(data_sources.get("stale"))
+    parts: list[str] = []
+    if missing:
+        parts.append(f"missing {', '.join(missing[:3])}")
+    if stale:
+        parts.append(f"stale {', '.join(stale[:3])}")
+    return "; ".join(parts) if parts else "none"
+
+
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -10524,6 +10601,8 @@ def _footer_lines(
 
 
 def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
+    if page.startswith("candidate:"):
+        return _candidate_case_next_safe_action(payload, page.split(":", 1)[1])
     if page == "overview":
         if _market_inbox_rows(payload):
             return _market_inbox_next_safe_action(payload)
