@@ -387,7 +387,7 @@ PAGE_ALIASES: Mapping[str, str] = {
 NAVIGATION_TEXT = (
     "0 Start | 1 Inbox | 2 Evidence Gaps | 3 Safe Run | "
     "4 Candidate Review | 5 Alerts | "
-    "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | 10 Agent Coach | 11 Review | "
+    "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | Ctrl+A Agent Coach | review | "
     "features | help | q"
 )
 
@@ -397,13 +397,13 @@ MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
     ("readiness", "2", "Evidence Gaps"),
     ("run", "3", "Safe Run"),
     ("candidates", "4", "Candidate Review"),
-    ("review", "11", "Decision Review"),
+    ("review", "", "Decision Review"),
     ("alerts", "5", "Alerts"),
     ("ipo", "6", "IPO/S-1"),
     ("broker", "7", "Broker"),
     ("ops", "8", "Ops"),
     ("telemetry", "9", "Telemetry"),
-    ("agent", "10", "Agent Coach"),
+    ("agent", "^A", "Agent Coach"),
     ("features", "F", "Features"),
     ("help", "?", "Help"),
 )
@@ -2482,7 +2482,7 @@ class MarketRadarDashboardApp(App[int]):
         rows = [
             {"command": "Click sidebar row", "meaning": "Switch pages with mouse support."},
             {"command": "Click candidate/alert row", "meaning": "Open the selected detail view."},
-            {"command": "0, 1..10, Ctrl+A, f, ?", "meaning": "Keyboard page shortcuts."},
+            {"command": "0, 1..9, Ctrl+A, f, ?", "meaning": "Keyboard page shortcuts."},
             {
                 "command": "start / insights / tutorial",
                 "meaning": "Start on Market Inbox; open tutorial only when needed.",
