@@ -48,6 +48,7 @@ from catalyst_radar.dashboard.tui import (
     _priced_in_source_workflow_payload,
     _run_audit_source_blocker_hint,
     _run_mission_brief_items,
+    _run_page_next_safe_action,
     _stock_market_bar_next_summary,
     dashboard_filters_for_page,
     dashboard_snapshot_payload,
@@ -5809,6 +5810,27 @@ def test_tui_invalid_commands_report_no_side_effects():
         assert expected in update.message
 
 
+def test_dashboard_run_page_next_safe_action_uses_operator_step():
+    action = _run_page_next_safe_action(
+        {
+            "priced_in_answer": {
+                "operator_next_step": {
+                    "action": "Validate the saved market-bar file before rerunning.",
+                    "tui_command": "bars saved validate",
+                    "external_calls_required": 0,
+                    "db_writes_required": 0,
+                    "approval_required": False,
+                }
+            }
+        }
+    )
+
+    assert "Validate the saved market-bar file" in action
+    assert "bars saved validate" in action
+    assert "0 provider call(s), 0 DB write(s); no approval." in action
+    assert "run execute only if intended" not in action
+
+
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(
     tmp_path: Path,
     monkeypatch,
@@ -6039,6 +6061,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Opened Safe Run plan" in frame
             assert "No calls made" in frame
             assert "run execute" in frame
+            assert "run execute only if intended" not in frame
+            assert "provider call(s)" in frame
+            assert "DB write(s)" in frame
 
             await pilot.press("1")
             await pilot.pause()

@@ -1830,7 +1830,7 @@ class MarketRadarDashboardApp(App[int]):
                 "Review decision-ready priced-in rows. Press Enter to open the "
                 f"candidate and Decision Card context.{page_text}"
             ),
-            "run": "Review call budget, then type run execute only if intended.",
+            "run": _run_page_next_safe_action(self.payload),
             "candidates": "Click or focus a row and press Enter to open a candidate.",
             "alerts": "Click or focus a row and press Enter to open an alert.",
             "agent": "Review the dry-run multi-agent brief; it makes zero provider calls.",
@@ -2874,6 +2874,24 @@ def _operator_next_step_message(payload: Mapping[str, object]):
         "database changes."
     )
     return " ".join(lines)
+
+
+def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
+    step = _priced_in_operator_step(payload)
+    if not step:
+        return "Review call budget, then type run execute only if intended."
+    action = str(
+        step.get("action") or step.get("action_label") or "Review the next blocker."
+    ).strip()
+    command = str(step.get("tui_command") or step.get("command") or "").strip()
+    calls = int(_number_or_zero(step.get("external_calls_required")))
+    writes = int(_number_or_zero(step.get("db_" + "writes_required")))
+    approval = "approval required" if bool(step.get("approval_required")) else "no approval"
+    parts = [f"{calls} provider call(s), {writes} DB write(s); {approval}."]
+    parts.append(_clip(action, 120))
+    if command:
+        parts.append(f"Use `{_clip(command, 100)}`.")
+    return " ".join(parts)
 
 
 def _minimum_product_stop_line_summary(payload: Mapping[str, object]) -> str:
