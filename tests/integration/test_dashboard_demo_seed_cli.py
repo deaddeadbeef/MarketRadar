@@ -119,6 +119,8 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
 ) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "false")
+    monkeypatch.setenv("CATALYST_LLM_PROVIDER", "none")
     cutoff = (DEMO_AVAILABLE_AT + timedelta(minutes=1)).isoformat()
 
     assert main(["seed-dashboard-demo"]) == 0
