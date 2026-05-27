@@ -1207,7 +1207,7 @@ class MarketRadarDashboardApp(App[int]):
         yield Header(show_clock=True)
         with Horizontal(id="workspace"):
             with Vertical(id="sidebar"):
-                yield Static("MRDR // MARKET INBOX", classes="brand")
+                yield Static("MRDR // MARKET RADAR", classes="brand")
                 for page_key, shortcut, label in MODERN_PAGES:
                     if page_key == "tutorial":
                         yield Static("LEARN", classes="side-section")

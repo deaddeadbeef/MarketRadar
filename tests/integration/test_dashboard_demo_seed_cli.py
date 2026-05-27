@@ -5829,7 +5829,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
 
             await wait_for_payload()
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "MRDR // MARKET INBOX" in frame
+            assert "MRDR // MARKET RADAR" in frame
             assert "START" in frame
             assert "Tutorial - your first 90 seconds" in frame
             assert "Press 1 or click Inbox" in frame
@@ -6055,7 +6055,7 @@ def test_modern_dashboard_tui_paints_before_snapshot_load(
                 assert started.is_set()
 
                 frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-                assert "MRDR // MARKET INBOX" in frame
+                assert "MRDR // MARKET RADAR" in frame
                 assert "START" in frame
                 assert "Tutorial - your first 90 seconds" in frame
                 assert "Loading local dashboard snapshot" in frame
