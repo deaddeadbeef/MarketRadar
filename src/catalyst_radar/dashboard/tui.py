@@ -3380,7 +3380,11 @@ def _apply_command(
     if command == "open":
         next_page = _open_target_page(payload, page, value)
         if next_page is None:
-            return _CommandUpdate(page=page, filters=filters, message="Nothing to open.")
+            return _CommandUpdate(
+                page=page,
+                filters=filters,
+                message=_open_command_no_match_message(page, value),
+            )
         return _CommandUpdate(
             page=next_page,
             filters=filters,
@@ -5938,6 +5942,26 @@ def _global_open_target_page(
     alert = _row_by_index_or_key(alert_rows, value, key="id")
     alert_id = str(alert.get("id") or "").strip() if alert else ""
     return f"alert:{alert_id}" if alert_id else None
+
+
+def _open_command_no_match_message(page: str, value: str) -> str:
+    token = value.strip()
+    if not token:
+        return (
+            "Open command needs a target. No calls made. Type open <ticker>, "
+            "open <alert-id>, or use row numbers on Inbox, Candidate Review, or Alerts."
+        )
+    if token.isdigit():
+        page_label = _human_label(_normalize_page(page)) or "this page"
+        return (
+            f"No row {token} is openable on {page_label}. No calls made. "
+            "Use row numbers on Inbox, Candidate Review, or Alerts; from any page "
+            "type open <ticker> or open <alert-id>."
+        )
+    return (
+        f"No local candidate or alert matched {token}. No calls made. Try open <ticker>, "
+        "open <alert-id>, or refresh if you expected it in the latest scan."
+    )
 
 
 def _row_by_index_or_key(

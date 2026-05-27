@@ -6437,7 +6437,15 @@ def test_modern_dashboard_open_command_accepts_global_text_identifiers(
 
         app = await run_command("readiness", "open 1")
         assert app.page == "readiness"
-        assert app.status_message == "Nothing to open."
+        assert "No row 1 is openable on readiness" in app.status_message
+        assert "No calls made" in app.status_message
+        assert "open <ticker>" in app.status_message
+
+        app = await run_command("agent", "open NOPE")
+        assert app.page == "agent"
+        assert "No local candidate or alert matched NOPE" in app.status_message
+        assert "No calls made" in app.status_message
+        assert "refresh" in app.status_message
 
     asyncio.run(run_app())
 
