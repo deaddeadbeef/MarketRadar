@@ -1371,11 +1371,13 @@ class MarketRadarDashboardApp(App[int]):
         old_filters = self.filters
         self.page = _normalize_page(page)
         self.filters = dashboard_filters_for_page(self.filters, self.page)
-        self.status_message = ""
+        self.status_message = _page_navigation_status_message(self.page)
         if self.filters != old_filters:
             self._start_snapshot_reload(
-                loading_message="Loading filtered dashboard snapshot...",
-                success_message="Snapshot loaded for the selected view.",
+                loading_message=(
+                    f"{self.status_message} Refreshing local snapshot only."
+                ),
+                success_message=self.status_message,
                 clear_payload=True,
             )
         else:
