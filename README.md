@@ -603,7 +603,7 @@ arrive as messages to triage instead of raw backend rows. The first screen now
 answers: what MarketRadar is trying to decide, whether you can act, the best
 next step, how many scan messages exist, and the zero-call browsing boundary.
 Navigation labels use workflow language: `0 Start`, `1 Inbox`,
-`2 Evidence Gaps`, `3 Safe Run`, `4 Candidate Review`, and `10 Agent Coach`.
+`2 Evidence Gaps`, `3 Safe Run`, `4 Candidate Review`, and `Ctrl+A Agent Coach`.
 Press `0` or run `radar --page tutorial` for the walkthrough.
 
 The Inbox is the full-market priced-in queue by default. It groups messages into
