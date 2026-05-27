@@ -3303,6 +3303,37 @@ def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch
     assert source_gap_update.filters.priced_in_offset == 0
     assert source_gap_update.message == "Source-gap filter: options, local_text."
 
+    invalid_source_gap_update = _apply_command(
+        "source-gap nonsense",
+        payload,
+        "help",
+        source_gap_update.filters,
+        engine=engine,
+        config=config,
+    )
+    assert invalid_source_gap_update.page == "help"
+    assert invalid_source_gap_update.filters == source_gap_update.filters
+    assert "Unsupported source-gap value: nonsense" in invalid_source_gap_update.message
+    assert "No calls made" in invalid_source_gap_update.message
+    assert "filter unchanged" in invalid_source_gap_update.message
+    assert "market_bars" in invalid_source_gap_update.message
+
+    invalid_decision_gap_update = _apply_command(
+        "decision-gap made-up",
+        payload,
+        "agent",
+        DashboardFilters(priced_in_decision_gap=("decision_card",)),
+        engine=engine,
+        config=config,
+    )
+    assert invalid_decision_gap_update.page == "agent"
+    assert invalid_decision_gap_update.filters.priced_in_decision_gap == (
+        "decision_card",
+    )
+    assert "Unsupported decision-gap value: made_up" in invalid_decision_gap_update.message
+    assert "No calls made" in invalid_decision_gap_update.message
+    assert "candidate_packet" in invalid_decision_gap_update.message
+
     ready_update = _apply_command(
         "ready",
         payload,

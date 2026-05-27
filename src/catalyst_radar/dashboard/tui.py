@@ -208,6 +208,23 @@ def _normalize_optional_filter(value: object | None) -> str | None:
     return None if normalized in {"", "all", "any", "none"} else normalized
 
 
+PRICED_IN_SOURCE_GAP_VALUES = (
+    "market_bars",
+    "catalyst_events",
+    "local_text",
+    "options",
+    "theme_peer_sector",
+    "broker_context",
+)
+
+PRICED_IN_DECISION_GAP_VALUES = (
+    "candidate_packet",
+    "decision_card",
+    "options",
+    "broker_context",
+)
+
+
 def _normalize_source_gap_filter(value: str | Sequence[str] | None) -> tuple[str, ...]:
     if value is None:
         raw_values: list[object] = []
@@ -3145,6 +3162,20 @@ def _apply_command(
         )
     if command in {"decision-gap", "decision_gaps", "gap"}:
         decision_gaps = _normalize_decision_gap_filter(value)
+        invalid_gaps = _unsupported_filter_values(
+            decision_gaps,
+            allowed=PRICED_IN_DECISION_GAP_VALUES,
+        )
+        if invalid_gaps:
+            return _CommandUpdate(
+                page=page,
+                filters=filters,
+                message=_unsupported_gap_filter_message(
+                    "decision-gap",
+                    invalid_gaps,
+                    allowed=PRICED_IN_DECISION_GAP_VALUES,
+                ),
+            )
         return _CommandUpdate(
             page="overview",
             filters=replace(
@@ -3160,6 +3191,20 @@ def _apply_command(
         )
     if command in {"source-gap", "source_gaps", "data-gap", "data_gaps"}:
         source_gaps = _normalize_source_gap_filter(value)
+        invalid_gaps = _unsupported_filter_values(
+            source_gaps,
+            allowed=PRICED_IN_SOURCE_GAP_VALUES,
+        )
+        if invalid_gaps:
+            return _CommandUpdate(
+                page=page,
+                filters=filters,
+                message=_unsupported_gap_filter_message(
+                    "source-gap",
+                    invalid_gaps,
+                    allowed=PRICED_IN_SOURCE_GAP_VALUES,
+                ),
+            )
         return _CommandUpdate(
             page="overview",
             filters=replace(
@@ -5961,6 +6006,29 @@ def _open_command_no_match_message(page: str, value: str) -> str:
     return (
         f"No local candidate or alert matched {token}. No calls made. Try open <ticker>, "
         "open <alert-id>, or refresh if you expected it in the latest scan."
+    )
+
+
+def _unsupported_filter_values(
+    values: Sequence[str],
+    *,
+    allowed: Sequence[str],
+) -> tuple[str, ...]:
+    allowed_values = set(allowed)
+    return tuple(value for value in values if value not in allowed_values)
+
+
+def _unsupported_gap_filter_message(
+    command: str,
+    invalid_values: Sequence[str],
+    *,
+    allowed: Sequence[str],
+) -> str:
+    invalid = ", ".join(invalid_values)
+    allowed_text = ", ".join(allowed)
+    return (
+        f"Unsupported {command} value: {invalid}. No calls made; filter unchanged. "
+        f"Use all or one of: {allowed_text}."
     )
 
 
