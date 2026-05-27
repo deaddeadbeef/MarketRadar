@@ -5972,6 +5972,14 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Next safe action" in frame
             assert "Fix source gaps" in frame
 
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Candidate detail selected:" in frame
+            assert "No calls" in frame
+            assert "Can I act now?" in frame
+
             await pilot.press("1")
             await pilot.pause()
             assert app.page == "overview"
@@ -6020,6 +6028,14 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Feedback command" in frame
             assert "not trade approval" in frame
             assert "feedback demo-alert-acme" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Alert detail selected:" in frame
+            assert "No calls" in frame
+            assert "Why did I get this?" in frame
 
             await pilot.press("ctrl+p")
             await pilot.pause()

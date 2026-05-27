@@ -1553,6 +1553,22 @@ class MarketRadarDashboardApp(App[int]):
                 self.page = f"alert:{alert_id}"
                 self.status_message = f"Opened alert {alert_id}."
                 self.refresh_view()
+        elif self.page.startswith("candidate:"):
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _detail_row_status_message(
+                    "Candidate detail",
+                    row,
+                )
+                self.refresh_view()
+        elif self.page.startswith("alert:"):
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _detail_row_status_message(
+                    "Alert detail",
+                    row,
+                )
+                self.refresh_view()
         elif self.page == "readiness":
             row = self._row_by_key(event.row_key.value)
             if row:
@@ -6410,6 +6426,12 @@ def _readiness_row_status_message(row: Mapping[str, object]) -> str:
         f"Research-only blocker selected: {area} ({status})."
         f"{finding_text}{next_text}"
     )
+
+
+def _detail_row_status_message(kind: str, row: Mapping[str, object]) -> str:
+    question = str(row.get("key") or "Detail").strip()
+    answer = str(row.get("value") or "No answer captured.").strip()
+    return f"{kind} selected: No calls. {question}: {_clip(answer, 86)}"
 
 
 def _run_row_status_message(row: Mapping[str, object]) -> str:
