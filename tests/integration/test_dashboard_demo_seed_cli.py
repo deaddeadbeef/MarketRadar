@@ -42,6 +42,7 @@ from catalyst_radar.dashboard.tui import (
     _market_bar_operator_step_summary,
     _market_bar_provider_fill_summary,
     _market_bar_saved_capture_summary,
+    _market_inbox_rows,
     _priced_in_overview_rows,
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
@@ -570,9 +571,10 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "DB:",
         "Ticker: ACME",
         "Latest scan results - rows",
-        "#",
+        "Mailbox",
         "ACME",
-        "Bullish not priced",
+        "Urgent",
+        "Bullish not price",
         "emotion",
         "reaction",
         "review page, not the full scan universe",
@@ -1328,7 +1330,8 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Full scan audit:" in output.out
     assert "Instrument scope:" in output.out
     assert "Decision readiness:" in output.out
-    assert "Data gaps" in output.out
+    assert "Mailbox" in output.out
+    assert "Missing" in output.out
     assert "Next data step:" in output.out
     assert "Full-scan coverage:" in output.out
     assert "Shortlist context:" in output.out
@@ -1416,7 +1419,8 @@ def test_dashboard_tui_once_defaults_to_latest_scan_results(
     assert "Page: overview" in output.out
     assert "Latest scan results - rows" in output.out
     assert "ACME" in output.out
-    assert "Bullish not priced" in output.out
+    assert "Urgent" in output.out
+    assert "Market Inbox" in output.out
     assert "has market emotion been fully priced in" in output.out
     assert "Tutorial - your first 90 seconds" not in output.out
 
@@ -1440,7 +1444,7 @@ def test_dashboard_tui_overview_is_novice_first_on_empty_database(
     assert "Start here:" in output.out
     assert "Browsing this dashboard made 0 calls" in output.out
     assert "0 Start" in output.out
-    assert "1 Scan Results" in output.out
+    assert "1 Inbox" in output.out
     assert "2 Evidence Gaps" in output.out
     assert "3 Safe Run" in output.out
     assert "4 Candidate Review" in output.out
@@ -2953,6 +2957,7 @@ def test_dashboard_start_page_alias_opens_latest_scan_results() -> None:
     screen = render_dashboard_tui({}, page="start", width=120)
 
     assert "Page: overview" in screen
+    assert "Market Inbox" in screen
     assert "Latest scan results" in screen
 
 
@@ -3051,9 +3056,16 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "BETA" not in review
 
     overview = render_dashboard_tui(payload, page="overview", width=140)
+    assert "Market Inbox" in overview
     assert "Latest scan results" in overview
     assert "ACME" in overview
     assert "BETA" in overview
+
+    inbox_rows = _market_inbox_rows(payload)
+    assert [row["mailbox"] for row in inbox_rows] == ["Urgent", "Waiting Evidence"]
+    assert inbox_rows[0]["subject"].startswith("Bullish not priced")
+    assert inbox_rows[0]["missing"] == "missing options, broker_context"
+    assert "Open the case file" in inbox_rows[0]["next"]
 
 
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
@@ -5689,10 +5701,10 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
 
             await wait_for_payload()
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "MRDR // MARKET RADAR" in frame
+            assert "MRDR // MARKET INBOX" in frame
             assert "START" in frame
             assert "Tutorial - your first 90 seconds" in frame
-            assert "Press 1 or click Scan Results" in frame
+            assert "Press 1 or click Inbox" in frame
             assert "0  Start" in frame
             assert "LEARN" in frame
             assert app.page == "tutorial"
@@ -5701,21 +5713,23 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "SCAN RESULTS" in frame
+            assert "MARKET INBOX" in frame
+            assert "ATTENTION QUEUE" in frame
             assert "Latest scan results - rows" in frame
             assert "ACME" in frame
             assert "Bullish not priced" in frame
-            assert "Data gaps" in frame
-            assert "MarketRadar asks" in frame
-            assert "has market emotion been fully priced in" in frame
+            assert "Missing / waiting" in frame
+            assert "Mailbox" in frame
+            assert "market emotion" in frame
+            assert "price reaction" in frame
             assert "M  Mismatches only" in frame
             assert "ALL Full scan rows" in frame
             assert "Candidate Review" in frame
-            assert "CAN I ACT?" in frame
-            assert "SCAN ROWS" in frame
+            assert "TRADE SAFETY" in frame
+            assert "INBOX" in frame
             assert "COST BEFORE EXECUTE" in frame
             assert "ORDERS" in frame
-            assert "No - research" in frame
+            assert "research" in frame
             assert "KEYS" in frame
             assert "MOUSE" in frame
             assert "NEXT SAFE ACTION" in frame
@@ -5745,7 +5759,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             assert app.page == "candidate:ACME"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Opened full-scan row 1 for ACME" in frame
+            assert "Opened Market Inbox case" in frame
 
             await pilot.press("1")
             await pilot.pause()
@@ -5755,7 +5769,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             assert app.page == "candidate:ACME"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Opened full-scan row 1 for ACME" in frame
+            assert "Opened Market Inbox case" in frame
             assert ">> 4  Candidate Review" in frame
 
             assert await pilot.click("#nav-alerts")
@@ -5877,7 +5891,7 @@ def test_modern_dashboard_tui_paints_before_snapshot_load(
                 assert started.is_set()
 
                 frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-                assert "MRDR // MARKET RADAR" in frame
+                assert "MRDR // MARKET INBOX" in frame
                 assert "START" in frame
                 assert "Tutorial - your first 90 seconds" in frame
                 assert "Loading local dashboard snapshot" in frame
