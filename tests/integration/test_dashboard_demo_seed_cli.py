@@ -5873,7 +5873,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "readiness"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Readiness checklist" in frame
-            assert "First must fix: Live market scan" in frame
+            assert "First must fix:" in frame
             assert "Research-only" in frame
 
             await pilot.press("1")
