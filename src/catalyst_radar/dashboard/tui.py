@@ -5896,6 +5896,7 @@ def _open_target_page(
     page: str,
     value: str,
 ) -> str | None:
+    next_page: str | None = None
     if page in {"overview", "review"}:
         rows = (
             _priced_in_review_rows(payload)
@@ -5904,18 +5905,39 @@ def _open_target_page(
         )
         row = _row_by_index_or_key(rows, value, key="ticker")
         ticker = str(row.get("ticker") or "").strip().upper() if row else ""
-        return f"candidate:{ticker}" if ticker else None
-    if page == "candidates":
+        next_page = f"candidate:{ticker}" if ticker else None
+    elif page == "candidates":
         rows = _candidate_rows(payload)
         row = _row_by_index_or_key(rows, value, key="ticker")
         ticker = str(row.get("ticker") or "").strip().upper() if row else ""
-        return f"candidate:{ticker}" if ticker else None
-    if page == "alerts":
+        next_page = f"candidate:{ticker}" if ticker else None
+    elif page == "alerts":
         rows = _rows(_mapping(payload.get("alerts")).get("rows"))
         row = _row_by_index_or_key(rows, value, key="id")
         alert_id = str(row.get("id") or "").strip() if row else ""
-        return f"alert:{alert_id}" if alert_id else None
-    return None
+        next_page = f"alert:{alert_id}" if alert_id else None
+    if next_page or value.strip().isdigit():
+        return next_page
+    return _global_open_target_page(payload, value)
+
+
+def _global_open_target_page(
+    payload: Mapping[str, object],
+    value: str,
+) -> str | None:
+    for rows in (
+        _priced_in_overview_rows(payload),
+        _priced_in_review_rows(payload),
+        _candidate_rows(payload),
+    ):
+        row = _row_by_index_or_key(rows, value, key="ticker")
+        ticker = str(row.get("ticker") or "").strip().upper() if row else ""
+        if ticker:
+            return f"candidate:{ticker}"
+    alert_rows = _rows(_mapping(payload.get("alerts")).get("rows"))
+    alert = _row_by_index_or_key(alert_rows, value, key="id")
+    alert_id = str(alert.get("id") or "").strip() if alert else ""
+    return f"alert:{alert_id}" if alert_id else None
 
 
 def _row_by_index_or_key(
