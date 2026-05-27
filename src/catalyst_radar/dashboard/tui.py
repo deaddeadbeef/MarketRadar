@@ -2904,7 +2904,7 @@ def _execute_agent_command(
     try:
         tokens = shlex.split(value)
     except ValueError:
-        return "Usage: agent run [TICKER] OR agent run [TICKER] execute [max-openai-calls]."
+        return "Usage: agent [TICKER] OR agent [TICKER] execute [max-openai-calls]."
     lowered = [token.lower() for token in tokens]
     execute = "execute" in lowered
     max_calls = 3
@@ -2952,9 +2952,9 @@ def _execute_agent_command(
         "blocked" if execute else "previewed"
     )
     next_execute = (
-        f"agent run {ticker} execute"
+        f"agent {ticker} execute"
         if ticker
-        else "agent run execute"
+        else "agent execute"
     )
     no_real_result = (
         " No real result yet."
