@@ -1414,7 +1414,7 @@ class MarketRadarDashboardApp(App[int]):
             event.stop()
             self.action_go("run")
             self.status_message = (
-                "Opened Safe Run plan. No calls made. Type run execute only if intended."
+                "Follow NEXT SAFE ACTION. No calls. Safe Run opened."
             )
             self.refresh_view()
             return
@@ -1463,7 +1463,7 @@ class MarketRadarDashboardApp(App[int]):
             event.stop()
             self.action_go("run")
             self.status_message = (
-                "Opened Safe Run plan. No calls made. Type run execute only if intended."
+                "Follow NEXT SAFE ACTION. No calls. Safe Run opened."
             )
             self.refresh_view()
             return
@@ -6571,8 +6571,8 @@ def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
         )
     if waiting and waiting == visible_total:
         return (
-            "No decision work on this page yet. Press 2 Evidence Gaps to repair "
-            "missing sources before opening these rows."
+            "Press 2 Evidence Gaps first. These rows are not trade ideas until "
+            "blockers clear."
         )
     if waiting:
         return (
@@ -11471,7 +11471,7 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
     if page == "readiness":
         return _readiness_next_safe_action(payload)
     if page == "run":
-        return "Review the call budget; type run execute only if it matches your intent."
+        return _run_page_next_safe_action(payload)
     if page == "agent":
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     return "Use the workflow navigation or open the highlighted row."
