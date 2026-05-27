@@ -3178,7 +3178,8 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
         "Visible page: 2 waiting evidence. "
         "Queue total: 120; research 9 / blocked 58 / monitor 53."
     ) in overview
-    assert "No decision work on this page yet. Press 2 Evidence Gaps" in overview
+    assert "Press 2 Evidence Gaps first" in overview
+    assert "not trade ideas until blockers clear" in overview
     assert "Current queue: 2 waiting evidence" not in overview
 
 
@@ -5811,24 +5812,28 @@ def test_tui_invalid_commands_report_no_side_effects():
 
 
 def test_dashboard_run_page_next_safe_action_uses_operator_step():
-    action = _run_page_next_safe_action(
-        {
-            "priced_in_answer": {
-                "operator_next_step": {
-                    "action": "Validate the saved market-bar file before rerunning.",
-                    "tui_command": "bars saved validate",
-                    "external_calls_required": 0,
-                    "db_writes_required": 0,
-                    "approval_required": False,
-                }
+    payload = {
+        "priced_in_answer": {
+            "operator_next_step": {
+                "action": "Validate the saved market-bar file before rerunning.",
+                "tui_command": "bars saved validate",
+                "external_calls_required": 0,
+                "db_writes_required": 0,
+                "approval_required": False,
             }
         }
-    )
+    }
+    action = _run_page_next_safe_action(payload)
 
     assert "Validate the saved market-bar file" in action
     assert "bars saved validate" in action
     assert "0 provider call(s), 0 DB write(s); no approval." in action
     assert "run execute only if intended" not in action
+
+    run = render_dashboard_tui(payload, page="run", width=180)
+    assert "bars saved validate" in run
+    assert "0 provider call(s), 0 DB write(s); no approval." in run
+    assert "Review the call budget; type run execute" not in run
 
 
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(
@@ -6058,9 +6063,12 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             assert app.page == "run"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Opened Safe Run plan" in frame
-            assert "No calls made" in frame
-            assert "run execute" in frame
+            assert app.status_message == (
+                "Follow NEXT SAFE ACTION. No calls. Safe Run opened."
+            )
+            assert "Safe Run opened" in frame
+            assert "No calls" in frame
+            assert "Follow NEXT SAFE ACTION" in frame
             assert "run execute only if intended" not in frame
             assert "provider call(s)" in frame
             assert "DB write(s)" in frame
