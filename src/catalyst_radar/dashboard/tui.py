@@ -1151,12 +1151,12 @@ class MarketRadarDashboardApp(App[int]):
         layout: grid;
         grid-size: 2 1;
         grid-gutter: 0 1;
-        height: 4;
+        height: 5;
         margin-top: 0;
     }
 
     #operator-action, #operator-response {
-        height: 4;
+        height: 5;
         border: round #26384d;
         padding: 0 1;
     }
@@ -2820,6 +2820,12 @@ _SNAPSHOT_RELOAD_COMMANDS = {
     "value_outcome",
 }
 
+_COMMAND_NO_SIDE_EFFECTS = "No API calls/orders/writes."
+
+
+def _command_no_side_effects(message: str) -> str:
+    return f"{_COMMAND_NO_SIDE_EFFECTS}\n{message}"
+
 
 def _priced_in_operator_step(payload: Mapping[str, object]):
     answer = _mapping(payload.get("priced_in_answer"))
@@ -2921,7 +2927,9 @@ def _execute_agent_command(
     try:
         tokens = shlex.split(value)
     except ValueError:
-        return "Usage: agent [TICKER] OR agent [TICKER] execute [max-openai-calls]."
+        return _command_no_side_effects(
+            "Usage: agent [TICKER] OR agent [TICKER] execute [max-openai-calls]."
+        )
     lowered = [token.lower() for token in tokens]
     execute = "execute" in lowered
     max_calls = 3
@@ -3136,11 +3144,17 @@ def _apply_command(
         return _CommandUpdate(
             page=page,
             filters=filters,
-            message="Usage: export full or export current.",
+            message=_command_no_side_effects(
+                "Usage: export full or export current."
+            ),
         )
     if command == "offset":
         if not value.isdigit():
-            return _CommandUpdate(page=page, filters=filters, message="Usage: offset <row>")
+            return _CommandUpdate(
+                page=page,
+                filters=filters,
+                message=_command_no_side_effects("Usage: offset <row>."),
+            )
         offset = max(0, int(value) - 1)
         return _CommandUpdate(
             page="overview",
@@ -3149,7 +3163,11 @@ def _apply_command(
         )
     if command == "limit":
         if not value.isdigit():
-            return _CommandUpdate(page=page, filters=filters, message="Usage: limit <1-200>")
+            return _CommandUpdate(
+                page=page,
+                filters=filters,
+                message=_command_no_side_effects("Usage: limit <1-200>."),
+            )
         limit = min(200, max(1, int(value)))
         return _CommandUpdate(
             page="overview",
@@ -3402,7 +3420,11 @@ def _apply_command(
             )
         parsed = _datetime_or_none(value)
         if parsed is None:
-            return _CommandUpdate(page=page, filters=filters, message="Invalid timestamp.")
+            return _CommandUpdate(
+                page=page,
+                filters=filters,
+                message=_command_no_side_effects("Invalid timestamp."),
+            )
         return _CommandUpdate(
             page=page,
             filters=replace(filters, available_at=parsed, priced_in_offset=0),
@@ -3445,7 +3467,9 @@ def _apply_command(
     return _CommandUpdate(
         page=page,
         filters=filters,
-        message=f"Unknown command: {raw}. Type help for commands.",
+        message=_command_no_side_effects(
+            f"Unknown command: {raw}. Type help for commands."
+        ),
     )
 
 
@@ -3458,7 +3482,7 @@ def _priced_in_source_batch_message(
     all_batches: bool = False,
 ) -> str:
     if not source.strip():
-        return (
+        return _command_no_side_effects(
             "Usage: batch <source>. Try: batch catalyst_events, batch local_text, "
             "batch options. Add all to summarize the full chunk plan, execute "
             "to run one guarded chunk, or execute 3 for a capped run."
