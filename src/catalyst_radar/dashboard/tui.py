@@ -1616,9 +1616,15 @@ class MarketRadarDashboardApp(App[int]):
             return f" [{_mapping(self.payload.get('candidates')).get('count') or 0}]"
         if page_key == "overview":
             queue = _mapping(self.payload.get("priced_in_queue"))
-            count = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
+            count = int(
+                _number_or_zero(
+                    queue.get("total_count")
+                    or queue.get("returned_count")
+                    or queue.get("count")
+                )
+            )
             if count:
-                return f" [{count}]"
+                return f" [{count:,}]"
         if page_key == "alerts":
             return f" [{_mapping(self.payload.get('alerts')).get('count') or 0}]"
         if page_key == "ipo":
@@ -1788,7 +1794,8 @@ class MarketRadarDashboardApp(App[int]):
                 118,
             )
             inbox_summary = _market_inbox_count_summary(inbox_counts)
-            inbox_value = inbox_summary or rows_card.get("value") or "0 messages"
+            inbox_value, inbox_detail = _market_inbox_metric_summary(self.payload)
+            inbox_value = inbox_value or inbox_summary or rows_card.get("value") or "0 messages"
             self.query_one("#hero", Static).update(
                 "\n".join(
                     [
@@ -1820,8 +1827,9 @@ class MarketRadarDashboardApp(App[int]):
             self.query_one("#metric-market", Static).update(
                 _metric_text(
                     "Inbox",
-                    inbox_summary or rows_card.get("value") or "0 messages",
-                    (
+                    inbox_value,
+                    inbox_detail
+                    or (
                         f"fresh bars "
                         f"{database.get('active_security_with_latest_daily_bar_count')}/"
                         f"{database.get('active_security_count')}"
@@ -6143,6 +6151,54 @@ def _market_inbox_count_summary(counts: Mapping[str, int]) -> str:
     return ", ".join(parts)
 
 
+def _market_inbox_metric_summary(payload: Mapping[str, object]) -> tuple[str, str]:
+    queue = _mapping(payload.get("priced_in_queue"))
+    rows = _market_inbox_rows(payload)
+    visible = len(rows)
+    returned = int(
+        _number_or_zero(queue.get("returned_count") or queue.get("count") or visible)
+    )
+    if not visible and returned:
+        visible = returned
+    total = int(_number_or_zero(queue.get("total_count")))
+    offset = int(_number_or_zero(queue.get("offset")))
+    value = ""
+    if total and visible and (offset > 0 or visible < total):
+        value = f"{visible:,} visible / {total:,} total"
+    elif total:
+        value = f"{total:,} messages"
+    elif visible:
+        value = f"{visible:,} visible"
+
+    visible_summary = _market_inbox_count_summary(_market_inbox_counts(rows))
+    usefulness = _usefulness_counts_summary(queue)
+    detail_parts: list[str] = []
+    if visible_summary:
+        detail_parts.append(f"visible: {visible_summary}")
+    if usefulness:
+        detail_parts.append(f"queue: {usefulness}")
+    return value, "; ".join(detail_parts)
+
+
+def _market_inbox_scope_summary(payload: Mapping[str, object]) -> str:
+    queue = _mapping(payload.get("priced_in_queue"))
+    rows = _market_inbox_rows(payload)
+    parts: list[str] = []
+    visible_summary = _market_inbox_count_summary(_market_inbox_counts(rows))
+    if visible_summary:
+        parts.append(f"Visible page: {visible_summary}")
+    total = int(_number_or_zero(queue.get("total_count")))
+    usefulness = _usefulness_counts_summary(queue)
+    if total:
+        queue_summary = f"Queue total: {total:,}"
+        if usefulness:
+            queue_summary = f"{queue_summary}; {usefulness}"
+        parts.append(queue_summary)
+    elif usefulness:
+        parts.append(f"Queue mix: {usefulness}")
+    return ". ".join(parts)
+
+
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -6637,11 +6693,9 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append(
         "Latest scan results now arrive in Market Inbox as messages to triage."
     )
-    inbox_counts = _market_inbox_count_summary(
-        _market_inbox_counts(_market_inbox_rows(payload))
-    )
-    if inbox_counts:
-        lines.append(f"Inbox summary: {inbox_counts}.")
+    inbox_scope = _market_inbox_scope_summary(payload)
+    if inbox_scope:
+        lines.append(f"Inbox summary: {inbox_scope}.")
     minimum_stop = _minimum_product_stop_line_summary(payload)
     if minimum_stop:
         lines.append(
@@ -7619,9 +7673,8 @@ def _latest_scan_results_title(payload: Mapping[str, object]) -> str:
 
 
 def _market_inbox_caption(payload: Mapping[str, object]) -> str:
-    rows = _market_inbox_rows(payload)
-    count_summary = _market_inbox_count_summary(_market_inbox_counts(rows))
-    count_text = f" Current queue: {count_summary}." if count_summary else ""
+    scope_summary = _market_inbox_scope_summary(payload)
+    count_text = f" {scope_summary}." if scope_summary else ""
     return (
         "Market Inbox groups the latest scan results into triage messages: "
         "Urgent first, Worth Reading second, Waiting Evidence only after data "
