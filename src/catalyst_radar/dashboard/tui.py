@@ -1554,6 +1554,11 @@ class MarketRadarDashboardApp(App[int]):
             if row:
                 self.status_message = _readiness_row_status_message(row)
                 self.refresh_view()
+        elif self.page == "run":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _run_row_status_message(row)
+                self.refresh_view()
         elif self.page == "ops":
             row = self._row_by_key(event.row_key.value)
             source = str(row.get("source") or "").strip()
@@ -6368,6 +6373,20 @@ def _readiness_row_status_message(row: Mapping[str, object]) -> str:
     return (
         f"Research-only blocker selected: {area} ({status})."
         f"{finding_text}{next_text}"
+    )
+
+
+def _run_row_status_message(row: Mapping[str, object]) -> str:
+    layer = str(row.get("layer") or row.get("name") or "Run layer").strip()
+    provider = str(row.get("provider") or "n/a").strip()
+    status = str(row.get("status") or "review").strip()
+    calls = int(_number_or_zero(row.get("external_call_count_max")))
+    next_action = str(row.get("next_action") or "").strip()
+    next_text = f" Next: {_clip(next_action, 84)}" if next_action else ""
+    return (
+        f"Run layer selected: {layer}. No call made. To spend calls, type "
+        f"run execute. Provider {provider}; status {status}; max calls {calls}."
+        f"{next_text}"
     )
 
 

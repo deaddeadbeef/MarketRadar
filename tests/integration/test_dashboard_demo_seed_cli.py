@@ -5882,6 +5882,20 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Research-only blocker selected:" in frame
 
+            await pilot.press("3")
+            await pilot.pause()
+            assert app.page == "run"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Run call plan" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Run layer selected:" in frame
+            assert "No call made" in frame
+            assert "run execute" in frame
+
             await pilot.press("1")
             await pilot.pause()
             assert app.page == "overview"
