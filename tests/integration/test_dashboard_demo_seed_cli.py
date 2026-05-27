@@ -3070,6 +3070,85 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "Open the case file" in inbox_rows[0]["next"]
 
 
+def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {
+            "status": "research_only",
+            "safe_to_make_investment_decision": False,
+            "headline": "Current rows are research only.",
+        },
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_ready": False,
+            "answer": "Full answer is blocked until source gaps are filled.",
+        },
+        "priced_in_queue": {
+            "status": "ready",
+            "count": 2,
+            "returned_count": 2,
+            "total_count": 120,
+            "offset": 50,
+            "filters": {"status": "all", "usefulness": None, "limit": 2},
+            "scan": {"scanned_candidate_states": 120},
+            "usefulness_counts": {
+                "research_useful": 9,
+                "blocked": 58,
+                "monitor_only": 53,
+            },
+            "rows": [
+                {
+                    "ticker": "ACME",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "emotion_score": 80,
+                    "reaction_score": 25,
+                    "emotion_reaction_gap": 55,
+                    "candidate_theme": "margin_inflection",
+                    "data_sources": {
+                        "available": ["market_bars"],
+                        "missing": ["options"],
+                        "stale": [],
+                    },
+                    "usefulness": {
+                        "status": "research_useful",
+                        "decision_ready": False,
+                    },
+                },
+                {
+                    "ticker": "BETA",
+                    "priced_in_status": "neutral",
+                    "emotion_score": 45,
+                    "reaction_score": 45,
+                    "emotion_reaction_gap": 0,
+                    "candidate_theme": "monitoring",
+                    "data_sources": {
+                        "available": ["market_bars"],
+                        "missing": ["catalyst_events"],
+                        "stale": [],
+                    },
+                    "usefulness": {
+                        "status": "monitor_only",
+                        "decision_ready": False,
+                    },
+                },
+            ],
+        },
+    }
+
+    overview = render_dashboard_tui(payload, page="overview", width=180)
+
+    assert (
+        "Inbox summary: Visible page: 2 waiting evidence. "
+        "Queue total: 120; research 9 / blocked 58 / monitor 53."
+    ) in overview
+    assert (
+        "Visible page: 2 waiting evidence. "
+        "Queue total: 120; research 9 / blocked 58 / monitor 53."
+    ) in overview
+    assert "Current queue: 2 waiting evidence" not in overview
+
+
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
