@@ -1568,6 +1568,11 @@ class MarketRadarDashboardApp(App[int]):
             if row:
                 self.status_message = _agent_row_status_message(row)
                 self.refresh_view()
+        elif self.page == "ipo":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _ipo_row_status_message(row)
+                self.refresh_view()
         elif self.page == "ops":
             row = self._row_by_key(event.row_key.value)
             source = str(row.get("source") or "").strip()
@@ -6407,6 +6412,19 @@ def _agent_row_status_message(row: Mapping[str, object]) -> str:
     return (
         f"Agent step selected: {kind} / {item}. No calls made; "
         f"agent execute is required to spend OpenAI budget.{detail_text}"
+    )
+
+
+def _ipo_row_status_message(row: Mapping[str, object]) -> str:
+    ticker = str(row.get("ticker") or row.get("proposed_ticker") or "n/a").strip().upper()
+    form = str(row.get("form_type") or "SEC filing").strip()
+    filed = str(row.get("filing_date") or row.get("source_ts") or "unknown date").strip()
+    summary = str(row.get("summary") or row.get("risk_flags") or "").strip()
+    summary_text = f" Summary: {_clip(summary, 92)}" if summary else ""
+    return (
+        "SEC row selected. No call made. Next safe action: open the candidate "
+        f"case or keep as research evidence. {ticker} {form} filed {filed}."
+        f"{summary_text}"
     )
 
 
