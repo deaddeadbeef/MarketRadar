@@ -5875,6 +5875,8 @@ def test_dashboard_tui_supports_interactive_navigation_and_filters(
     assert "Saved trigger: ACME price_above" in rendered
     assert "Evaluated 1 trigger(s)" in rendered
     assert "Saved blocked order ticket: ACME BUY submission_allowed=False" in rendered
+    assert "Local only; db_writes=1; no broker order submitted." in rendered
+    assert "Local preview only; db_writes=1; no broker order submitted." in rendered
     assert "Saved alert feedback: demo-alert-acme ACME acted" in rendered
 
 

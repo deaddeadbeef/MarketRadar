@@ -5420,7 +5420,11 @@ def _save_opportunity_action(engine: Engine, value: str) -> str:
     except ValueError as exc:
         return f"Action rejected: {exc}"
     payload = opportunity_action_payload(row)
-    return f"Saved action: {payload.get('ticker')} {payload.get('action')} {payload.get('status')}"
+    return (
+        "Local only; db_writes=1; no broker order submitted. "
+        f"Saved action: {payload.get('ticker')} {payload.get('action')} "
+        f"{payload.get('status')}."
+    )
 
 
 def _save_market_trigger(engine: Engine, value: str) -> str:
@@ -5453,7 +5457,10 @@ def _save_market_trigger(engine: Engine, value: str) -> str:
     except ValueError as exc:
         return f"Trigger rejected: {exc}"
     payload = trigger_payload(row)
-    return f"Saved trigger: {payload.get('ticker')} {payload.get('trigger_type')}"
+    return (
+        "Local only; db_writes=1; no broker order submitted. "
+        f"Saved trigger: {payload.get('ticker')} {payload.get('trigger_type')}."
+    )
 
 
 def _evaluate_market_triggers(engine: Engine, value: str) -> str:
@@ -5515,9 +5522,10 @@ def _save_blocked_order_ticket(
         return f"Order ticket rejected: {exc}"
     payload = order_ticket_payload(row)
     return (
+        "Local preview only; db_writes=1; no broker order submitted. "
         "Saved blocked order ticket: "
         f"{payload.get('ticker')} {payload.get('side')} "
-        f"submission_allowed={payload.get('submission_allowed')}"
+        f"submission_allowed={payload.get('submission_allowed')}. "
     )
 
 
