@@ -3477,7 +3477,7 @@ def _priced_in_source_batch_message(
         all_batches=all_batches,
     )
     if isinstance(payload_or_error, str):
-        return payload_or_error
+        return _unsupported_source_batch_message(source, payload_or_error)
     payload = payload_or_error
     source_name = str(payload.get("source") or source).strip()
     status = str(payload.get("status") or "unknown")
@@ -3957,6 +3957,17 @@ def _priced_in_all_source_batch_message(
         f"{scan_text}{review_text}{export_text} "
         f"{'; '.join(pieces)}.{next_action_text}{recommended_unblock_text}"
         f"{recommendation_text}{execution_gate_text}{command}{capped_command}"
+    )
+
+
+def _unsupported_source_batch_message(source: str, detail: str) -> str:
+    source_text = source.strip() or "<blank>"
+    allowed = ", ".join(dashboard_data.PRICED_IN_SOURCE_CLASSES)
+    detail_text = f" Detail: {_clip(detail, 120)}" if detail else ""
+    return (
+        f"Unsupported batch source: {source_text}. No calls made. "
+        f"Use one of: {allowed}; or type batch all for the source map."
+        f"{detail_text}"
     )
 
 
