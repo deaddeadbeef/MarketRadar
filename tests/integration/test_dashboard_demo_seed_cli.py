@@ -6300,6 +6300,55 @@ def test_modern_dashboard_feature_inventory_routes_to_real_pages(
     asyncio.run(run_app())
 
 
+def test_modern_dashboard_command_navigation_reports_response(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="overview",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            for command, expected_page, expected_response in (
+                ("features", "features", "Opened Features. No calls."),
+                ("themes", "themes", "Opened Themes. No calls."),
+                ("validation", "validation", "Opened Validation. No calls."),
+                ("costs", "costs", "Opened Costs. No calls."),
+            ):
+                command_input = app.query_one("#command")
+                command_input.focus()
+                command_input.value = command
+                await pilot.press("enter")
+                await pilot.pause()
+                assert app.page == expected_page
+                assert app.status_message == expected_response
+                frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+                assert expected_response in frame
+
+    asyncio.run(run_app())
+
+
 def test_modern_dashboard_tui_paints_before_snapshot_load(
     tmp_path: Path,
     monkeypatch,

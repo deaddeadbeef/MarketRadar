@@ -3379,12 +3379,17 @@ def _apply_command(
         next_page = _open_target_page(payload, page, value)
         if next_page is None:
             return _CommandUpdate(page=page, filters=filters, message="Nothing to open.")
-        return _CommandUpdate(page=next_page, filters=filters)
+        return _CommandUpdate(
+            page=next_page,
+            filters=filters,
+            message=_page_navigation_status_message(next_page),
+        )
     next_page = _normalize_page(raw)
     if next_page != "help" or raw.lower() in PAGE_ALIASES:
         return _CommandUpdate(
             page=next_page,
             filters=dashboard_filters_for_page(filters, next_page),
+            message=_page_navigation_status_message(next_page),
         )
     return _CommandUpdate(
         page=page,
@@ -6617,6 +6622,26 @@ def _help_row_status_message(row: Mapping[str, object]) -> str:
         f"Help row selected: {command}. No calls made; type the command in "
         f"the bottom box or use the matching shortcut.{meaning_text}"
     )
+
+
+def _page_navigation_status_message(page: str) -> str:
+    normalized = _normalize_page(page)
+    if normalized.startswith("candidate:"):
+        ticker = normalized.split(":", 1)[1].upper()
+        return f"Opened candidate {ticker}. No calls. Review evidence before action."
+    if normalized.startswith("alert:"):
+        alert_id = normalized.split(":", 1)[1]
+        return f"Opened alert {alert_id}. No calls. Record feedback after review."
+    labels = {page_key: label for page_key, _, label in MODERN_PAGES}
+    labels.update(
+        {
+            "themes": "Themes",
+            "validation": "Validation",
+            "costs": "Costs",
+        }
+    )
+    label = labels.get(normalized, _human_label(normalized) or "page")
+    return f"Opened {label}. No calls."
 
 
 def _validation_status_rows(validation: Mapping[str, object]) -> list[Mapping[str, object]]:
