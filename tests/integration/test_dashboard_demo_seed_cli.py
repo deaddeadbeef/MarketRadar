@@ -3146,6 +3146,7 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
         "Visible page: 2 waiting evidence. "
         "Queue total: 120; research 9 / blocked 58 / monitor 53."
     ) in overview
+    assert "No decision work on this page yet. Press 2 Evidence Gaps" in overview
     assert "Current queue: 2 waiting evidence" not in overview
 
 
@@ -5814,6 +5815,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "KEYS" in frame
             assert "MOUSE" in frame
             assert "NEXT SAFE ACTION" in frame
+            assert "Open 1 Urgent message(s) first" in frame
             assert "LAST RESPONSE" in frame
             assert "CORE" in frame
             assert "REVIEW" in frame

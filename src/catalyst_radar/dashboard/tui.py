@@ -1690,13 +1690,10 @@ class MarketRadarDashboardApp(App[int]):
             if total and count
             else ""
         )
+        inbox_action = _market_inbox_next_safe_action(self.payload)
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
-            "overview": (
-                "Treat this like email: clear Urgent first, open Worth Reading next, "
-                "and leave Waiting Evidence until the missing source is filled. "
-                f"Select a message to open its case file.{page_text}"
-            ),
+            "overview": f"{inbox_action}{page_text}",
             "review": (
                 "Review decision-ready priced-in rows. Press Enter to open the "
                 f"candidate and Decision Card context.{page_text}"
@@ -1713,7 +1710,8 @@ class MarketRadarDashboardApp(App[int]):
         )
         return (
             "[bold #7ee787]NEXT SAFE ACTION[/]\n"
-            f"{page_action} Cost before execute: {_execution_cost_summary(self.payload)}"
+            f"{page_action}\n"
+            f"Cost before execute: {_execution_cost_summary(self.payload)}"
         )
 
     def _refresh_header(self) -> None:
@@ -6199,6 +6197,50 @@ def _market_inbox_scope_summary(payload: Mapping[str, object]) -> str:
     return ". ".join(parts)
 
 
+def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
+    rows = _market_inbox_rows(payload)
+    if not rows:
+        return (
+            "No scan messages yet. Import/fetch market data, then run a capped scan "
+            "before treating this as insight."
+        )
+    counts = _market_inbox_counts(rows)
+    urgent = counts.get("Urgent", 0)
+    worth_reading = counts.get("Worth Reading", 0)
+    waiting = counts.get("Waiting Evidence", 0)
+    blocked = counts.get("Blocked", 0)
+    visible_total = sum(counts.values())
+    if urgent:
+        return (
+            f"Open {urgent} Urgent message(s) first: click the first urgent row "
+            "or press Enter, then verify the evidence."
+        )
+    if worth_reading:
+        return (
+            f"Open {worth_reading} Worth Reading message(s) next. Treat them as "
+            "research until the Decision Review page says otherwise."
+        )
+    if waiting and waiting == visible_total:
+        return (
+            "No decision work on this page yet. Press 2 Evidence Gaps to repair "
+            "missing sources before opening these rows."
+        )
+    if waiting:
+        return (
+            "Skip Waiting Evidence rows unless you are repairing data. Open any "
+            "Worth Reading or Urgent rows first."
+        )
+    if blocked:
+        return (
+            "Rows are blocked. Open Readiness or Evidence Gaps before relying on "
+            "this scan."
+        )
+    return (
+        "Monitor only. Do nothing until new evidence creates an Urgent or Worth "
+        "Reading message."
+    )
+
+
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -10483,6 +10525,8 @@ def _footer_lines(
 
 def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
     if page == "overview":
+        if _market_inbox_rows(payload):
+            return _market_inbox_next_safe_action(payload)
         next_step = _priced_in_operator_step(payload) or _mapping(
             payload.get("operator_next_step")
         )
