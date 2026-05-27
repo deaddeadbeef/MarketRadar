@@ -1450,7 +1450,9 @@ def test_dashboard_tui_overview_is_novice_first_on_empty_database(
     assert "2 Evidence Gaps" in output.out
     assert "3 Safe Run" in output.out
     assert "4 Candidate Review" in output.out
-    assert "10 Agent Coach" in output.out
+    assert "Ctrl+A Agent Coach" in output.out
+    assert "10 Agent Coach" not in output.out
+    assert "11 Review" not in output.out
 
 
 def test_dashboard_tui_overview_explains_scan_legend_for_novices(
@@ -5872,6 +5874,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "OPERATE" in frame
             assert "PLAN Safe run review" in frame
             assert "RUN Review call plan" not in frame
+            assert "^A Agent Coach" in frame
+            assert "10 Agent Coach" not in frame
+            assert "11 Decision Review" not in frame
             assert "Up/Down on sidebar" in frame
 
             assert await pilot.click("#action-run-page")
