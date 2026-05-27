@@ -5749,6 +5749,39 @@ def test_tui_now_command_explains_priced_in_action_and_response():
     assert "Viewing made 0 provider calls and 0 database changes." in update.message
 
 
+def test_tui_rejected_operator_commands_report_no_side_effects():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    config = AppConfig.from_env({})
+
+    market_bar_update = _apply_command(
+        "bars saved capture",
+        {},
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert market_bar_update.page == "run"
+    assert "Saved-file market-bar action failed" in market_bar_update.message
+    assert "No provider calls or database writes were made" in market_bar_update.message
+    assert "Refresh Run/Ops" in market_bar_update.message
+
+    feedback_update = _apply_command(
+        "feedback 999 useful",
+        {},
+        "alerts",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert feedback_update.page == "alerts"
+    assert "Alert feedback rejected" in feedback_update.message
+    assert "No feedback row was saved" in feedback_update.message
+    assert "external_calls=0 db_writes=0" in feedback_update.message
+    assert "open <alert-id>" in feedback_update.message
+
+
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(
     tmp_path: Path,
     monkeypatch,

@@ -5069,7 +5069,7 @@ def _execute_market_bar_saved_file_command(
         ValueError,
         ProviderIngestError,
     ) as exc:
-        return f"Saved-file market-bar action failed: {exc}"
+        return _saved_file_market_bar_failure_message(exc)
 
 
 def _market_bar_saved_file_capture_command(
@@ -5283,6 +5283,20 @@ def _market_bar_saved_file_path(body: Mapping[str, object], key: str) -> Path:
     if not value:
         raise ValueError(f"saved-file request body is missing {key}")
     return Path(value)
+
+
+def _saved_file_market_bar_failure_message(exc: Exception) -> str:
+    detail = str(exc)
+    preflight_context = (
+        "No provider calls or database writes were made. "
+        if "saved-file request body is missing" in detail
+        else "Review provider and database state before retrying. "
+    )
+    return (
+        f"Saved-file market-bar action failed: {preflight_context}{detail}. "
+        "Refresh Run/Ops and retry only after the saved-file "
+        "plan is visible."
+    )
 
 
 def _execute_priced_in_source_batch(
@@ -5521,7 +5535,11 @@ def _record_alert_feedback(
     alert_rows = _rows(_mapping(payload.get("alerts")).get("rows"))
     alert = _row_by_index_or_key(alert_rows, parts[0], key="id")
     if not alert:
-        return "Alert feedback rejected: alert not found in current alert rows."
+        return (
+            "No feedback row was saved; external_calls=0 db_writes=0. "
+            "Alert feedback rejected: alert not found in current alert rows. "
+            "Use open <alert-id> or refresh if you expected the alert here."
+        )
     label = parts[1]
     notes = parts[2] if len(parts) > 2 else None
     try:
@@ -5537,7 +5555,10 @@ def _record_alert_feedback(
             actor_role="analyst",
         )
     except FeedbackError as exc:
-        return f"Alert feedback rejected: {exc}"
+        return (
+            "No feedback row was saved; external_calls=0 db_writes=0. "
+            f"Alert feedback rejected: {exc}."
+        )
     useful_label = result.useful_label
     return (
         "Saved alert feedback: "
