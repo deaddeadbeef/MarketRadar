@@ -1573,6 +1573,11 @@ class MarketRadarDashboardApp(App[int]):
             if row:
                 self.status_message = _ipo_row_status_message(row)
                 self.refresh_view()
+        elif self.page == "broker":
+            row = self._row_by_key(event.row_key.value)
+            if row:
+                self.status_message = _broker_row_status_message(row)
+                self.refresh_view()
         elif self.page == "ops":
             row = self._row_by_key(event.row_key.value)
             source = str(row.get("source") or "").strip()
@@ -2338,16 +2343,15 @@ class MarketRadarDashboardApp(App[int]):
         if page == "broker":
             broker = _mapping(self.payload.get("broker"))
             return (
-                "Broker actions and local order-preview tickets",
+                "Broker safety and Schwab sync status",
                 [
-                    ("ticker", "Ticker", 8),
-                    ("action", "Action", 18),
-                    ("status", "Status", 12),
-                    ("notes", "Notes", 46),
-                    ("created_at", "Created", 24),
+                    ("area", "Area", 22),
+                    ("status", "Status", 16),
+                    ("meaning", "Meaning", 46),
+                    ("next_action", "Next safe action", 52),
                 ],
-                _rows(broker.get("opportunity_actions")),
-                "Read-only Schwab context is allowed; real order submission remains disabled.",
+                _broker_status_rows(broker),
+                "Rows are local broker status only. Selecting a row makes no Schwab call.",
             )
         if page == "ops":
             rows = _source_coverage_workbench_rows(self.payload)
@@ -6428,6 +6432,17 @@ def _ipo_row_status_message(row: Mapping[str, object]) -> str:
     )
 
 
+def _broker_row_status_message(row: Mapping[str, object]) -> str:
+    area = str(row.get("area") or "Broker status").strip()
+    status = str(row.get("status") or "review").strip()
+    next_action = str(row.get("next_action") or "").strip()
+    next_text = f" Next: {_clip(next_action, 106)}" if next_action else ""
+    return (
+        f"Broker row selected: No Schwab call made. {area} ({status})."
+        f"{next_text}"
+    )
+
+
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -9762,6 +9777,94 @@ def _sequence_count(value: object) -> int:
     if isinstance(value, Sequence) and not isinstance(value, str):
         return len(value)
     return 0
+
+
+def _broker_status_rows(broker: Mapping[str, object]) -> list[Mapping[str, object]]:
+    snapshot = _mapping(broker.get("snapshot"))
+    exposure = _mapping(broker.get("exposure"))
+    broker_name = str(snapshot.get("broker") or exposure.get("broker") or "schwab").upper()
+    connected = bool(exposure.get("broker_connected"))
+    connection_status = str(
+        snapshot.get("connection_status")
+        or exposure.get("connection_status")
+        or ("connected" if connected else "missing")
+    )
+    last_sync = str(snapshot.get("last_successful_sync_at") or "never")
+    account_count = int(_number_or_zero(snapshot.get("account_count")))
+    position_count = int(_number_or_zero(snapshot.get("position_count")))
+    open_orders = int(_number_or_zero(snapshot.get("open_order_count")))
+    read_only = bool(exposure.get("read_only", True))
+    orders_enabled = bool(exposure.get("order_submission_enabled"))
+    stale = bool(exposure.get("broker_data_stale"))
+
+    rows: list[Mapping[str, object]] = [
+        {
+            "_row_key": "broker-connection",
+            "area": "Schwab connection",
+            "status": connection_status,
+            "meaning": (
+                f"{broker_name}; accounts {account_count}; positions {position_count}; "
+                f"last sync {last_sync}"
+            ),
+            "next_action": (
+                "Authenticate Schwab before relying on portfolio context."
+                if not connected
+                else "Use read-only sync; browsing this dashboard makes no broker call."
+            ),
+        },
+        {
+            "_row_key": "broker-orders",
+            "area": "Order safety",
+            "status": "disabled" if not orders_enabled else "enabled",
+            "meaning": (
+                "Real order submission is disabled; tickets are local previews only."
+                if not orders_enabled
+                else "Real order submission appears enabled; review policy before use."
+            ),
+            "next_action": "Use ticket commands only for blocked local previews.",
+        },
+        {
+            "_row_key": "broker-readonly",
+            "area": "Broker tools",
+            "status": "read-only" if read_only else "write-capable",
+            "meaning": (
+                "Read-only broker context can inform research; it is not trade approval."
+                if read_only
+                else "Broker context may write; confirm every action before proceeding."
+            ),
+            "next_action": "Keep broker context separate from trade decisions.",
+        },
+        {
+            "_row_key": "broker-freshness",
+            "area": "Portfolio freshness",
+            "status": "stale" if stale else "fresh",
+            "meaning": f"open orders {open_orders}; last successful sync {last_sync}",
+            "next_action": (
+                "Run broker sync only when intentionally updating context."
+                if stale
+                else "Continue review; no sync is needed just to browse."
+            ),
+        },
+    ]
+    for limit in _rows(broker.get("rate_limits")):
+        operation = str(limit.get("operation") or "broker_sync")
+        allowed = bool(limit.get("allowed"))
+        retry = int(_number_or_zero(limit.get("retry_after_seconds")))
+        interval = int(_number_or_zero(limit.get("min_interval_seconds")))
+        rows.append(
+            {
+                "_row_key": f"broker-rate-{operation}",
+                "area": f"Rate limit: {operation}",
+                "status": "allowed" if allowed else "cooldown",
+                "meaning": f"min interval {interval}s; retry after {retry}s",
+                "next_action": (
+                    "A sync is allowed, but browsing this page still makes no call."
+                    if allowed
+                    else "Wait for the cooldown before any explicit broker sync."
+                ),
+            }
+        )
+    return rows
 
 
 def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
