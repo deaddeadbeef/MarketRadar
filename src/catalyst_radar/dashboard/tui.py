@@ -1164,7 +1164,7 @@ class MarketRadarDashboardApp(App[int]):
         Binding("0", "go('tutorial')", "Tutorial", priority=True),
         Binding("1", "go('overview')", "Inbox", priority=True),
         Binding("2", "go('readiness')", "Evidence Gaps", priority=True),
-        Binding("3", "go('run')", "Run", priority=True),
+        Binding("3", "go('run')", "Safe Run", priority=True),
         Binding("4", "go('candidates')", "Candidates", priority=True),
         Binding("5", "go('alerts')", "Alerts", priority=True),
         Binding("6", "go('ipo')", "IPO/S-1", priority=True),
@@ -1226,7 +1226,7 @@ class MarketRadarDashboardApp(App[int]):
                     )
                 yield Static("OPS", classes="side-section")
                 yield FocusRow("R  Refresh snapshot", id="action-refresh", classes="side-action")
-                yield FocusRow("RUN Review call plan", id="action-run-page", classes="side-action")
+                yield FocusRow("PLAN Safe run review", id="action-run-page", classes="side-action")
                 yield Static("SCAN", classes="side-section")
                 yield FocusRow(
                     "D  Decision-ready",
@@ -1394,7 +1394,9 @@ class MarketRadarDashboardApp(App[int]):
         if widget_id == "action-run-page":
             event.stop()
             self.action_go("run")
-            self.status_message = "Review the call plan, then type run execute if intended."
+            self.status_message = (
+                "Opened Safe Run plan. No calls made. Type run execute only if intended."
+            )
             self.refresh_view()
             return
         if widget_id == "action-scan-ready":
@@ -1441,7 +1443,9 @@ class MarketRadarDashboardApp(App[int]):
         if focused_id == "action-run-page":
             event.stop()
             self.action_go("run")
-            self.status_message = "Review the call plan, then type run execute if intended."
+            self.status_message = (
+                "Opened Safe Run plan. No calls made. Type run execute only if intended."
+            )
             self.refresh_view()
             return
         if focused_id == "action-scan-ready":

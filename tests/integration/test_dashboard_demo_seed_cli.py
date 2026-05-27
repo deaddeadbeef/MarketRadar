@@ -5870,7 +5870,21 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "CORE" in frame
             assert "REVIEW" in frame
             assert "OPERATE" in frame
+            assert "PLAN Safe run review" in frame
+            assert "RUN Review call plan" not in frame
             assert "Up/Down on sidebar" in frame
+
+            assert await pilot.click("#action-run-page")
+            await pilot.pause()
+            assert app.page == "run"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Opened Safe Run plan" in frame
+            assert "No calls made" in frame
+            assert "run execute" in frame
+
+            await pilot.press("1")
+            await pilot.pause()
+            assert app.page == "overview"
 
             await pilot.press("2")
             await pilot.pause()
