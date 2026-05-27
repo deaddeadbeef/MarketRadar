@@ -5985,6 +5985,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "candidate:ACME"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
+            assert "No calls" in frame
             assert "ACME: no trade decision yet" in frame
             assert "Can I act now?" in frame
             assert "What happened?" in frame
@@ -6009,6 +6010,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "candidate:ACME"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
+            assert "No calls" in frame
             assert "ACME: no trade decision yet" in frame
             assert ">> 4  Candidate Review" in frame
 
@@ -6042,6 +6044,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "alert:demo-alert-acme"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Alert demo-alert-acme" in frame
+            assert "No calls" in frame
             assert "Why did I get this?" in frame
             assert "Is this a trade signal?" in frame
             assert "Next safe action" in frame
@@ -6068,6 +6071,14 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "candidates"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> 4  Candidate Review" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.page == "candidate:ACME"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Opened candidate ACME" in frame
+            assert "No calls" in frame
 
             assert await pilot.click("#nav-broker")
             await pilot.pause()

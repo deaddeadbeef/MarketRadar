@@ -1564,14 +1564,18 @@ class MarketRadarDashboardApp(App[int]):
             ticker = str(row.get("ticker") or "").upper()
             if ticker:
                 self.page = f"candidate:{ticker}"
-                self.status_message = f"Opened candidate {ticker}."
+                self.status_message = (
+                    f"Opened candidate {ticker}. No calls. Review evidence before action."
+                )
                 self.refresh_view()
         elif self.page == "alerts":
             row = self._row_by_key(event.row_key.value)
             alert_id = str(row.get("id") or "")
             if alert_id:
                 self.page = f"alert:{alert_id}"
-                self.status_message = f"Opened alert {alert_id}."
+                self.status_message = (
+                    f"Opened alert {alert_id}. No calls. Record feedback after review."
+                )
                 self.refresh_view()
         elif self.page.startswith("candidate:"):
             row = self._row_by_key(event.row_key.value)
@@ -6104,7 +6108,7 @@ def _priced_in_overview_rows(payload: Mapping[str, object]) -> list[Mapping[str,
                 or "Open candidate detail and review the evidence.",
                 "target_page": f"candidate:{ticker}",
                 "status_message": (
-                    f"Opened full-scan row {row_number} for {ticker}. "
+                    f"Opened full-scan row {row_number} for {ticker}. No calls. "
                     "Review evidence before any action."
                 ),
             }
@@ -6179,7 +6183,7 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
                 "missing": "No current data gap" if missing == "none" else missing,
                 "next": next_action or "Open the case file and review evidence.",
                 "status_message": (
-                    f"Opened Market Inbox case for {ticker}. "
+                    f"Opened Market Inbox case for {ticker}. No calls. "
                     "Review evidence before any action."
                 ),
             }
@@ -7361,7 +7365,7 @@ def _priced_in_review_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
                 ),
                 "target_page": f"candidate:{ticker}",
                 "status_message": (
-                    f"Opened decision-ready priced-in row for {ticker}. "
+                    f"Opened decision-ready priced-in row for {ticker}. No calls. "
                     "This is still not trade approval."
                 ),
             }
