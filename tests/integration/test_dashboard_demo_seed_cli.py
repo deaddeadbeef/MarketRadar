@@ -3065,6 +3065,10 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
 
     case = render_dashboard_tui(payload, page="candidate:ACME", width=180)
     assert "Candidate ACME" in case
+    assert "Can I act now?" in case
+    assert "What happened?" in case
+    assert "What is missing?" in case
+    assert "Next safe action" in case
     assert "ACME: no trade decision yet" in case
     assert "Fix source gaps" in case
     assert "Use the workflow navigation or open the highlighted row" not in case
@@ -5922,6 +5926,10 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
             assert "ACME: no trade decision yet" in frame
+            assert "Can I act now?" in frame
+            assert "What happened?" in frame
+            assert "What is missing?" in frame
+            assert "Next safe action" in frame
             assert "Fix source gaps" in frame
 
             await pilot.press("1")
