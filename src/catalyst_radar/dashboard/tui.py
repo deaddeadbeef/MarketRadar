@@ -1842,7 +1842,7 @@ class MarketRadarDashboardApp(App[int]):
         return (
             "[bold #7ee787]NEXT SAFE ACTION[/]\n"
             f"{page_action}\n"
-            f"Cost before execute: {_execution_cost_summary(self.payload)}"
+            f"{_cost_boundary_summary(self.payload)}"
         )
 
     def _refresh_header(self) -> None:
@@ -1973,7 +1973,7 @@ class MarketRadarDashboardApp(App[int]):
             )
             self.query_one("#metric-calls", Static).update(
                 _metric_text(
-                    "Cost before execute",
+                    "Cost boundary",
                     "0 browsing calls",
                     _execution_cost_summary(self.payload),
                 )
@@ -12451,7 +12451,7 @@ def _footer_lines(
         _rule("Next Safe Action", width),
         f"NEXT SAFE ACTION: {_clip(action, max(20, width - 19))}",
     ]
-    lines.extend(_wrap(f"Cost before execute: {_execution_cost_summary(snapshot)}", width))
+    lines.extend(_wrap(_cost_boundary_summary(snapshot), width))
     lines.append(_rule("Last Response", width))
     lines.extend(_wrap("LAST RESPONSE: Ready. No command has run in this view.", width))
     lines.append(_rule("Commands", width))
@@ -12568,9 +12568,16 @@ def _execution_cost_summary(payload: Mapping[str, object]) -> str:
     openai_cap = int(_number_or_zero(credit.get("max_openai_calls")))
     estimated_cost = credit.get("estimated_cost_usd", 0)
     return (
-        f"provider calls {provider_calls}; OpenAI calls 0 while browsing"
-        f"{f' (agent execute cap {openai_cap})' if openai_cap else ''}; "
+        f"Guarded command budget: provider calls {provider_calls}; "
+        f"OpenAI execute cap {openai_cap}; "
         f"estimated OpenAI cost ${estimated_cost}; DB writes shown by each command."
+    )
+
+
+def _cost_boundary_summary(payload: Mapping[str, object]) -> str:
+    return (
+        "Browsing cost: 0 provider calls, 0 OpenAI calls. "
+        f"{_execution_cost_summary(payload)}"
     )
 
 

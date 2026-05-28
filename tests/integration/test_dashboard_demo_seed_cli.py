@@ -1683,7 +1683,28 @@ def test_dashboard_tui_overview_explains_scan_legend_for_novices(
     assert "Decision-ready" in output.out
     assert "NEXT SAFE ACTION" in output.out
     assert "LAST RESPONSE" in output.out
-    assert "Cost before execute" in output.out
+    assert "Browsing cost: 0 provider calls, 0 OpenAI calls" in output.out
+    assert "Guarded command budget" in output.out
+
+
+def test_dashboard_footer_separates_browsing_cost_from_guarded_budget(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-alerts.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "alerts"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Page: Alerts" in output.out
+    assert "NEXT SAFE ACTION: No alert rows yet" in output.out
+    assert "Browsing cost: 0 provider calls, 0 OpenAI calls" in output.out
+    assert "Guarded command budget: provider calls" in output.out
+    assert "Cost before execute" not in output.out
+    assert "External calls made: 0" in output.out
 
 
 def test_run_mission_brief_useful_next_prefers_operator_step() -> None:
