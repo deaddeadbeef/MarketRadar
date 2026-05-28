@@ -9347,13 +9347,13 @@ def _readiness_setup_first_rows(
             "priority": first_gap.get("priority") or "setup",
             "area": area,
             "item": first_gap.get("item") or area,
-            "next_action": first_gap.get("next_action") or first_gap.get("action"),
+            "next_action": "Run PowerShell command above.",
         },
         {
             "priority": "later",
             "area": "Later tasks",
             "item": "Hidden until setup is complete",
-            "next_action": "Clear the setup row first; browsing still makes 0 calls.",
+            "next_action": "Hidden until setup is complete.",
         },
     ]
 
@@ -9361,10 +9361,26 @@ def _readiness_setup_first_rows(
 def _readiness_setup_ladder_rows(value: object) -> list[Mapping[str, object]]:
     setup_codes = {"active_universe", "latest_market_bars", "scan_scope", "trust_gate"}
     return [
-        row
+        {
+            **dict(row),
+            "next_action": _readiness_setup_ladder_action(row),
+        }
         for row in _rows(value)
         if str(row.get("code") or "").strip().lower() in setup_codes
     ]
+
+
+def _readiness_setup_ladder_action(row: Mapping[str, object]) -> str:
+    code = str(row.get("code") or "").strip().lower()
+    if code == "active_universe":
+        return "Run PowerShell command above."
+    if code == "latest_market_bars":
+        return "After universe, fill latest bars."
+    if code == "scan_scope":
+        return "After setup, run one capped scan."
+    if code == "trust_gate":
+        return "Review results after setup."
+    return "Clear this setup blocker first."
 
 
 def _readiness_table_rows(value: object) -> list[Mapping[str, object]]:
