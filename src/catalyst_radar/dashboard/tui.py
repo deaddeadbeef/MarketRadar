@@ -10274,7 +10274,7 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
         lines.append("")
-    lines.append(str(value_ledger.get("useful_definition") or ""))
+    lines.extend(_wrap(str(value_ledger.get("useful_definition") or ""), width))
     lines.append("")
     lines.extend(
         _kv_lines(
@@ -11220,15 +11220,21 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
             limit=8,
         )
     )
-    lines.append(
-        "`batch all` shows this source map without provider calls; "
-        "`batch <source> all` summarizes the full chunk plan; "
-        "`batch <source> execute` runs one guarded chunk; "
-        "`batch <source> execute 3` runs a capped set."
+    lines.extend(
+        _wrap(
+            "`batch all` shows this source map without provider calls; "
+            "`batch <source> all` summarizes the full chunk plan; "
+            "`batch <source> execute` runs one guarded chunk; "
+            "`batch <source> execute 3` runs a capped set.",
+            width,
+        )
     )
-    lines.append(
-        "Full scan = the whole ranked universe. Source-fill tickers = the next "
-        "rate-limited provider chunk, not the ticker universe."
+    lines.extend(
+        _wrap(
+            "Full scan = the whole ranked universe. Source-fill tickers = the next "
+            "rate-limited provider chunk, not the ticker universe.",
+            width,
+        )
     )
     return lines
 
@@ -11487,13 +11493,16 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 limit=8,
             )
         )
-        lines.append(
-            "This table is source coverage for the visible review page, not the "
-            "full scan universe. The Source Fill Workflow below shows full-scan "
-            "gaps and guarded batch plans. Examples are sample tickers only. "
-            "Type `batch <source>` to show the full-scan plan; type "
-            "`batch <source> execute` to run only the next guarded chunk, or "
-            "`batch <source> execute 3` for a capped run."
+        lines.extend(
+            _wrap(
+                "This table is source coverage for the visible review page, not the "
+                "full scan universe. The Source Fill Workflow below shows full-scan "
+                "gaps and guarded batch plans. Examples are sample tickers only. "
+                "Type `batch <source>` to show the full-scan plan; type "
+                "`batch <source> execute` to run only the next guarded chunk, or "
+                "`batch <source> execute 3` for a capped run.",
+                width,
+            )
         )
     workflow_lines = _source_workflow_lines(payload, width)
     if workflow_lines:
@@ -11610,20 +11619,26 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule("Agent Brief", width)]
     if _real_results_missing(payload):
         lines.extend(_no_real_result_lines(payload, width))
-        lines.append(
-            "Agent preview is still safe: it reports gates and makes 0 OpenAI calls."
+        lines.extend(
+            _wrap(
+                "Agent preview is still safe: it reports gates and makes 0 OpenAI calls.",
+                width,
+            )
         )
-    lines.append(
-        f"Mode: {brief.get('mode') or 'dry_run'} | "
-        f"Status: {brief.get('status') or 'unknown'} | "
-        f"Calls: openai={calls.get('openai', 0)}, "
-        f"market={calls.get('market_data', 0)}, broker={calls.get('broker', 0)}"
+    lines.extend(
+        _wrap(
+            f"Mode: {brief.get('mode') or 'dry_run'} | "
+            f"Status: {brief.get('status') or 'unknown'} | "
+            f"Calls: openai={calls.get('openai', 0)}, "
+            f"market={calls.get('market_data', 0)}, broker={calls.get('broker', 0)}",
+            width,
+        )
     )
     if runtime:
-        lines.append(f"Runtime: {_agent_runtime_label(runtime)}")
+        lines.extend(_wrap(f"Runtime: {_agent_runtime_label(runtime)}", width))
     boundary = brief.get("decision_boundary")
     if boundary:
-        lines.append(f"Boundary: {boundary}")
+        lines.extend(_wrap(f"Boundary: {boundary}", width))
     lines.extend(
         _table_lines(
             _agent_brief_rows(brief),
@@ -11924,14 +11939,17 @@ def _mapping_items(value: Mapping[str, object]) -> list[dict[str, object]]:
 
 
 def _kv_lines(items: Sequence[tuple[str, object]], *, width: int) -> list[str]:
-    label_width = min(24, max(14, width // 5))
+    raw_label_width = max((len(_text(label)) for label, _ in items), default=14)
+    max_label_width = max(14, width // 3)
+    label_width = min(max_label_width, max(14, width // 5, raw_label_width))
     value_width = max(20, width - label_width - 3)
     lines: list[str] = []
     for label, value in items:
+        label_text = _clip(label, label_width)
         text = _text(value)
         wrapped = _wrap(text, value_width)
         first, *rest = wrapped or [""]
-        lines.append(f"{label:<{label_width}} : {first}")
+        lines.append(f"{label_text:<{label_width}} : {first}")
         for line in rest:
             lines.append(f"{'':<{label_width}} : {line}")
     return lines
