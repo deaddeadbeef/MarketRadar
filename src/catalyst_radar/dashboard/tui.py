@@ -8731,13 +8731,13 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule("Evidence Gaps And Work Queue", width)]
     first_gap = _readiness_first_work_item(payload)
     if first_gap:
-        priority = str(first_gap.get("priority") or "gap").replace("_", " ")
-        area = str(
+        priority = _human_status_label(first_gap.get("priority") or "gap")
+        area = _human_source_name(
             first_gap.get("area") or first_gap.get("item") or "Evidence gap"
-        ).strip()
-        action = str(
+        )
+        action = _humanize_dashboard_text(
             first_gap.get("next_action") or first_gap.get("action") or ""
-        ).strip()
+        )
         lines.extend(
             _kv_lines(
                 (
@@ -8760,8 +8760,14 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 ("Decision mode", _human_label(readiness.get("decision_mode"))),
                 ("Headline", readiness.get("headline")),
                 ("Next action", readiness.get("next_action")),
-                ("Evidence", readiness.get("evidence")),
-                ("Queue", f"{queue.get('status')}; {queue.get('headline')}"),
+                ("Evidence", _human_readiness_evidence(readiness.get("evidence"))),
+                (
+                    "Queue",
+                    (
+                        f"{_human_status_label(queue.get('status'))}; "
+                        f"{_humanize_dashboard_text(queue.get('headline'))}"
+                    ),
+                ),
             ),
             width=width,
         )
@@ -8773,7 +8779,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 (
                     (
                         "Shadow gate",
-                        f"{_human_label(shadow.get('status'))}; "
+                        f"{_human_status_label(shadow.get('status'))}; "
                         f"{_readiness_ready_label(shadow.get('ready'))}",
                     ),
                     ("Shadow next", shadow.get("canonical_next_action")),
@@ -8785,7 +8791,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     (
                         "Latest shadow run",
                         (
-                            f"{_human_label(latest_shadow.get('status'))}; "
+                            f"{_human_status_label(latest_shadow.get('status'))}; "
                             f"run_date={latest_shadow.get('run_date') or 'n/a'}; "
                             f"writes={latest_shadow.get('db_writes_made') or 0}"
                         )
@@ -8800,7 +8806,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append("")
         lines.extend(
             _table_lines(
-                _rows(shadow.get("checks")),
+                _readiness_table_rows(shadow.get("checks")),
                 [
                     ("code", "Check", 24),
                     ("status", "Status", 10),
@@ -8814,12 +8820,12 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append("")
     lines.extend(
         _table_lines(
-            _rows(readiness.get("readiness_checklist")),
+            _readiness_table_rows(readiness.get("readiness_checklist")),
             [
-                ("area", "Area", 18),
-                ("status", "Status", 12),
-                ("finding", "Finding", 38),
-                ("next_action", "Next Action", 44),
+                ("area", "Area", 24),
+                ("status", "Status", 10),
+                ("finding", "Finding", 44),
+                ("next_action", "Next Action", 36),
             ],
             width=width,
             limit=12,
@@ -8828,7 +8834,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append("")
     lines.extend(
         _table_lines(
-            _rows(queue.get("rows")),
+            _readiness_table_rows(queue.get("rows")),
             [
                 ("priority", "Priority", 14),
                 ("area", "Area", 18),
@@ -8840,6 +8846,24 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     return lines
+
+
+def _readiness_table_rows(value: object) -> list[Mapping[str, object]]:
+    rows: list[Mapping[str, object]] = []
+    for row in _rows(value):
+        rows.append(
+            {
+                **dict(row),
+                "area": _human_source_name(row.get("area")),
+                "code": _human_source_name(row.get("code")),
+                "status": _human_status_label(row.get("status")),
+                "finding": _humanize_dashboard_text(row.get("finding")),
+                "next_action": _humanize_dashboard_text(row.get("next_action")),
+                "priority": _human_status_label(row.get("priority")),
+                "item": _humanize_dashboard_text(row.get("item")),
+            }
+        )
+    return rows
 
 
 def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
@@ -8861,13 +8885,25 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.extend(
         _kv_lines(
             (
-                ("Latest run", latest.get("status") or "unknown"),
+                ("Latest run", _human_status_label(latest.get("status") or "unknown")),
                 ("Required path", f"{latest.get('required_completed_count')}/"
                 f"{latest.get('required_step_count')}"),
                 ("Run as-of", latest.get("as_of") or "n/a"),
-                ("Activation", f"{activation.get('status')}; {activation.get('headline')}"),
-                ("Cooldown", f"{cooldown.get('status')}; {cooldown.get('detail')}"),
-                ("Call plan", f"{call_plan.get('status')}; {call_plan.get('headline')}"),
+                (
+                    "Activation",
+                    f"{_human_status_label(activation.get('status'))}; "
+                    f"{activation.get('headline')}",
+                ),
+                (
+                    "Cooldown",
+                    f"{_human_status_label(cooldown.get('status'))}; "
+                    f"{cooldown.get('detail')}",
+                ),
+                (
+                    "Call plan",
+                    f"{_human_status_label(call_plan.get('status'))}; "
+                    f"{call_plan.get('headline')}",
+                ),
                 ("Next", call_plan.get("next_action")),
                 ("Max external calls", call_plan.get("max_external_call_count")),
             ),
@@ -8877,11 +8913,11 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append("")
     lines.extend(
         _table_lines(
-            _rows(call_plan.get("rows")),
+            _call_plan_table_rows(call_plan),
             [
                 ("layer", "Layer", 18),
                 ("provider", "Provider", 12),
-                ("status", "Status", 14),
+                ("status", "Status", 18),
                 ("external_call_count_max", "Max", 6),
                 ("next_action", "Next Action", 58),
             ],
@@ -8897,14 +8933,17 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         evidence_items: list[tuple[str, object]] = [
             (
                 "Evidence status",
-                f"{audit.get('status')}; {audit.get('answer')}",
+                f"{_human_status_label(audit.get('status'))}; {audit.get('answer')}",
             ),
             (
                 "Next evidence step",
                 blocker.get("next_action") if blocker else audit.get("next_action"),
             ),
             ("Full-scan evidence", full_scan_evidence),
-            ("Visible-page source coverage", coverage.get("summary")),
+            (
+                "Visible-page source coverage",
+                _human_source_status_text(coverage.get("summary")),
+            ),
         ]
         blocker_hint = _run_audit_source_blocker_hint(blocker, payload)
         if blocker_hint:
@@ -8953,7 +8992,8 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         evidence_items: list[tuple[str, object]] = [
             (
                 "Evidence status",
-                f"{evidence_plan.get('status')}; {evidence_plan.get('headline')}",
+                f"{_human_status_label(evidence_plan.get('status'))}; "
+                f"{evidence_plan.get('headline')}",
             ),
             ("Next evidence step", evidence_plan.get("next_action")),
         ]
@@ -8993,6 +9033,19 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     return lines
 
 
+def _call_plan_table_rows(call_plan: Mapping[str, object]) -> list[Mapping[str, object]]:
+    rows: list[Mapping[str, object]] = []
+    for row in _rows(call_plan.get("rows")):
+        rows.append(
+            {
+                **dict(row),
+                "status": _human_status_label(row.get("status") or "unknown"),
+                "next_action": _humanize_dashboard_text(row.get("next_action")),
+            }
+        )
+    return rows
+
+
 def _run_mission_brief_items(
     payload: Mapping[str, object],
 ) -> list[tuple[str, object]]:
@@ -9023,7 +9076,7 @@ def _run_mission_brief_items(
         )
     )
     source_coverage = _mapping(audit.get("source_coverage"))
-    coverage_text = str(source_coverage.get("summary") or "").strip()
+    coverage_text = _human_source_status_text(source_coverage.get("summary"))
     progress_parts = []
     if active or scanned or ranked:
         progress_parts.append(
@@ -9033,9 +9086,9 @@ def _run_mission_brief_items(
         progress_parts.append(coverage_text)
     blocker_text = ""
     if blocker:
-        source = blocker.get("source") or "source"
+        source = _human_source_name(blocker.get("source") or "source")
         gaps = int(_number_or_zero(blocker.get("gap_count")))
-        status = blocker.get("status") or "attention"
+        status = _human_status_label(blocker.get("status") or "attention")
         blocker_text = f"{source} {status}; gaps {gaps}"
     operator_step = _priced_in_operator_step(payload)
     next_action = (
@@ -9054,7 +9107,10 @@ def _run_mission_brief_items(
     if operator_step_text:
         items.append(("Do now", operator_step_text))
     if trust_gate:
-        gate_text = f"{trust_gate.get('status')}; {trust_gate.get('answer')}"
+        gate_text = (
+            f"{_human_status_label(trust_gate.get('status'))}; "
+            f"{trust_gate.get('answer')}"
+        )
         blocker_detail = _mapping(trust_gate.get("blocker_detail"))
         manual_csv_text = ""
         saved_capture_text = ""
@@ -9142,9 +9198,9 @@ def _trust_gate_blocker_ladder_summary(ladder: Mapping[str, object]):
     parts = []
     for row in rows[:5]:
         step = int(_number_or_zero(row.get("step")))
-        source = str(row.get("source") or "source")
+        source = _human_source_name(row.get("source") or "source")
         gap_count = int(_number_or_zero(row.get("gap_count")))
-        status = str(row.get("status") or "attention")
+        status = _human_status_label(row.get("status") or "attention")
         parts.append(f"{step} {source} {status} gaps {gap_count}")
     return "; ".join(parts)
 
@@ -9152,11 +9208,11 @@ def _trust_gate_blocker_ladder_summary(ladder: Mapping[str, object]):
 def _after_current_blocker_summary(preview: Mapping[str, object]):
     if not preview:
         return ""
-    current = str(preview.get("current_blocker") or "current blocker")
-    source = str(preview.get("next_source") or "").strip()
+    current = _human_source_name(preview.get("current_blocker") or "current blocker")
+    source = _human_source_name(preview.get("next_source") or "")
     if not source:
         return ""
-    status = str(preview.get("next_status") or "attention")
+    status = _human_status_label(preview.get("next_status") or "attention")
     gaps = int(_number_or_zero(preview.get("next_gap_count")))
     action = str(preview.get("next_action") or "").strip()
     plan = str(preview.get("plan_command") or "").strip()
@@ -9526,11 +9582,11 @@ def _run_audit_source_rows(
         row_count = int(_number_or_zero(source.get("row_count")))
         rows.append(
             {
-                "source": source.get("source"),
-                "status": source.get("status"),
+                "source": _human_source_name(source.get("source")),
+                "status": _human_status_label(source.get("status")),
                 "coverage": f"{available}/{row_count}" if row_count else "n/a",
                 "gap_count": int(_number_or_zero(source.get("gap_count"))),
-                "next_action": source.get("next_action"),
+                "next_action": _humanize_dashboard_text(source.get("next_action")),
                 "command": source.get("command"),
             }
         )
@@ -9559,7 +9615,15 @@ def _evidence_plan_step_rows(
             if isinstance(depends_on, list | tuple)
             else ""
         )
-        rows.append({**step, "depends_on": depends or "none"})
+        rows.append(
+            {
+                **step,
+                "area": _human_source_name(step.get("area")),
+                "status": _human_status_label(step.get("status")),
+                "depends_on": _human_source_status_text(depends or "none"),
+                "action": _humanize_dashboard_text(step.get("action")),
+            }
+        )
     return rows
 
 
@@ -12050,13 +12114,26 @@ def _join_nonempty(values: Sequence[object], *, separator: str = " ") -> str:
 
 
 _STATUS_LABELS: Mapping[str, str] = {
+    "addtowatchlist": "add to watchlist",
+    "agent_review": "agent review",
+    "approval_required": "approval required",
+    "blocked_run_steps": "blocked run steps",
     "candidate_ledger_coverage": "Candidate ledger coverage",
+    "catalyst_events": "catalyst events",
     "decision_ready": "decision ready",
     "dry_run": "dry run",
+    "expected_gate": "expected gate",
+    "incomplete_daily_bar_coverage": "incomplete daily-bar coverage",
     "insufficient_evidence": "Insufficient evidence",
+    "live_call_planned": "live call planned",
+    "live_calls_planned": "live calls planned",
+    "local_text": "local text",
     "manual_review_ready": "manual review ready",
+    "market_bars": "market bars",
+    "no_candidate_packets": "no candidate packets",
     "no_validation_runs": "No validation runs yet",
     "not_started": "not started",
+    "partial_success": "partial success",
     "read_only": "read only",
     "read_only_decision_support": "read-only decision support",
     "read_only_research": "read-only research",
@@ -12066,12 +12143,22 @@ _STATUS_LABELS: Mapping[str, str] = {
 }
 
 _DASHBOARD_TEXT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("Run plan status=", "Run plan: "),
     ("decision_ready=false", "decision ready: no"),
     ("decision_ready=true", "decision ready: yes"),
+    ("latest_bars_stale=no", "latest bars stale: no"),
+    ("latest_bars_stale=yes", "latest bars stale: yes"),
+    ("live_call_planned", "live call planned"),
+    ("live_calls_planned", "live calls planned"),
+    ("expected_gate", "expected gate"),
+    ("max_external_call_count", "max external calls"),
     ("order_submission_enabled=False", "orders enabled: no"),
     ("order_submission_enabled=True", "orders enabled: yes"),
+    ("partial_success", "partial success"),
     ("read_only=False", "read-only: no"),
     ("read_only=True", "read-only: yes"),
+    ("source_live=no", "source live: no"),
+    ("source_live=yes", "source live: yes"),
     ("setup_blocked", "setup blocked"),
     ("manual_review_ready", "manual review ready"),
     ("research_only", "research only"),
@@ -12089,6 +12176,51 @@ def _human_status_label(value: object) -> str:
 def _humanize_dashboard_text(value: object) -> str:
     text = _text(value)
     for raw, replacement in _DASHBOARD_TEXT_REPLACEMENTS:
+        text = text.replace(raw, replacement)
+    return text
+
+
+def _human_source_name(value: object) -> str:
+    raw = "" if value is None else str(value).strip()
+    if not raw:
+        return ""
+    return _human_status_label(raw)
+
+
+def _human_source_status_text(value: object) -> str:
+    text = _humanize_dashboard_text(value)
+    source_replacements = (
+        ("market_bars", "market bars"),
+        ("catalyst_events", "catalyst events"),
+        ("local_text", "local text"),
+        ("theme_peer_sector", "theme/peer/sector"),
+        ("broker_context", "broker context"),
+        ("agent_review", "agent review"),
+    )
+    for raw, replacement in source_replacements:
+        text = text.replace(raw, replacement)
+    return text
+
+
+def _human_readiness_evidence(value: object) -> str:
+    text = _human_source_status_text(value)
+    replacements = (
+        ("snapshot_status=", "snapshot: "),
+        ("blockers=", "blockers: "),
+        ("latest bars stale: no", "bars fresh: yes"),
+        ("latest bars stale: yes", "bars fresh: no"),
+        ("source live: yes", "live data: yes"),
+        ("source live: no", "live data: no"),
+        ("snapshot: blocked", "snapshot blocked"),
+        ("bars fresh: yes", "bars fresh"),
+        ("bars fresh: no", "bars stale"),
+        ("live data: yes", "live data"),
+        ("live data: no", "live data missing"),
+        ("incomplete_daily_bar_coverage", "daily-bar coverage"),
+        ("blocked_run_steps", "run steps"),
+        ("no_candidate_packets", "candidate packets"),
+    )
+    for raw, replacement in replacements:
         text = text.replace(raw, replacement)
     return text
 
