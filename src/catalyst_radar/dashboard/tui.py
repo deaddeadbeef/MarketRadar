@@ -2572,7 +2572,7 @@ class MarketRadarDashboardApp(App[int]):
                     ("item", "Item", 28),
                     ("detail", "Detail", 98),
                 ],
-                _agent_brief_rows(brief),
+                _agent_brief_rows(brief, self.payload),
                 (
                     f"{brief.get('decision_boundary') or 'Manual research boundary.'} "
                     f"{_agent_runtime_label(runtime)}."
@@ -7680,10 +7680,7 @@ def _real_results_empty(payload: Mapping[str, object]) -> bool:
 def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str]:
     real_results = _mapping(payload.get("real_results"))
     missing = ", ".join(_texts(real_results.get("missing"))) or "real scan rows"
-    next_action = (
-        str(real_results.get("next_action") or "").strip()
-        or "Run/import real market data, then rerun the priced-in answer."
-    )
+    next_action = _no_real_result_next_action(payload, real_results)
     return [
         "No real result yet.",
         f"Required next step: {_clip(next_action, max(24, width - 21))}",
@@ -7694,6 +7691,22 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
             "when you intentionally want a demo."
         ),
     ]
+
+
+def _no_real_result_next_action(
+    payload: Mapping[str, object],
+    real_results: Mapping[str, object],
+) -> str:
+    if _real_results_empty(payload):
+        blocker = _readiness_first_setup_blocker(payload)
+        if blocker:
+            area = _human_source_name(blocker.get("area") or "setup blocker")
+            action = _humanize_dashboard_text(blocker.get("next_action"))
+            return f"Clear {area} first: {action}"
+    return (
+        str(real_results.get("next_action") or "").strip()
+        or "Run/import real market data, then rerun the priced-in answer."
+    )
 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
@@ -9890,7 +9903,10 @@ def _evidence_plan_step_rows(
     return rows
 
 
-def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]:
+def _agent_brief_rows(
+    brief: Mapping[str, object],
+    payload: Mapping[str, object] | None = None,
+) -> list[Mapping[str, object]]:
     rows: list[Mapping[str, object]] = _agent_coach_summary_rows(brief)
     runtime = _mapping(brief.get("runtime"))
     if runtime:
@@ -9904,6 +9920,11 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
     real_results = _mapping(brief.get("real_results"))
     if real_results:
         status = _human_status_label(real_results.get("status") or "unknown")
+        next_action = (
+            _no_real_result_next_action(payload, real_results)
+            if payload is not None
+            else _human_agent_text(real_results.get("next_action"))
+        )
         rows.append(
             {
                 "kind": "Gate",
@@ -9911,7 +9932,7 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
                 "detail": (
                     f"rows {real_results.get('row_count', 0)}; "
                     f"latest run {real_results.get('latest_run_id') or 'n/a'}; "
-                    f"next {_human_agent_text(real_results.get('next_action'))}"
+                    f"next {_human_agent_text(next_action)}"
                 ),
             }
         )
@@ -12268,7 +12289,7 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.extend(_wrap(f"Boundary: {_human_agent_text(boundary)}", width))
     lines.extend(
         _table_lines(
-            _agent_brief_rows(brief),
+            _agent_brief_rows(brief, payload),
             [
                 ("kind", "Kind", 10),
                 ("item", "Item", 24),
