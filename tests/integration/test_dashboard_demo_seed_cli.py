@@ -1737,10 +1737,16 @@ def test_dashboard_footer_separates_browsing_cost_from_guarded_budget(
 
     assert output.err == ""
     assert "Page: Alerts" in output.out
-    assert "NEXT SAFE ACTION: No alert rows yet" in output.out
+    assert "Alerts are research notifications, not trade signals or orders." in output.out
+    assert "No real result yet" in output.out
+    assert "Why this page is blank" in output.out
+    assert "There is nothing to open or act on yet" in output.out
+    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
     assert "Browsing cost: 0 provider calls, 0 OpenAI calls" in output.out
     assert "Guarded command budget: provider calls" in output.out
     assert "Cost before execute" not in output.out
+    assert "Use `open <#>`" not in output.out
+    assert "No rows." not in output.out
     assert "External calls made: 0" in output.out
 
 
