@@ -10308,11 +10308,14 @@ def _agent_runtime_name(value: object) -> str:
 
 def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
     orchestrator = _agent_runtime_name(runtime.get("orchestrator") or "openai_agents_sdk")
-    assistant_dependency = str(runtime.get("co" + "pilot_dependency") or "absent").replace(
-        "_",
-        " ",
+    assistant_dependency = str(runtime.get("co" + "pilot_dependency") or "absent").strip()
+    assistant_text = (
+        "GitHub Copilot not used"
+        if assistant_dependency in {"", "absent", "none", "false"}
+        else f"assistant dependency {_human_status_label(assistant_dependency)}"
     )
-    tools = str(runtime.get("tool_surface") or "read_only_snapshot_tools").replace("_", " ")
+    tools = str(runtime.get("tool_surface") or "read_only_snapshot_tools").replace("_", "-")
+    tools = tools.replace("read-only-snapshot-tools", "read-only snapshot tools")
     gate = _human_status_label(runtime.get("real_mode_gate_status") or "unknown")
     real_results_gate = _human_status_label(
         runtime.get("real_results_gate_status") or "unknown"
@@ -10327,11 +10330,11 @@ def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
         blocked_tools.append("shell")
     if runtime.get("web_tools") is False:
         blocked_tools.append("web")
-    blocked_summary = ", ".join(blocked_tools) or "none"
+    blocked_summary = "/".join(blocked_tools) or "no"
     return (
-        f"{orchestrator}; {'Co' 'pilot'} {assistant_dependency}; tools {tools}; "
-        f"real gate {gate}; results {real_results_gate}; credit {credit_gate}; "
-        f"blocked tools {blocked_summary}"
+        f"{orchestrator}; {assistant_text}; tools use {tools}; "
+        f"real-agent gate {gate}; scan evidence {real_results_gate}; "
+        f"OpenAI spend {credit_gate}; {blocked_summary} disabled"
     )
 
 

@@ -1225,8 +1225,8 @@ def test_dashboard_agent_page_shows_agent_brief(
     assert "Agent Brief" in output.out
     assert "openai=0" in output.out
     assert "OpenAI Agents SDK" in output.out
-    assert "Copilot absent" in output.out
-    assert "read only snapshot tools" in output.out
+    assert "GitHub Copilot not used" in output.out
+    assert "read-only snapshot tools" in output.out
     assert "Priced-in answer is" in output.out
 
 
@@ -1343,6 +1343,11 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "Safe preview" in output.out
     assert "OpenAI calls" in output.out
     assert "Runtime" in output.out
+    assert "OpenAI Agents SDK" in output.out
+    assert "GitHub Copilot not used" in output.out
+    assert "scan evidence blocked" in output.out
+    assert "OpenAI spend blocked" in output.out
+    assert "market/broker/shell/web disabled" in normalized
     assert "NEXT SAFE ACTION:" in output.out
     assert "Clear Active universe first" in output.out
     assert "Continue only if you accept the data change or provider call" in normalized
@@ -1356,6 +1361,9 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "Fill the missing env/budget values" not in output.out
     assert "Run/import real market data" not in output.out
     assert "Use agent for a zero-call preview" not in output.out
+    assert "Copilot absent" not in output.out
+    assert "real gate ready" not in output.out
+    assert "credit blocked" not in output.out
     assert "External calls made: 0" in output.out
 
 
