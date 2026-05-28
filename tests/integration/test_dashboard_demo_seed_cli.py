@@ -1996,6 +1996,24 @@ def test_run_mission_brief_do_now_does_not_join_period_then_semicolon() -> None:
     assert "scan; run catalyst-radar ingest-polygon" in items["Do now"]
 
 
+def test_run_mission_brief_useful_next_is_humanized() -> None:
+    payload = {
+        "priced_in_answer": {
+            "next_action": (
+                "Raise CATALYST_POLYGON_TICKERS_MAX_PAGES if needed, then seed "
+                "tickers."
+            ),
+        },
+    }
+
+    items = dict(_run_mission_brief_items(payload))
+
+    assert items["Useful next"] == (
+        "Seed the ticker universe before calling this a full-market scan."
+    )
+    assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" not in items["Useful next"]
+
+
 def test_dashboard_market_bar_missing_type_summary_is_human_readable() -> None:
     payload = {
         "priced_in_audit": {

@@ -9614,7 +9614,7 @@ def _run_mission_brief_items(
     if blocker_text:
         items.append(("Trust blocker", blocker_text))
     if next_action:
-        items.append(("Useful next", next_action))
+        items.append(("Useful next", _humanize_dashboard_text(next_action)))
     unblock_summary = _run_market_bar_unblock_summary(payload, blocker)
     if unblock_summary:
         items.append(("Unblock options", unblock_summary))
