@@ -3121,6 +3121,8 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "options" in review
     assert "broker" in review
     assert "BETA" not in review
+    assert "NEXT SAFE ACTION: Decision Review is not trade approval" in review
+    assert "Use the workflow navigation or open the highlighted row" not in review
 
     overview = render_dashboard_tui(payload, page="overview", width=140)
     assert "Market Inbox" in overview
@@ -3138,6 +3140,11 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "Alerts are research notifications, not trade signals or orders." in alerts
     assert "records local review only" in alerts
     assert "NEXT SAFE ACTION: Research alerts only; not trade signals" in alerts
+
+    alert_case = render_dashboard_tui(payload, page="alert:alert-acme", width=180)
+    assert "Alert alert-acme" in alert_case
+    assert "NEXT SAFE ACTION: Alert detail is a research notification" in alert_case
+    assert "Use the workflow navigation or open the highlighted row" not in alert_case
 
     case = render_dashboard_tui(payload, page="candidate:ACME", width=180)
     assert "Candidate ACME" in case
