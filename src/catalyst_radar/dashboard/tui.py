@@ -7681,16 +7681,23 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
     real_results = _mapping(payload.get("real_results"))
     missing = ", ".join(_texts(real_results.get("missing"))) or "real scan rows"
     next_action = _no_real_result_next_action(payload, real_results)
-    return [
+    lines = [
         "No real result yet.",
-        f"Required next step: {_clip(next_action, max(24, width - 21))}",
-        "Provider calls made while viewing: 0.",
-        f"Missing: {_clip(missing, max(24, width - 10))}",
-        (
-            "Demo rows are never loaded automatically; use seed-dashboard-demo only "
-            "when you intentionally want a demo."
-        ),
     ]
+    lines.extend(_wrap(f"Required next step: {next_action}", width))
+    lines.extend(
+        _wrap(
+            "Why this page is blank: MarketRadar has no real scan rows to review yet.",
+            width,
+        )
+    )
+    lines.append("Provider calls made while viewing: 0.")
+    lines.extend(_wrap(f"Missing: {missing}", width))
+    lines.append(
+        "Demo rows are never loaded automatically; use seed-dashboard-demo only "
+        "when you intentionally want a demo."
+    )
+    return lines
 
 
 def _no_real_result_next_action(
