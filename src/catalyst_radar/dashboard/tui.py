@@ -2942,11 +2942,10 @@ def _priced_in_operator_step(payload: Mapping[str, object]):
 def _operator_next_step_summary(step: Mapping[str, object]):
     if not step:
         return ""
-    parts = [
-        _human_source_status_text(
-            step.get("action") or step.get("action_label") or "No action recorded."
-        )
-    ]
+    action = _human_source_status_text(
+        step.get("action") or step.get("action_label") or "No action recorded."
+    ).rstrip(".;")
+    parts = [action]
     command = step.get("tui_command") or step.get("command")
     if command:
         parts.append(f"run {command}")
