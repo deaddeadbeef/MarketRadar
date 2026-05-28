@@ -1288,8 +1288,8 @@ def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
     assert output.err == ""
     assert "No real result yet" in output.out
     assert "Required next step:" in output.out
-    assert "Suggested setup command: catalyst-radar" in output.out
-    assert "The dashboard will not run this for you" in output.out
+    assert "PowerShell setup command: catalyst-radar" in output.out
+    assert "not in the dashboard command box" in output.out
     assert "Why this page is blank" in output.out
     assert "Provider calls made while viewing: 0" in output.out
     assert "ACME" not in output.out
@@ -1314,8 +1314,10 @@ def test_dashboard_empty_candidates_points_to_first_setup_blocker(
     assert "No real result yet" in output.out
     assert "Required next step:" in output.out
     assert "Clear Active universe first" in output.out
-    assert "Seed or refresh the stock universe" in output.out
-    assert "execute only if you accept the provider call" in normalized
+    assert "Seed or refresh the universe" in output.out
+    assert "Run setup commands in PowerShell" in output.out
+    assert "not in the dashboard command box" in output.out
+    assert "Continue only if you accept the data change or provider call" in normalized
     assert "Why this page is blank" in output.out
     assert "Run/import real market data" not in output.out
     assert "External calls made: 0" in output.out
@@ -1343,7 +1345,7 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "Runtime" in output.out
     assert "NEXT SAFE ACTION:" in output.out
     assert "Clear Active universe first" in output.out
-    assert "execute only if you accept the provider call" in normalized
+    assert "Continue only if you accept the data change or provider call" in normalized
     assert "Why this page is blank" in output.out
     assert "Do not run agent execute while this page says locked" in output.out
     assert "Detailed agent roles" in output.out
@@ -1373,8 +1375,10 @@ def test_dashboard_empty_decision_review_points_to_first_setup_blocker(
     assert "Page: Decision Review" in output.out
     assert "No real result yet" in output.out
     assert "Clear Active universe first" in output.out
-    assert "Seed or refresh the stock universe" in output.out
-    assert "execute only if you accept the provider call" in normalized
+    assert "Seed or refresh the universe" in output.out
+    assert "Run setup commands in PowerShell" in output.out
+    assert "not in the dashboard command box" in output.out
+    assert "Continue only if you accept the data change or provider call" in normalized
     assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
     assert "No decision-ready review rows. Fix Evidence Gaps" not in output.out
     assert "External calls made: 0" in output.out
@@ -1396,8 +1400,10 @@ def test_dashboard_empty_themes_points_to_first_setup_blocker(
     assert "Page: Themes" in output.out
     assert "No real result yet" in output.out
     assert "Clear Active universe first" in output.out
-    assert "Seed or refresh the stock universe" in output.out
-    assert "execute only if you accept the provider call" in normalized
+    assert "Seed or refresh the universe" in output.out
+    assert "Run setup commands in PowerShell" in output.out
+    assert "not in the dashboard command box" in output.out
+    assert "Continue only if you accept the data change or provider call" in normalized
     assert "Theme clusters appear only after real scan rows exist" in output.out
     assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
     assert "No rows." not in output.out
@@ -1518,6 +1524,12 @@ def _minimal_missing_real_results_payload() -> dict[str, object]:
 
 def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
     payload = _minimal_missing_real_results_payload()
+    payload["priced_in_answer"] = {
+        "canonical_next_command": (
+            "catalyst-radar ingest-csv --securities <securities.csv> "
+            "--daily-bars <bars.csv>"
+        )
+    }
 
     rows = _market_inbox_rows(payload)
 
@@ -1531,6 +1543,8 @@ def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
     assert "First real scan setup" in screen
     assert "these are instructions, not stock results" in screen
     assert "1. Build the stock universe" in screen
+    assert "PowerShell setup command" in screen
+    assert "Run intentionally:" not in screen
     assert "2. Fill latest prices" in screen
     assert "3. Run one capped scan" in screen
     assert "NEXT SAFE ACTION: Start with Setup row 1" in screen
@@ -1591,11 +1605,11 @@ def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
             assert app.page == "readiness"
             assert "Setup step 1" in app.status_message
             assert "No calls were made" in app.status_message
+            assert "PowerShell setup command" in app.status_message
             frame = await wait_for_frame("EVIDENCE GAPS", "Active universe")
             assert "EVIDENCE GAPS" in frame
             assert "First blocker" in frame
             assert "Active universe" in frame
-            assert "refresh the stock universe intentionally" in frame
 
     asyncio.run(run_app())
 
@@ -3593,12 +3607,15 @@ def test_dashboard_tutorial_footer_points_to_first_real_step() -> None:
 
 def test_dashboard_tutorial_rows_match_visible_navigation_labels() -> None:
     rows = {str(row["step"]): str(row["do"]) for row in _tutorial_control_rows()}
+    results = {str(row["step"]): str(row["result"]) for row in _tutorial_control_rows()}
 
     assert rows["1"] == "Press 1: Inbox"
     assert rows["2"] == "Press 2: Evidence Gaps"
     assert rows["3"] == "Press D: Decision Review"
     assert rows["4"] == "Press 4: Candidate Review"
     assert rows["5"] == "Press 3: Safe Run"
+    assert "run setup commands in PowerShell" in results["6"]
+    assert "ticker AAPL" not in results["6"]
 
 
 def test_dashboard_header_uses_human_status_labels() -> None:

@@ -6400,7 +6400,10 @@ def _tutorial_control_rows() -> list[Mapping[str, object]]:
         {
             "step": "6",
             "do": "Use the bottom command box",
-            "result": "Try ticker AAPL, refresh, help, or q. Esc focuses the box.",
+            "result": (
+                "Use it for dashboard commands like refresh, help, or q; "
+                "run setup commands in PowerShell."
+            ),
         },
     ]
 
@@ -6703,7 +6706,7 @@ def _first_scan_setup_why(source: str, next_action: str) -> str:
 
 def _first_scan_setup_next(source: str, command: str, next_action: str) -> str:
     if source == "universe" and command:
-        return f"Run intentionally: {command}"
+        return f"PowerShell setup command: {command}"
     if source == "market_bars":
         return "Open Evidence Gaps, then use Bars or Safe Run when ready."
     if source == "agent_review":
@@ -6996,7 +6999,11 @@ def _readiness_setup_next_action(row: Mapping[str, object]) -> str:
     row_action = _humanize_dashboard_text(row.get("next_action")).strip()
     if code == "active_universe":
         if row_action:
-            return f"{row_action} Run only if you accept the data change or provider call."
+            return (
+                f"{row_action} Run setup commands in PowerShell, not in the "
+                "dashboard command box. Continue only if you accept the data "
+                "change or provider call."
+            )
         return (
             "Seed or refresh the stock universe intentionally only after approving "
             "the data change or provider call."
@@ -7749,11 +7756,12 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
     lines.extend(_wrap(f"Required next step: {next_action}", width))
     command = _first_scan_setup_command(payload)
     if command:
-        lines.extend(_wrap(f"Suggested setup command: {command}", width))
+        lines.extend(_wrap(f"PowerShell setup command: {command}", width))
         lines.extend(
             _wrap(
-                "The dashboard will not run this for you; execute it only after "
-                "you accept the provider call.",
+                "Run this in a normal PowerShell prompt, not in the dashboard "
+                "command box. Execute it only after you accept the data change "
+                "or provider call.",
                 width,
             )
         )
