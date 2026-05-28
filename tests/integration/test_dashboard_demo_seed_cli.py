@@ -1346,6 +1346,35 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "External calls made: 0" in output.out
 
 
+def test_dashboard_broker_setup_state_defers_auth_on_empty_database(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-broker.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "broker"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Page: Broker" in output.out
+    assert "Broker / Portfolio" in output.out
+    assert "No real result yet" in output.out
+    assert "Clear Active universe first" in output.out
+    assert "Why this page is blank" in output.out
+    assert "Broker context is optional later" in output.out
+    assert "Browsing this page still makes 0 Schwab calls" in output.out
+    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "Authenticate only when you want portfolio context" not in output.out
+    assert "Local Watch Actions" not in output.out
+    assert "Local Trigger Rules" not in output.out
+    assert "Blocked Order Tickets" not in output.out
+    assert "trigger <ticker>" not in output.out
+    assert "ticket <ticker>" not in output.out
+    assert "External calls made: 0" in output.out
+
+
 def _minimal_missing_real_results_payload() -> dict[str, object]:
     return {
         "schema_version": "dashboard-cli-snapshot-v1",

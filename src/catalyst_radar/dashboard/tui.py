@@ -11185,6 +11185,8 @@ def _broker_status_rows(broker: Mapping[str, object]) -> list[Mapping[str, objec
 
 
 def _broker_next_safe_action(payload: Mapping[str, object]) -> str:
+    if _real_results_empty(payload):
+        return _no_real_result_next_action(payload, _mapping(payload.get("real_results")))
     broker = _mapping(payload.get("broker"))
     snapshot = _mapping(broker.get("snapshot"))
     exposure = _mapping(broker.get("exposure"))
@@ -11351,6 +11353,23 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width,
         )
     )
+    if _real_results_empty(payload):
+        lines.extend(_no_real_result_lines(payload, width))
+        lines.extend(
+            _wrap(
+                "Broker context is optional later. Do not authenticate Schwab or "
+                "create local watch, trigger, or ticket artifacts until real scan "
+                "rows exist and a candidate has been reviewed.",
+                width,
+            )
+        )
+        lines.extend(
+            _wrap(
+                "Browsing this page still makes 0 Schwab calls and submits 0 orders.",
+                width,
+            )
+        )
+        return lines
     lines.extend(_wrap(_broker_next_safe_action(payload), width))
     lines.append("")
     action_rows = _rows(broker.get("opportunity_actions"))
