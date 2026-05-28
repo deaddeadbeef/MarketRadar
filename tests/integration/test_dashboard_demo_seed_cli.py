@@ -3084,7 +3084,19 @@ def test_readiness_page_uses_human_gate_labels() -> None:
             "decision_mode": "research_only",
             "headline": "Current rows are research only.",
             "next_action": "Fill source evidence before acting.",
-            "evidence": "market bars missing",
+            "evidence": (
+                "snapshot_status=blocked; "
+                "blockers=incomplete_daily_bar_coverage, blocked_run_steps, "
+                "no_candidate_packets; latest_bars_stale=no; source_live=yes"
+            ),
+            "readiness_checklist": [
+                {
+                    "area": "provider_call_boundary",
+                    "status": "ready",
+                    "finding": "Run plan status=live_calls_planned; max_external_call_count=6",
+                    "next_action": "Review live_calls_planned before run.",
+                }
+            ],
         },
         "shadow_readiness": {
             "status": "setup_required",
@@ -3108,12 +3120,92 @@ def test_readiness_page_uses_human_gate_labels() -> None:
 
     assert "Status                       : research only" in screen
     assert "Decision mode                : research only" in screen
+    assert "snapshot blocked" in screen
+    assert "daily-bar coverage" in screen
+    assert "run steps" in screen
+    assert "candidate packets" in screen
+    assert "bars fresh" in screen
+    assert "live data" in screen
+    assert "provider call boundary" in screen
+    assert "Run plan: live calls planned" in screen
     assert "Shadow gate                  : setup required; not ready" in screen
     assert "Latest shadow run" in screen
     assert "setup required; run_date=2026-05-22; writes=1" in screen
     assert "research_only" not in screen
     assert "setup_required" not in screen
+    assert "snapshot_status=" not in screen
+    assert "incomplete_daily_bar_coverage" not in screen
+    assert "blocked_run_steps" not in screen
+    assert "no_candidate_packets" not in screen
+    assert "latest_bars_stale=" not in screen
+    assert "source_live=" not in screen
+    assert "provider_call_boundary" not in screen
+    assert "live_calls_planned" not in screen
+    assert "max_external_call_count" not in screen
     assert "ready=False" not in screen
+
+
+def test_run_page_uses_human_status_labels() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {
+            "status": "blocked",
+            "answer": "Research only.",
+        },
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "latest_run": {
+            "status": "partial_success",
+            "required_completed_count": 5,
+            "required_step_count": 9,
+            "as_of": "2026-05-15",
+        },
+        "live_activation": {
+            "status": "ready",
+            "headline": "Live data activation inputs are configured.",
+        },
+        "radar_run_cooldown": {
+            "status": "ready",
+            "detail": "Minimum interval is 300 second(s).",
+        },
+        "call_plan": {
+            "status": "live_calls_planned",
+            "headline": "Radar run may make up to 6 external call(s).",
+            "next_action": "Run only if the caps and providers match your intent.",
+            "max_external_call_count": 6,
+            "rows": [
+                {
+                    "layer": "Market data",
+                    "provider": "polygon",
+                    "status": "live_call_planned",
+                    "external_call_count_max": 1,
+                    "next_action": "Keep the manual cooldown active.",
+                },
+                {
+                    "layer": "LLM review",
+                    "provider": "none",
+                    "status": "expected_gate",
+                    "external_call_count_max": 0,
+                    "next_action": "Use per-candidate LLM review later.",
+                },
+            ],
+        },
+    }
+
+    screen = render_dashboard_tui(payload, page="run", width=150)
+
+    assert "Latest run" in screen
+    assert "partial success" in screen
+    assert "Call plan" in screen
+    assert "live calls planned" in screen
+    assert "live call planned" in screen
+    assert "expected gate" in screen
+    assert "partial_success" not in screen
+    assert "live_calls_planned" not in screen
+    assert "live_call_planned" not in screen
+    assert "expected_gate" not in screen
 
 
 def test_alias_analysis_pages_have_specific_next_actions() -> None:
