@@ -1995,7 +1995,10 @@ def test_dashboard_ops_empty_state_names_empty_sections_and_setup_first(
     assert "Ops Setup Gate" in output.out
     assert "Can Ops diagnose runs?   : Not yet. No real scan rows exist." in output.out
     assert "First blocker            : Clear Active universe first" in output.out
-    assert "Seed or refresh the stock universe" in output.out
+    assert "Do first                 : Seed or refresh the universe" in output.out
+    assert "PowerShell command       : catalyst-radar ingest-" in output.out
+    assert "Where to run             : Run it in a normal PowerShell prompt" in output.out
+    assert "not in the dashboard command box" in output.out
     assert "Hidden for now" in output.out
     assert "NEXT SAFE ACTION: Research-only. First setup: Active universe." in output.out
     assert "Source Fill Workflow" not in output.out

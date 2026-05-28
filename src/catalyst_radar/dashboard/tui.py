@@ -12578,31 +12578,59 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
 
 
 def _ops_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    blocker = _readiness_first_setup_blocker(payload)
     next_action = _no_real_result_next_action(
         payload,
         _mapping(payload.get("real_results")),
     )
+    blocker_label = next_action
+    do_first = ""
+    if blocker:
+        area = _human_source_name(blocker.get("area") or "setup blocker")
+        blocker_label = f"Clear {area} first."
+        do_first = _humanize_dashboard_text(blocker.get("next_action"))
+    command = _first_scan_setup_command(payload)
+    setup_rows: list[tuple[str, object]] = [
+        ("Can Ops diagnose runs?", "Not yet. No real scan rows exist."),
+        ("First blocker", blocker_label),
+    ]
+    if do_first:
+        setup_rows.append(("Do first", do_first))
+    if command:
+        setup_rows.extend(
+            [
+                ("PowerShell command", command),
+                (
+                    "Where to run",
+                    (
+                        "Run it in a normal PowerShell prompt, not in the "
+                        "dashboard command box."
+                    ),
+                ),
+            ]
+        )
+    setup_rows.extend(
+        [
+            (
+                "Still useful",
+                (
+                    "Database, provider health, and recent jobs below are local "
+                    "diagnostics; viewing them makes 0 calls."
+                ),
+            ),
+            (
+                "Hidden for now",
+                (
+                    "Source-fill tables and batch commands appear after setup, "
+                    "when they can repair real scan evidence."
+                ),
+            ),
+        ]
+    )
     lines = [_rule("Ops Setup Gate", width)]
     lines.extend(
         _kv_lines(
-            (
-                ("Can Ops diagnose runs?", "Not yet. No real scan rows exist."),
-                ("First blocker", next_action),
-                (
-                    "Still useful",
-                    (
-                        "Database, provider health, and recent jobs below are local "
-                        "diagnostics; viewing them makes 0 calls."
-                    ),
-                ),
-                (
-                    "Hidden for now",
-                    (
-                        "Source-fill tables and batch commands appear after setup, "
-                        "when they can repair real scan evidence."
-                    ),
-                ),
-            ),
+            setup_rows,
             width=width,
         )
     )
