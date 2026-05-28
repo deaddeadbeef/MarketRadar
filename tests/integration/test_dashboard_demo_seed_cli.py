@@ -1807,9 +1807,15 @@ def test_dashboard_ops_empty_state_names_empty_sections_and_setup_first(
     assert "Provider health: no local provider checks recorded." in output.out
     assert "Recent Jobs" in output.out
     assert "Recent jobs: no local job rows recorded." in output.out
-    assert "Blocker                  : First setup: Active universe" in output.out
-    assert "Next                     : Seed or refresh the stock universe" in output.out
+    assert "Ops Setup Gate" in output.out
+    assert "Can Ops diagnose runs?   : Not yet. No real scan rows exist." in output.out
+    assert "First blocker            : Clear Active universe first" in output.out
+    assert "Seed or refresh the stock universe" in output.out
+    assert "Hidden for now" in output.out
     assert "NEXT SAFE ACTION: Research-only. First setup: Active universe." in output.out
+    assert "Source Fill Workflow" not in output.out
+    assert "Visible Review Page Source Gaps" not in output.out
+    assert "batch <source>" not in output.out
     assert "Coverage-first: market bars" not in output.out
     assert "Next                     : Type batch market_bars" not in output.out
     assert "No rows." not in output.out

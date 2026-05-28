@@ -12303,18 +12303,26 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Direct provider fill: "
             f"{_clip(provider_fill_summary, max(20, width - 24))}"
         )
-    source_actions = [
-        {
-            **action,
-            "source_label": _human_source_name(action.get("source")),
-            "status_label": _human_status_label(action.get("status")),
-            "gap_rows": _source_action_gap_count(action),
-            "examples": _source_action_sample_tickers(action),
-            "batch_plan": action.get("batch_plan_command") or action.get("command"),
-        }
-        for action in _rows(_mapping(payload.get("priced_in_source_coverage")).get("actions"))
-        if str(action.get("status") or "") not in {"ready", "not_applicable"}
-    ]
+    setup_locked = _real_results_empty(payload)
+    if setup_locked:
+        lines.append("")
+        lines.extend(_ops_setup_locked_lines(payload, width))
+    source_actions = []
+    if not setup_locked:
+        source_actions = [
+            {
+                **action,
+                "source_label": _human_source_name(action.get("source")),
+                "status_label": _human_status_label(action.get("status")),
+                "gap_rows": _source_action_gap_count(action),
+                "examples": _source_action_sample_tickers(action),
+                "batch_plan": action.get("batch_plan_command") or action.get("command"),
+            }
+            for action in _rows(
+                _mapping(payload.get("priced_in_source_coverage")).get("actions")
+            )
+            if str(action.get("status") or "") not in {"ready", "not_applicable"}
+        ]
     if source_actions:
         lines.append("")
         lines.append(_rule("Visible Review Page Source Gaps", width))
@@ -12344,7 +12352,7 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 width,
             )
         )
-    workflow_lines = _source_workflow_lines(payload, width)
+    workflow_lines = [] if setup_locked else _source_workflow_lines(payload, width)
     if workflow_lines:
         lines.append("")
         lines.extend(workflow_lines)
@@ -12388,6 +12396,38 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     else:
         lines.append("Recent jobs: no local job rows recorded.")
+    return lines
+
+
+def _ops_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    next_action = _no_real_result_next_action(
+        payload,
+        _mapping(payload.get("real_results")),
+    )
+    lines = [_rule("Ops Setup Gate", width)]
+    lines.extend(
+        _kv_lines(
+            (
+                ("Can Ops diagnose runs?", "Not yet. No real scan rows exist."),
+                ("First blocker", next_action),
+                (
+                    "Still useful",
+                    (
+                        "Database, provider health, and recent jobs below are local "
+                        "diagnostics; viewing them makes 0 calls."
+                    ),
+                ),
+                (
+                    "Hidden for now",
+                    (
+                        "Source-fill tables and batch commands appear after setup, "
+                        "when they can repair real scan evidence."
+                    ),
+                ),
+            ),
+            width=width,
+        )
+    )
     return lines
 
 
