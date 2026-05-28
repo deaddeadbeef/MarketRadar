@@ -3338,8 +3338,16 @@ def test_dashboard_sec_cik_commands_are_zero_call_operator_actions(
     assert "cik validate" in help_screen
     assert "cik import" in help_screen
 
-def test_dashboard_start_page_alias_opens_latest_scan_results() -> None:
+def test_dashboard_start_page_alias_opens_tutorial() -> None:
     screen = render_dashboard_tui({}, page="start", width=120)
+
+    assert "Page: Start" in screen
+    assert "Tutorial - your first 90 seconds" in screen
+    assert "NEXT SAFE ACTION: Start with Inbox: press 1 or click Inbox" in screen
+
+
+def test_dashboard_inbox_page_alias_opens_latest_scan_results() -> None:
+    screen = render_dashboard_tui({}, page="inbox", width=120)
 
     assert "Page: Inbox" in screen
     assert "Market Inbox" in screen
