@@ -12503,6 +12503,27 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
 
 def _help_lines(width: int) -> list[str]:
     lines = [_rule("Help", width)]
+    lines.extend(
+        _wrap(
+            (
+                "First commands: start opens the walkthrough; inbox shows scan "
+                "messages; 2 shows evidence blockers; 3 reviews the call budget; "
+                "q exits."
+            ),
+            width,
+        )
+    )
+    lines.extend(
+        _wrap(
+            (
+                "Browsing, clicking, filtering, and refresh make 0 provider calls. "
+                "Commands with execute are deliberate actions."
+            ),
+            width,
+        )
+    )
+    lines.append("")
+    lines.append(_rule("Command Reference", width))
     commands = [
         ("0..10 or page name", "Switch page."),
         ("features", "List current Market Radar features and where they live in the TUI."),
