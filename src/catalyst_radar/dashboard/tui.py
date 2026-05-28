@@ -6217,25 +6217,34 @@ def _header_lines(
         else "false"
     )
     view_label = _priced_in_view_label(payload)
-    return [
-        _rule("Market Radar Terminal Dashboard", width, char="="),
-        (
-            f"Page: {page} | "
-            f"View: {view_label} | "
-            f"Answer: {_human_label(answer_status)} "
-            f"ready={answer_ready} | "
-            f"Trade status: {_human_label(readiness.get('status') or 'unknown')} | "
-            f"Trade safe: {_text(readiness.get('safe_to_make_investment_decision'))} | "
-            f"External calls made: {_text(payload.get('external_calls_made', 0))}"
-        ),
-        (
-            f"DB: {_nested(runtime, 'database', 'name') or 'n/a'} | "
-            f"Build: {_nested(runtime, 'build', 'commit') or 'n/a'} | "
-            f"Ticker: {controls.get('ticker') or 'all'} | "
-            f"Cutoff: {controls.get('available_at') or 'latest'}"
-        ),
-        NAVIGATION_TEXT,
-    ]
+    lines = [_rule("Market Radar Terminal Dashboard", width, char="=")]
+    lines.extend(
+        _wrap(
+            (
+                f"Page: {page} | "
+                f"View: {view_label} | "
+                f"Answer: {_human_label(answer_status)} "
+                f"ready={answer_ready} | "
+                f"Trade status: {_human_label(readiness.get('status') or 'unknown')} | "
+                f"Trade safe: {_text(readiness.get('safe_to_make_investment_decision'))} | "
+                f"External calls made: {_text(payload.get('external_calls_made', 0))}"
+            ),
+            width,
+        )
+    )
+    lines.extend(
+        _wrap(
+            (
+                f"DB: {_nested(runtime, 'database', 'name') or 'n/a'} | "
+                f"Build: {_nested(runtime, 'build', 'commit') or 'n/a'} | "
+                f"Ticker: {controls.get('ticker') or 'all'} | "
+                f"Cutoff: {controls.get('available_at') or 'latest'}"
+            ),
+            width,
+        )
+    )
+    lines.extend(_wrap(NAVIGATION_TEXT, width))
+    return lines
 
 
 def _priced_in_view_label(payload: Mapping[str, object]) -> str:
@@ -7490,7 +7499,7 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append("")
         lines.extend(_novice_empty_scan_lines(width))
         lines.append("")
-        lines.append(_market_inbox_caption(payload))
+        lines.extend(_wrap(_market_inbox_caption(payload), width))
         return lines
     lines.append(
         "Latest scan results now arrive in Market Inbox as messages to triage."
@@ -7635,16 +7644,17 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     else:
         lines.extend(_novice_empty_scan_lines(width))
     lines.append("")
-    lines.append(_market_inbox_caption(payload))
+    lines.extend(_wrap(_market_inbox_caption(payload), width))
     return lines
 
 
 def _novice_cockpit_lines(payload: Mapping[str, object], width: int) -> list[str]:
-    lines = [
+    lines = _wrap(
         "MarketRadar answers one question: has market emotion toward a stock already "
         "been priced in?",
-        "Core question: has market emotion been fully priced in?",
-    ]
+        width,
+    )
+    lines.append("Core question: has market emotion been fully priced in?")
     for card in _novice_cockpit_cards(payload):
         lines.append(
             f"{card['label']}: "
@@ -7768,7 +7778,7 @@ def _review_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.append("")
-    lines.append(_decision_review_caption(payload, rows))
+    lines.extend(_wrap(_decision_review_caption(payload, rows), width))
     return lines
 
 
@@ -8931,9 +8941,12 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
     lines.append("")
-    lines.append(
-        "Operational note: execute live runs only after this call plan matches intent. "
-        "Type `run execute` to start one capped cycle."
+    lines.extend(
+        _wrap(
+            "Operational note: execute live runs only after this call plan matches intent. "
+            "Type `run execute` to start one capped cycle.",
+            width,
+        )
     )
     return lines
 
@@ -9675,9 +9688,12 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.extend(_no_real_result_lines(payload, width))
         return lines
     if not decision_safe:
-        lines.append(
-            "Research-only: candidates are inspection targets, not trade ideas. "
-            "Press 2 Evidence Gaps before acting."
+        lines.extend(
+            _wrap(
+                "Research-only: candidates are inspection targets, not trade ideas. "
+                "Press 2 Evidence Gaps before acting.",
+                width,
+            )
         )
     lines.extend(
         _table_lines(
@@ -9696,12 +9712,18 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
             limit=30,
         )
     )
-    lines.append(
-        "Gap is emotion minus price reaction. Positive gap means the market may not "
-        "have fully priced the catalyst."
+    lines.extend(
+        _wrap(
+            "Gap is emotion minus price reaction. Positive gap means the market may not "
+            "have fully priced the catalyst.",
+            width,
+        )
     )
-    lines.append(
-        "Use `open <#|ticker>` to inspect a candidate; this is not trade approval."
+    lines.extend(
+        _wrap(
+            "Use `open <#|ticker>` to inspect a candidate; this is not trade approval.",
+            width,
+        )
     )
     return lines
 
@@ -9990,7 +10012,7 @@ def _alert_evidence_summary(row: Mapping[str, object]) -> str:
 def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = _rows(_mapping(payload.get("alerts")).get("rows"))
     lines = [_rule("Alerts", width)]
-    lines.append("Alerts are research notifications, not trade signals or orders.")
+    lines.extend(_wrap("Alerts are research notifications, not trade signals or orders.", width))
     lines.extend(
         _table_lines(
             _indexed(rows),
@@ -10007,9 +10029,12 @@ def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
             limit=16,
         )
     )
-    lines.append(
-        "Use `open <#|id>` to review; `feedback <#|id> <label> [notes]` "
-        "records local review only."
+    lines.extend(
+        _wrap(
+            "Use `open <#|id>` to review; `feedback <#|id> <label> [notes]` "
+            "records local review only.",
+            width,
+        )
     )
     return lines
 
@@ -10564,8 +10589,13 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width=width,
         )
     )
-    lines.append("Trading safety: order submission remains disabled unless explicitly configured.")
-    lines.append(_broker_next_safe_action(payload))
+    lines.extend(
+        _wrap(
+            "Trading safety: order submission remains disabled unless explicitly configured.",
+            width,
+        )
+    )
+    lines.extend(_wrap(_broker_next_safe_action(payload), width))
     lines.append("")
     action_rows = _rows(broker.get("opportunity_actions"))
     lines.append(_rule("Local Watch Actions", width))
@@ -10585,9 +10615,12 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
     else:
-        lines.append(
-            "No saved watch/ready/dismiss actions yet. Use `action <ticker> watch` "
-            "after reviewing a candidate."
+        lines.extend(
+            _wrap(
+                "No saved watch/ready/dismiss actions yet. Use `action <ticker> watch` "
+                "after reviewing a candidate.",
+                width,
+            )
         )
     lines.append("")
     trigger_rows = _rows(broker.get("triggers"))
@@ -10609,9 +10642,12 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
     else:
-        lines.append(
-            "No saved local trigger rules yet. Use `trigger <ticker> <type> <op> "
-            "<threshold>` only after research review."
+        lines.extend(
+            _wrap(
+                "No saved local trigger rules yet. Use `trigger <ticker> <type> <op> "
+                "<threshold>` only after research review.",
+                width,
+            )
         )
     lines.append("")
     ticket_rows = _rows(broker.get("order_tickets"))
@@ -10633,14 +10669,20 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
     else:
-        lines.append(
-            "No blocked order tickets yet. Tickets are local previews; they do not "
-            "submit broker orders."
+        lines.extend(
+            _wrap(
+                "No blocked order tickets yet. Tickets are local previews; they do not "
+                "submit broker orders.",
+                width,
+            )
         )
-    lines.append(
-        "Commands: action <ticker> <watch|ready|simulate_entry|dismiss>, "
-        "trigger <ticker> <type> <op> <threshold>, eval-triggers [ticker], "
-        "ticket <ticker> <buy|sell> <entry> <stop>."
+    lines.extend(
+        _wrap(
+            "Commands: action <ticker> <watch|ready|simulate_entry|dismiss>, "
+            "trigger <ticker> <type> <op> <threshold>, eval-triggers [ticker], "
+            "ticket <ticker> <buy|sell> <entry> <stop>.",
+            width,
+        )
     )
     return lines
 
@@ -11684,15 +11726,18 @@ def _footer_lines(
 ) -> list[str]:
     snapshot = _mapping(payload)
     action = _footer_next_action(snapshot, page)
-    return [
+    lines = [
         _rule("Next Safe Action", width),
         f"NEXT SAFE ACTION: {_clip(action, max(20, width - 19))}",
-        f"Cost before execute: {_execution_cost_summary(snapshot)}",
-        _rule("Last Response", width),
-        "LAST RESPONSE: Ready. No command has run in this view.",
-        _rule("Commands", width),
-        "Type a page name, number, filter command, refresh, json, help, or q.",
     ]
+    lines.extend(_wrap(f"Cost before execute: {_execution_cost_summary(snapshot)}", width))
+    lines.append(_rule("Last Response", width))
+    lines.extend(_wrap("LAST RESPONSE: Ready. No command has run in this view.", width))
+    lines.append(_rule("Commands", width))
+    lines.extend(
+        _wrap("Type a page name, number, filter command, refresh, json, help, or q.", width)
+    )
+    return lines
 
 
 def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
