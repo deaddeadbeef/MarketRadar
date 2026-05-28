@@ -3287,6 +3287,49 @@ def test_evidence_gaps_footer_names_first_must_fix_gap() -> None:
     assert "Use the workflow navigation or open the highlighted row" not in readiness
 
 
+def test_broker_page_labels_empty_local_artifact_sections() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+        "broker": {
+            "snapshot": {
+                "connection_status": "needs_auth",
+                "broker": "schwab",
+                "last_successful_sync_at": "never",
+                "account_count": 0,
+                "position_count": 0,
+                "open_order_count": 0,
+            },
+            "exposure": {
+                "broker_connected": False,
+                "read_only": True,
+                "order_submission_enabled": False,
+                "portfolio_equity": 0,
+            },
+            "opportunity_actions": [],
+            "triggers": [],
+            "order_tickets": [],
+        },
+    }
+
+    broker = render_dashboard_tui(payload, page="broker", width=150)
+
+    assert "Broker / Portfolio" in broker
+    assert "No rows." not in broker
+    assert "Local Watch Actions" in broker
+    assert "No saved watch/ready/dismiss actions yet" in broker
+    assert "Local Trigger Rules" in broker
+    assert "No saved local trigger rules yet" in broker
+    assert "Blocked Order Tickets" in broker
+    assert "No blocked order tickets yet" in broker
+    assert "NEXT SAFE ACTION: Broker needs_auth; browsing makes 0 Schwab calls" in broker
+
+
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
@@ -6302,6 +6345,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "broker"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Broker safety and Schwab sync status" in frame
+            assert "BROKER SAFETY" in frame
+            assert "0 Schwab calls" in frame
             assert "Schwab connection" in frame
             assert "Order safety" in frame
             assert "No Schwab call made" not in frame

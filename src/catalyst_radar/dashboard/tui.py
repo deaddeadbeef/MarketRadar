@@ -2303,11 +2303,30 @@ class MarketRadarDashboardApp(App[int]):
                 ]
             )
         if page == "broker":
+            broker = _mapping(self.payload.get("broker"))
+            snapshot = _mapping(broker.get("snapshot"))
+            exposure = _mapping(broker.get("exposure"))
+            connection = str(
+                snapshot.get("connection_status")
+                or exposure.get("connection_status")
+                or "missing"
+            )
+            orders_enabled = bool(exposure.get("order_submission_enabled"))
+            order_status = "enabled" if orders_enabled else "disabled"
             return "\n".join(
                 [
-                    "[bold #7ee787]USE THIS PAGE[/] Save local review artifacts only.",
-                    "[bold]Safety:[/] real order submission is disabled.",
-                    "[bold]Do next:[/] action <ticker> watch|ready|simulate_entry|dismiss.",
+                    (
+                        "[bold #7ee787]BROKER SAFETY[/] Portfolio context only; "
+                        "not trade approval."
+                    ),
+                    (
+                        f"[bold]Connection:[/] {connection}; "
+                        f"[bold]orders:[/] {order_status}; browsing makes 0 Schwab calls."
+                    ),
+                    (
+                        "[bold]Do next:[/] use local watch/trigger/ticket artifacts only, "
+                        "or authenticate Schwab intentionally."
+                    ),
                 ]
             )
         if page == "ops":
@@ -10448,6 +10467,33 @@ def _broker_status_rows(broker: Mapping[str, object]) -> list[Mapping[str, objec
     return rows
 
 
+def _broker_next_safe_action(payload: Mapping[str, object]) -> str:
+    broker = _mapping(payload.get("broker"))
+    snapshot = _mapping(broker.get("snapshot"))
+    exposure = _mapping(broker.get("exposure"))
+    connected = bool(exposure.get("broker_connected"))
+    connection_status = str(
+        snapshot.get("connection_status")
+        or exposure.get("connection_status")
+        or ("connected" if connected else "missing")
+    ).strip()
+    orders_enabled = bool(exposure.get("order_submission_enabled"))
+    if orders_enabled:
+        return (
+            "Order submission appears enabled. Verify broker policy before any "
+            "broker action."
+        )
+    if not connected or connection_status.lower() not in {"connected", "ready"}:
+        return (
+            f"Broker {connection_status or 'missing'}; browsing makes 0 Schwab "
+            "calls. Authenticate only when you want portfolio context."
+        )
+    return (
+        "Broker is read-only context. Use local watch/trigger/ticket artifacts "
+        "only; orders stay disabled."
+    )
+
+
 def _telemetry_event_rows(telemetry: Mapping[str, object]) -> list[Mapping[str, object]]:
     events = _rows(telemetry.get("events"))
     if events:
@@ -10485,53 +10531,78 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.append("Trading safety: order submission remains disabled unless explicitly configured.")
+    lines.append(_broker_next_safe_action(payload))
     lines.append("")
-    lines.extend(
-        _table_lines(
-            _rows(broker.get("opportunity_actions")),
-            [
-                ("ticker", "Ticker", 8),
-                ("action", "Action", 16),
-                ("status", "Status", 12),
-                ("notes", "Notes", 48),
-                ("created_at", "Created", 24),
-            ],
-            width=width,
-            limit=8,
+    action_rows = _rows(broker.get("opportunity_actions"))
+    lines.append(_rule("Local Watch Actions", width))
+    if action_rows:
+        lines.extend(
+            _table_lines(
+                action_rows,
+                [
+                    ("ticker", "Ticker", 8),
+                    ("action", "Action", 16),
+                    ("status", "Status", 12),
+                    ("notes", "Notes", 48),
+                    ("created_at", "Created", 24),
+                ],
+                width=width,
+                limit=8,
+            )
         )
-    )
+    else:
+        lines.append(
+            "No saved watch/ready/dismiss actions yet. Use `action <ticker> watch` "
+            "after reviewing a candidate."
+        )
     lines.append("")
-    lines.extend(
-        _table_lines(
-            _rows(broker.get("triggers")),
-            [
-                ("ticker", "Ticker", 8),
-                ("trigger_type", "Trigger", 24),
-                ("operator", "Op", 6),
-                ("threshold", "Threshold", 12),
-                ("status", "Status", 12),
-                ("latest_value", "Latest", 12),
-            ],
-            width=width,
-            limit=8,
+    trigger_rows = _rows(broker.get("triggers"))
+    lines.append(_rule("Local Trigger Rules", width))
+    if trigger_rows:
+        lines.extend(
+            _table_lines(
+                trigger_rows,
+                [
+                    ("ticker", "Ticker", 8),
+                    ("trigger_type", "Trigger", 24),
+                    ("operator", "Op", 6),
+                    ("threshold", "Threshold", 12),
+                    ("status", "Status", 12),
+                    ("latest_value", "Latest", 12),
+                ],
+                width=width,
+                limit=8,
+            )
         )
-    )
+    else:
+        lines.append(
+            "No saved local trigger rules yet. Use `trigger <ticker> <type> <op> "
+            "<threshold>` only after research review."
+        )
     lines.append("")
-    lines.extend(
-        _table_lines(
-            _rows(broker.get("order_tickets")),
-            [
-                ("ticker", "Ticker", 8),
-                ("side", "Side", 8),
-                ("entry_price", "Entry", 12),
-                ("invalidation_price", "Stop", 12),
-                ("status", "Status", 14),
-                ("submission_allowed", "Submit", 8),
-            ],
-            width=width,
-            limit=8,
+    ticket_rows = _rows(broker.get("order_tickets"))
+    lines.append(_rule("Blocked Order Tickets", width))
+    if ticket_rows:
+        lines.extend(
+            _table_lines(
+                ticket_rows,
+                [
+                    ("ticker", "Ticker", 8),
+                    ("side", "Side", 8),
+                    ("entry_price", "Entry", 12),
+                    ("invalidation_price", "Stop", 12),
+                    ("status", "Status", 14),
+                    ("submission_allowed", "Submit", 8),
+                ],
+                width=width,
+                limit=8,
+            )
         )
-    )
+    else:
+        lines.append(
+            "No blocked order tickets yet. Tickets are local previews; they do not "
+            "submit broker orders."
+        )
     lines.append(
         "Commands: action <ticker> <watch|ready|simulate_entry|dismiss>, "
         "trigger <ticker> <type> <op> <threshold>, eval-triggers [ticker], "
@@ -11596,6 +11667,8 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
                 "local feedback."
             )
         return "No alert rows yet. Alerts are research notifications, not trade signals."
+    if page == "broker":
+        return _broker_next_safe_action(payload)
     if page == "agent":
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     return "Use the workflow navigation or open the highlighted row."
