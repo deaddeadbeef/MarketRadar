@@ -3019,6 +3019,26 @@ def test_alias_analysis_pages_have_specific_next_actions() -> None:
         assert "Use the workflow navigation or open the highlighted row" not in rendered
 
 
+def test_empty_validation_page_explains_missing_report() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "validation": {"report": {}, "latest_run": {}},
+    }
+
+    rendered = render_dashboard_tui(payload, page="validation", width=120)
+
+    assert "No validation report yet" in rendered
+    assert "Keep this research-only" in rendered
+    assert "Latest run" not in rendered
+    assert "Candidate count" not in rendered
+    assert " : n/a" not in rendered
+
+
 def test_dashboard_text_render_respects_requested_width() -> None:
     width = 80
     pages = [
