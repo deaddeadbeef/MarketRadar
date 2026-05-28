@@ -1848,6 +1848,13 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "bars fresh; live data" not in output.out
     assert "Next action" in output.out
     assert "Start here: Run the PowerShell setup command" in output.out
+    assert "Setup check" in output.out
+    assert "Setup step" in output.out
+    assert "Setup budget" in output.out
+    assert "After setup" in output.out
+    assert "Trial gate" not in output.out
+    assert "Trial next" not in output.out
+    assert "Useful means" not in output.out
     assert "Current Work Queue" in output.out
     assert "Setup is not complete yet" in output.out
     assert "Hidden until setup is complete" in output.out

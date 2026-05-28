@@ -9234,38 +9234,43 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     )
     lines.append("")
     if shadow:
+        shadow_items = (
+            _readiness_setup_shadow_items(shadow, boundary)
+            if setup_first
+            else (
+                (
+                    "Trial gate",
+                    f"{_human_status_label(shadow.get('status'))}; "
+                    f"{_readiness_ready_label(shadow.get('ready'))}",
+                ),
+                (
+                    "Trial next",
+                    _humanize_dashboard_text(shadow.get("canonical_next_action")),
+                ),
+                (
+                    "Trial call budget",
+                    "readiness check: 0 calls, 0 writes; trial run max="
+                    f"{boundary.get('planned_run_external_call_count_max') or 0}",
+                ),
+                (
+                    "Latest trial run",
+                    (
+                        f"{_human_status_label(latest_shadow.get('status'))}; "
+                        f"run_date={latest_shadow.get('run_date') or 'n/a'}; "
+                        f"writes={latest_shadow.get('db_writes_made') or 0}"
+                    )
+                    if latest_shadow
+                    else "none recorded",
+                ),
+                (
+                    "Useful means",
+                    _humanize_dashboard_text(shadow.get("useful_definition")),
+                ),
+            )
+        )
         lines.extend(
             _kv_lines(
-                (
-                    (
-                        "Trial gate",
-                        f"{_human_status_label(shadow.get('status'))}; "
-                        f"{_readiness_ready_label(shadow.get('ready'))}",
-                    ),
-                    (
-                        "Trial next",
-                        _humanize_dashboard_text(shadow.get("canonical_next_action")),
-                    ),
-                    (
-                        "Trial call budget",
-                        "readiness check: 0 calls, 0 writes; trial run max="
-                        f"{boundary.get('planned_run_external_call_count_max') or 0}",
-                    ),
-                    (
-                        "Latest trial run",
-                        (
-                            f"{_human_status_label(latest_shadow.get('status'))}; "
-                            f"run_date={latest_shadow.get('run_date') or 'n/a'}; "
-                            f"writes={latest_shadow.get('db_writes_made') or 0}"
-                        )
-                        if latest_shadow
-                        else "none recorded",
-                    ),
-                    (
-                        "Useful means",
-                        _humanize_dashboard_text(shadow.get("useful_definition")),
-                    ),
-                ),
+                shadow_items,
                 width=width,
             )
         )
@@ -9386,6 +9391,35 @@ def _readiness_setup_ladder_action(row: Mapping[str, object]) -> str:
     if code == "trust_gate":
         return "Review results after setup."
     return "Set up this blocker first."
+
+
+def _readiness_setup_shadow_items(
+    shadow: Mapping[str, object],
+    boundary: Mapping[str, object],
+) -> tuple[tuple[str, object], ...]:
+    max_calls = int(_number_or_zero(
+        boundary.get("planned_run_external_call_count_max")
+    ))
+    return (
+        (
+            "Setup check",
+            f"{_human_status_label(shadow.get('status'))}; "
+            f"{_readiness_ready_label(shadow.get('ready'))}",
+        ),
+        (
+            "Setup step",
+            "Seed or refresh the universe with the PowerShell command above; "
+            "do not type it in the dashboard.",
+        ),
+        (
+            "Setup budget",
+            f"readiness check: 0 calls, 0 writes; setup run max={max_calls}",
+        ),
+        (
+            "After setup",
+            "Fill latest bars next, then use Safe Run for one capped scan.",
+        ),
+    )
 
 
 def _readiness_table_rows(value: object) -> list[Mapping[str, object]]:
