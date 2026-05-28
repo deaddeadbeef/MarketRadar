@@ -6389,8 +6389,7 @@ def _tutorial_control_rows(
                 "step": "1",
                 "do": "Read Mission setup command",
                 "result": (
-                    "Run the PowerShell command outside the dashboard only if "
-                    "you accept the provider call or data write."
+                    "If you accept the call/write, run it in PowerShell."
                 ),
             },
             {
