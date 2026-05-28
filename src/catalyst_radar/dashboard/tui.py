@@ -12790,8 +12790,8 @@ def _help_lines(width: int) -> list[str]:
         _wrap(
             (
                 "First commands: start opens the walkthrough; inbox shows scan "
-                "messages; 2 shows evidence blockers; 3 reviews the call budget; "
-                "q exits."
+                "messages; evidence gaps shows blockers; safe run reviews the "
+                "call budget; q exits."
             ),
             width,
         )
@@ -12808,9 +12808,15 @@ def _help_lines(width: int) -> list[str]:
     lines.append("")
     lines.append(_rule("Command Reference", width))
     commands = [
-        ("0..10 or page name", "Switch page."),
+        (
+            "0..10 or page name",
+            (
+                "Switch page; labels include inbox, evidence gaps, safe run, "
+                "and candidate review."
+            ),
+        ),
         ("features", "List current Market Radar features and where they live in the TUI."),
-        ("open <#|ticker>", "Open a candidate from the candidates page."),
+        ("open <#|ticker>", "Open a candidate from Candidate Review."),
         ("open <#|alert-id>", "Open an alert from the alerts page."),
         ("ticker <SYMBOL|all>", "Filter candidate-adjacent pages by ticker where supported."),
         ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),

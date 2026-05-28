@@ -3534,11 +3534,16 @@ def test_dashboard_visible_page_names_work_as_aliases() -> None:
 
 def test_dashboard_help_starts_with_first_commands() -> None:
     screen = render_dashboard_tui({}, page="help", width=120)
+    normalized = " ".join(screen.split())
 
     assert "First commands: start opens the walkthrough" in screen
     assert "inbox shows scan messages" in screen
+    assert "evidence gaps shows blockers" in screen
+    assert "safe run reviews the call budget" in normalized
     assert "Commands with execute are deliberate actions" in screen
     assert "Command Reference" in screen
+    assert "candidate review" in screen
+    assert "Open a candidate from Candidate Review" in screen
     assert "batch <source> execute" in screen
 
 
