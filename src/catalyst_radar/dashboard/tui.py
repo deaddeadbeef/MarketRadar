@@ -9650,9 +9650,9 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
                 "kind": "Gate",
                 "item": f"Real results: {status}",
                 "detail": (
-                    f"rows={real_results.get('row_count', 0)}; "
-                    f"latest_run={real_results.get('latest_run_id') or 'n/a'}; "
-                    f"next={_humanize_dashboard_text(real_results.get('next_action'))}"
+                    f"rows {real_results.get('row_count', 0)}; "
+                    f"latest run {real_results.get('latest_run_id') or 'n/a'}; "
+                    f"next {_human_agent_text(real_results.get('next_action'))}"
                 ),
             }
         )
@@ -9677,7 +9677,7 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
             {
                 "kind": "Agent",
                 "item": agent.get("agent") or "agent",
-                "detail": _humanize_dashboard_text(
+                "detail": _human_agent_text(
                     agent.get("summary") or agent.get("role") or ""
                 ),
             }
@@ -9687,7 +9687,7 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
             {
                 "kind": "Insight",
                 "item": str(index),
-                "detail": _humanize_dashboard_text(insight),
+                "detail": _human_agent_text(insight),
             }
         )
     for index, action in enumerate(_texts(brief.get("next_actions")), start=1):
@@ -9695,7 +9695,7 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
             {
                 "kind": "Next",
                 "item": str(index),
-                "detail": _humanize_dashboard_text(action),
+                "detail": _human_agent_text(action),
             }
         )
     for check in _rows(brief.get("security_checks")):
@@ -9705,7 +9705,7 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
             {
                 "kind": "Safety",
                 "item": f"{name}: {status}",
-                "detail": _humanize_dashboard_text(check.get("detail") or ""),
+                "detail": _human_agent_text(check.get("detail") or ""),
             }
         )
     if not rows:
@@ -9734,7 +9734,7 @@ def _agent_coach_summary_rows(brief: Mapping[str, object]) -> list[Mapping[str, 
         if runtime.get(key) is False:
             blocked_tools.append(label)
     blocked = ", ".join(blocked_tools) or "none"
-    next_action = str(
+    next_action = _human_agent_text(
         _first_nonblank(
             credit_gate.get("next_action"),
             real_results.get("next_action"),
@@ -9764,9 +9764,10 @@ def _agent_coach_summary_rows(brief: Mapping[str, object]) -> list[Mapping[str, 
             "kind": "Safety",
             "item": "What is blocked?",
             "detail": (
-                f"real gate={runtime.get('real_mode_gate_status') or 'unknown'}; "
-                f"credit={credit_status}; "
-                f"blocked tools={blocked}."
+                "real mode gate: "
+                f"{_human_status_label(runtime.get('real_mode_gate_status') or 'unknown')}; "
+                f"credit: {_human_status_label(credit_status)}; "
+                f"blocked tools: {blocked}."
             ),
         },
         {
@@ -9791,9 +9792,11 @@ def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
         " ",
     )
     tools = str(runtime.get("tool_surface") or "read_only_snapshot_tools").replace("_", " ")
-    gate = str(runtime.get("real_mode_gate_status") or "unknown")
-    real_results_gate = str(runtime.get("real_results_gate_status") or "unknown")
-    credit_gate = str(runtime.get("credit_gate_status") or "unknown")
+    gate = _human_status_label(runtime.get("real_mode_gate_status") or "unknown")
+    real_results_gate = _human_status_label(
+        runtime.get("real_results_gate_status") or "unknown"
+    )
+    credit_gate = _human_status_label(runtime.get("credit_gate_status") or "unknown")
     blocked_tools: list[str] = []
     if runtime.get("external_market_tools") is False:
         blocked_tools.append("market")
@@ -11906,7 +11909,7 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.extend(_wrap(f"Runtime: {_agent_runtime_label(runtime)}", width))
     boundary = brief.get("decision_boundary")
     if boundary:
-        lines.extend(_wrap(f"Boundary: {_humanize_dashboard_text(boundary)}", width))
+        lines.extend(_wrap(f"Boundary: {_human_agent_text(boundary)}", width))
     lines.extend(
         _table_lines(
             _agent_brief_rows(brief),
@@ -12298,6 +12301,28 @@ def _human_source_status_text(value: object) -> str:
     )
     for human_command, command in command_replacements:
         text = text.replace(human_command, command)
+    return text
+
+
+def _human_agent_text(value: object) -> str:
+    text = _human_source_status_text(value)
+    replacements = (
+        ("AddToWatchlist", "add to watchlist"),
+        ("residual_universe_review", "residual universe review"),
+        ("manual_csv", "manual CSV"),
+        ("selected_universe", "selected universe"),
+        ("full_market", "full market"),
+        ("latest_run=", "latest run "),
+        ("status=", "status "),
+        ("calls=", "calls "),
+        ("command=", "command "),
+        ("next=", "next "),
+        ("rows=", "rows "),
+        ("steps=", "steps "),
+        ("coverage-first=", "coverage-first "),
+    )
+    for raw, replacement in replacements:
+        text = text.replace(raw, replacement)
     return text
 
 

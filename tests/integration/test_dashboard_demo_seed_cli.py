@@ -3989,6 +3989,10 @@ def test_dashboard_humanizes_internal_status_tokens() -> None:
                         "summary": "Readiness is research_only; no calls made.",
                     },
                     {
+                        "agent": "Catalyst Analyst",
+                        "summary": "Top candidate is ACME in AddToWatchlist state.",
+                    },
+                    {
                         "agent": "Risk Officer",
                         "summary": (
                             "Broker read_only=True; "
@@ -4000,6 +4004,18 @@ def test_dashboard_humanizes_internal_status_tokens() -> None:
                     (
                         "Priced-in answer is blocked; decision_ready=false; "
                         "continue review."
+                    ),
+                    (
+                        "Recommended market-bar unblock: "
+                        "residual_universe_review status=blocked calls=0."
+                    ),
+                    (
+                        "Market-bar unblock options: manual_csv status=available "
+                        "calls=0 command=bars manual template."
+                    ),
+                    (
+                        "Priced-in queue is selected_universe: "
+                        "latest_run=n/a next=rerun."
                     )
                 ],
                 "next_actions": [],
@@ -4034,6 +4050,11 @@ def test_dashboard_humanizes_internal_status_tokens() -> None:
 
     assert "Mode: dry run" in agent
     assert "Readiness is research only" in agent
+    assert "add to watchlist" in agent
+    assert "residual universe review status blocked calls 0" in agent
+    assert "manual CSV status available calls 0 command bars ma" in agent
+    assert "selected universe" in agent
+    assert "latest run n/a next rerun" in agent
     assert "Broker read-only: yes; orders enabled: no" in agent
     assert "decision ready: no" in agent
     assert "Monthly value verdict" in costs
@@ -4044,6 +4065,11 @@ def test_dashboard_humanizes_internal_status_tokens() -> None:
     assert "Enabled" in ops
     for raw in (
         "research_only",
+        "AddToWatchlist",
+        "residual_universe_review",
+        "manual_csv",
+        "selected_universe",
+        "latest_run=",
         "decision_ready=false",
         "read_only=True",
         "order_submission_enabled=False",
@@ -7318,6 +7344,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "OpenAI calls" in frame
             assert "No calls made" in frame
             assert "Safe next action" in frame
+            assert "AddToWatchlist" not in frame
+            assert "residual_universe_review" not in frame
+            assert "manual_csv" not in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")
