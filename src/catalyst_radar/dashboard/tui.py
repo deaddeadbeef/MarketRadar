@@ -6752,7 +6752,7 @@ def _first_scan_setup_subject(source: str, index: int) -> str:
         "agent_review": "4. Add the AI review",
         "scan": "3. Run one capped scan",
     }
-    return subjects.get(source, f"{index}. Clear {(_human_label(source) or 'setup')}")
+    return subjects.get(source, f"{index}. Set up {(_human_label(source) or 'setup')}")
 
 
 def _first_scan_setup_why(source: str, next_action: str) -> str:
@@ -6776,7 +6776,7 @@ def _first_scan_setup_next(source: str, command: str, next_action: str) -> str:
         return "Approve budget in Agent Coach."
     if source == "scan":
         return "Review budget in Safe Run."
-    return next_action or "Open Evidence Gaps and clear this blocker first."
+    return next_action or "Open Evidence Gaps and set up this blocker first."
 
 
 def _first_scan_setup_target(source: str) -> str:
@@ -7876,9 +7876,14 @@ def _setup_command_footer_action(payload: Mapping[str, object]) -> str:
         blocker.get("area") if blocker else "setup blocker"
     )
     return (
-        f"Clear {area} first: run PowerShell command above after accepting "
+        f"{_setup_blocker_first_label(area)}: run PowerShell command above after accepting "
         "call/write."
     )
+
+
+def _setup_blocker_first_label(area: object) -> str:
+    label = _human_source_name(area or "setup blocker")
+    return f"Set up {label} first"
 
 
 def _no_real_result_next_action(
@@ -7890,7 +7895,7 @@ def _no_real_result_next_action(
         if blocker:
             area = _human_source_name(blocker.get("area") or "setup blocker")
             action = _humanize_dashboard_text(blocker.get("next_action"))
-            return f"Clear {area} first: {action}"
+            return f"{_setup_blocker_first_label(area)}: {action}"
     return (
         str(real_results.get("next_action") or "").strip()
         or "Run/import real market data, then rerun the priced-in answer."
@@ -9380,7 +9385,7 @@ def _readiness_setup_ladder_action(row: Mapping[str, object]) -> str:
         return "After setup, run one capped scan."
     if code == "trust_gate":
         return "Review results after setup."
-    return "Clear this setup blocker first."
+    return "Set up this blocker first."
 
 
 def _readiness_table_rows(value: object) -> list[Mapping[str, object]]:
@@ -9648,7 +9653,7 @@ def _run_required_path_text(
         blocker = _readiness_first_setup_blocker(payload)
         if blocker:
             area = _human_source_name(blocker.get("area") or "setup blocker")
-            return f"setup blocked; clear {area} first"
+            return f"setup blocked; {_setup_blocker_first_label(area)}"
     return "not started"
 
 
@@ -9660,7 +9665,7 @@ def _run_operational_note(payload: Mapping[str, object]) -> str:
             action = _humanize_dashboard_text(blocker.get("next_action"))
             return (
                 f"Operational note: Run execute is not the next step yet. "
-                f"Clear {area} first: {action}"
+                f"{_setup_blocker_first_label(area)}: {action}"
             )
     return (
         "Operational note: execute live runs only after this call plan matches intent. "
@@ -11575,7 +11580,7 @@ def _telemetry_event_rows(
     setup_note = ""
     if setup_blocker:
         area = str(setup_blocker.get("area") or "setup").strip()
-        setup_note = f" Clear {area} first."
+        setup_note = f" {_setup_blocker_first_label(area)}."
     return [
         {
             "_row_key": "telemetry-empty",
@@ -12702,7 +12707,7 @@ def _ops_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[s
     do_first = ""
     if blocker:
         area = _human_source_name(blocker.get("area") or "setup blocker")
-        blocker_label = f"Clear {area} first."
+        blocker_label = f"{_setup_blocker_first_label(area)}."
         do_first = _humanize_dashboard_text(blocker.get("next_action"))
     command = _first_scan_setup_command(payload)
     setup_rows: list[tuple[str, object]] = [
@@ -12794,7 +12799,7 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
         action = str(setup_blocker.get("next_action") or "").strip()
         setup_command = _first_scan_setup_command(payload)
         setup_items: list[tuple[str, object]] = [
-            ("Setup blocker", f"Clear {area} first."),
+            ("Setup blocker", f"{_setup_blocker_first_label(area)}."),
             ("Do first", action),
         ]
         if setup_command:
@@ -12857,7 +12862,7 @@ def _telemetry_domain_rows(
         return rows
     area = str(setup_blocker.get("area") or "setup").strip()
     action = str(setup_blocker.get("next_action") or "").strip()
-    setup_first = f"Clear {area} first"
+    setup_first = _setup_blocker_first_label(area)
     if action:
         setup_first = f"{setup_first}: {action}"
     for row in rows:

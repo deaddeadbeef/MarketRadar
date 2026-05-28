@@ -1316,13 +1316,13 @@ def test_dashboard_empty_candidates_points_to_first_setup_blocker(
     assert "No real result yet" in output.out
     assert "no market scan has run" in output.out
     assert "Required next step:" in output.out
-    assert "Clear Active universe first" in output.out
+    assert "Set up Active universe first" in output.out
     assert "Seed or refresh the universe" in output.out
     assert "Run setup commands in PowerShell" in output.out
     assert "not in the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
     assert "Why this page is blank" in output.out
-    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" not in output.out
     assert "Run/import real market data" not in output.out
     assert "External calls made: 0" in output.out
@@ -1355,7 +1355,7 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "OpenAI spend blocked" in output.out
     assert "market/broker/shell/web disabled" in normalized
     assert "NEXT SAFE ACTION:" in output.out
-    assert "Clear Active universe first" in output.out
+    assert "Set up Active universe first" in output.out
     assert "Continue only if you accept the data change or provider call" in normalized
     assert "Why this page is blank" in output.out
     assert "Do not run agent execute while this page says locked" in output.out
@@ -1390,12 +1390,12 @@ def test_dashboard_empty_decision_review_points_to_first_setup_blocker(
     assert output.err == ""
     assert "Page: Decision Review" in output.out
     assert "No real result yet" in output.out
-    assert "Clear Active universe first" in output.out
+    assert "Set up Active universe first" in output.out
     assert "Seed or refresh the universe" in output.out
     assert "Run setup commands in PowerShell" in output.out
     assert "not in the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
-    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "No decision-ready review rows. Fix Evidence Gaps" not in output.out
     assert "External calls made: 0" in output.out
 
@@ -1415,13 +1415,13 @@ def test_dashboard_empty_themes_points_to_first_setup_blocker(
     assert output.err == ""
     assert "Page: Themes" in output.out
     assert "No real result yet" in output.out
-    assert "Clear Active universe first" in output.out
+    assert "Set up Active universe first" in output.out
     assert "Seed or refresh the universe" in output.out
     assert "Run setup commands in PowerShell" in output.out
     assert "not in the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
     assert "Theme clusters appear only after real scan rows exist" in output.out
-    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "No rows." not in output.out
     assert "External calls made: 0" in output.out
 
@@ -1487,11 +1487,11 @@ def test_dashboard_broker_setup_state_defers_auth_on_empty_database(
     assert "Page: Broker" in output.out
     assert "Broker / Portfolio" in output.out
     assert "No real result yet" in output.out
-    assert "Clear Active universe first" in output.out
+    assert "Set up Active universe first" in output.out
     assert "Why this page is blank" in output.out
     assert "Broker context is optional later" in output.out
     assert "Browsing this page still makes 0 Schwab calls" in output.out
-    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "Authenticate only when you want portfolio context" not in output.out
     assert "Local Watch Actions" not in output.out
     assert "Local Trigger Rules" not in output.out
@@ -1854,7 +1854,7 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "Run PowerShell command above." in output.out
     assert "Clear the setup row first" not in output.out
     assert (
-        "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
+        "NEXT SAFE ACTION: Set up Active universe first: run PowerShell command"
         in output.out
     )
     assert "above after accepting call/write" in output.out
@@ -1885,7 +1885,7 @@ def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
     assert "Why locked?" in output.out
     assert "Do this first" in output.out
     assert "Run execute later" in output.out
-    assert "Clear Active universe first" in output.out
+    assert "Set up Active universe first" in output.out
     assert "PowerShell command" in output.out
     assert "catalyst-radar ingest-" in output.out
     assert "Where to run" in output.out
@@ -1895,7 +1895,7 @@ def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
     assert "Do not type run execute while this page says locked" in output.out
     assert "Run the PowerShell setup command in a normal PowerShell prompt first" in normalized
     assert "use 2 Evidence Gaps only to inspect blockers" in normalized
-    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "Radar Run And Call Plan" not in output.out
     assert "Priced-in Evidence Plan" not in output.out
     assert "Layer             | Provider" not in output.out
@@ -1919,14 +1919,14 @@ def test_dashboard_tui_telemetry_points_to_setup_before_run_on_empty_database(
     assert output.err == ""
     assert "Page: Telemetry" in output.out
     assert "No local audit events" in output.out
-    assert "Clear Active universe first" in output.out
+    assert "Set up Active universe first" in output.out
     assert "PowerShell command" in output.out
     assert "catalyst-radar ingest-" in output.out
     assert "Where to run" in output.out
     assert "normal PowerShell prompt" in normalized
     assert "not in the dashboard command box" in normalized
     assert (
-        "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
+        "NEXT SAFE ACTION: Set up Active universe first: run PowerShell command"
         in output.out
     )
     assert "above after accepting call/write" in output.out
@@ -1980,7 +1980,7 @@ def test_dashboard_footer_separates_browsing_cost_from_guarded_budget(
     assert "No real result yet" in output.out
     assert "Why this page is blank" in output.out
     assert "There is nothing to open or act on yet" in output.out
-    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "Browsing cost: 0 provider calls, 0 OpenAI calls" in output.out
     assert "Guarded command budget: provider calls" in output.out
     assert "Cost before execute" not in output.out
@@ -2008,14 +2008,14 @@ def test_dashboard_ops_empty_state_names_empty_sections_and_setup_first(
     assert "Recent jobs: no local job rows recorded." in output.out
     assert "Ops Setup Gate" in output.out
     assert "Can Ops diagnose runs?   : Not yet. No real scan rows exist." in output.out
-    assert "First blocker            : Clear Active universe first" in output.out
+    assert "First blocker            : Set up Active universe first" in output.out
     assert "Do first                 : Seed or refresh the universe" in output.out
     assert "PowerShell command       : catalyst-radar ingest-" in output.out
     assert "Where to run             : Run it in a normal PowerShell prompt" in output.out
     assert "not in the dashboard command box" in output.out
     assert "Hidden for now" in output.out
     assert (
-        "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
+        "NEXT SAFE ACTION: Set up Active universe first: run PowerShell command"
         in output.out
     )
     assert "above after accepting call/write" in output.out
@@ -3706,7 +3706,7 @@ def test_dashboard_start_page_empty_scan_points_to_setup_blocker() -> None:
     assert "If you accept the call/write, run it in PowerShell." in screen
     assert "After setup, review one capped scan before executing" in screen
     assert (
-        "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
+        "NEXT SAFE ACTION: Set up Active universe first: run PowerShell command"
         in screen
     )
     assert "above after accepting call/write" in screen
