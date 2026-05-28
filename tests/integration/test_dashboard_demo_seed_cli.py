@@ -1293,6 +1293,48 @@ def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
     assert "External calls made: 0" in output.out
 
 
+def test_dashboard_empty_candidates_points_to_first_setup_blocker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-candidates.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "candidates"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Page: Candidate Review" in output.out
+    assert "No real result yet" in output.out
+    assert "Required next step:" in output.out
+    assert "Clear Active universe first" in output.out
+    assert "Seed or refresh the stock universe" in output.out
+    assert "Run/import real market data" not in output.out
+    assert "External calls made: 0" in output.out
+
+
+def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-agent.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "agent"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Page: Agent Coach" in output.out
+    assert "Agent preview is still safe" in output.out
+    assert "Real results: missing" in output.out
+    assert "Clear Active universe first" in output.out
+    assert "Run/import real market data" not in output.out
+    assert "OpenAI calls" in output.out
+    assert "External calls made: 0" in output.out
+
+
 def _minimal_missing_real_results_payload() -> dict[str, object]:
     return {
         "schema_version": "dashboard-cli-snapshot-v1",
