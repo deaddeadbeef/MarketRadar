@@ -6715,6 +6715,12 @@ def _first_scan_setup_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
         ).strip()
         next_action = str(row.get("next_action") or "").strip()
         source_label = _human_label(source)
+        setup_next = _first_scan_setup_next(source, command, next_action)
+        status_next = (
+            f"PowerShell setup command: {command}"
+            if source == "universe" and command
+            else setup_next
+        )
         rows.append(
             {
                 "_row_key": f"first-scan-{index}-{source}",
@@ -6723,11 +6729,11 @@ def _first_scan_setup_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
                 "subject": _first_scan_setup_subject(source, index),
                 "why": _first_scan_setup_why(source, next_action),
                 "missing": source_label,
-                "next": _first_scan_setup_next(source, command, next_action),
+                "next": setup_next,
                 "target_page": _first_scan_setup_target(source),
                 "status_message": (
                     f"Setup step {index}: {source_label}. No calls were made. "
-                    f"{_first_scan_setup_next(source, command, next_action)}"
+                    f"{status_next}"
                 ),
                 "status": row.get("status") or "blocked",
                 "source": source,
@@ -6763,13 +6769,13 @@ def _first_scan_setup_why(source: str, next_action: str) -> str:
 
 def _first_scan_setup_next(source: str, command: str, next_action: str) -> str:
     if source == "universe" and command:
-        return f"PowerShell setup command: {command}"
+        return "Run PowerShell command above."
     if source == "market_bars":
-        return "Open Evidence Gaps, then use Bars or Safe Run when ready."
+        return "Use Evidence Gaps for bars."
     if source == "agent_review":
-        return "Preview Agent Coach first; execute only with OpenAI budget approval."
+        return "Approve budget in Agent Coach."
     if source == "scan":
-        return "Open Safe Run; execute only after the call budget looks right."
+        return "Review budget in Safe Run."
     return next_action or "Open Evidence Gaps and clear this blocker first."
 
 

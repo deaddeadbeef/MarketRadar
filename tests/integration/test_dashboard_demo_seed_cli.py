@@ -1552,7 +1552,9 @@ def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
     assert [row["mailbox"] for row in rows] == ["Setup", "Setup", "Setup"]
     assert rows[0]["subject"] == "1. Build the stock universe"
     assert rows[0]["target_page"] == "readiness"
+    assert rows[0]["next"] == "Run PowerShell command above."
     assert "No calls were made" in rows[0]["status_message"]
+    assert "PowerShell setup command: catalyst-radar" in rows[0]["status_message"]
     assert "ACME" not in render_dashboard_tui(payload, page="overview", width=160)
 
     screen = render_dashboard_tui(payload, page="overview", width=160)
@@ -1560,6 +1562,7 @@ def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
     assert "these are instructions, not stock results" in screen
     assert "1. Build the stock universe" in screen
     assert "PowerShell setup command" in screen
+    assert "Run PowerShell command above." in screen
     assert "Run intentionally:" not in screen
     assert "2. Fill latest prices" in screen
     assert "3. Run one capped scan" in screen
