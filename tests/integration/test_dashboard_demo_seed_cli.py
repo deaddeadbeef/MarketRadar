@@ -1551,6 +1551,8 @@ def test_dashboard_tui_overview_is_novice_first_on_empty_database(
     assert "these are instructions, not stock results" in output.out
     assert "Build the stock" in output.out
     assert "0 stock result rows" in output.out
+    assert "Best next step: Start with Setup row 1" in output.out
+    assert "Raise CATALYST_POLYGON_TICKERS_MAX_PAGES" not in output.out
     assert "Browsing this dashboard made 0 calls" in output.out
     assert "0 Start" in output.out
     assert "1 Inbox" in output.out

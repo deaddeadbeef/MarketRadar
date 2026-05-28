@@ -7879,6 +7879,18 @@ def _novice_cockpit_cards(payload: Mapping[str, object]) -> list[Mapping[str, ob
         or readiness.get("next_action")
         or "Open Inbox."
     )
+    if _real_results_empty(payload):
+        next_action = "Start with Setup row 1, then open Evidence Gaps."
+        next_detail = (
+            "Only run provider commands intentionally; browsing this dashboard "
+            "makes 0 calls."
+        )
+    else:
+        next_detail = (
+            next_step.get("expected_response")
+            or real_results.get("next_action")
+            or "Browsing does not spend provider, OpenAI, broker, or order calls."
+        )
     return [
         {
             "label": "What this is",
@@ -7893,11 +7905,7 @@ def _novice_cockpit_cards(payload: Mapping[str, object]) -> list[Mapping[str, ob
         {
             "label": "Best next step",
             "value": next_action,
-            "detail": (
-                next_step.get("expected_response")
-                or real_results.get("next_action")
-                or "Browsing does not spend provider, OpenAI, broker, or order calls."
-            ),
+            "detail": next_detail,
         },
         {
             "label": "Rows",
