@@ -11626,13 +11626,9 @@ def _telemetry_next_safe_action(payload: Mapping[str, object]) -> str:
         for row in _rows(coverage.get("domains"))
         if str(row.get("status") or "").strip().lower() == "waiting"
     ]
-    if _real_results_empty(payload):
-        blocker = _readiness_first_setup_blocker(payload)
-        if blocker:
-            area = str(blocker.get("area") or "setup").strip()
-            next_action = str(blocker.get("next_action") or "").strip()
-            suffix = f": {next_action}" if next_action else "."
-            return f"Clear {area} first before using telemetry to diagnose runs{suffix}"
+    setup_footer = _setup_command_footer_action(payload)
+    if setup_footer:
+        return setup_footer
     if missing_required:
         return (
             f"Telemetry missing {missing_required} required domain(s). Inspect "
