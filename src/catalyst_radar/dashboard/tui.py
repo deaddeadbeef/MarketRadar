@@ -1388,7 +1388,7 @@ class MarketRadarDashboardApp(App[int]):
         old_filters = self.filters
         self.page = _normalize_page(page)
         self.filters = dashboard_filters_for_page(self.filters, self.page)
-        self.status_message = _page_navigation_status_message(self.page)
+        self.status_message = _page_navigation_status_message(self.page, self.payload)
         if self.filters != old_filters:
             self._start_snapshot_reload(
                 loading_message=(
@@ -1592,10 +1592,7 @@ class MarketRadarDashboardApp(App[int]):
             alert_id = str(row.get("id") or "")
             if alert_id:
                 self.page = f"alert:{alert_id}"
-                self.status_message = (
-                    f"No calls. Not a trade signal. Opened alert {alert_id}. "
-                    "Record local feedback after review."
-                )
+                self.status_message = _alert_open_status_message(row, alert_id)
                 self.refresh_view()
         elif self.page.startswith("candidate:"):
             row = self._row_by_key(event.row_key.value)
@@ -1880,7 +1877,7 @@ class MarketRadarDashboardApp(App[int]):
             if active_page == "tutorial"
             else "INSIGHTS"
             if active_page == "overview"
-            else self.page.upper()
+            else _page_display_label(self.page, self.payload).upper()
         )
 
         if active_page == "tutorial":
@@ -2451,7 +2448,7 @@ class MarketRadarDashboardApp(App[int]):
             )
         if page == "alerts":
             rows = [
-                {**dict(row), "_row_key": str(row.get("id") or index)}
+                _alert_table_row(row, row_key=str(row.get("id") or index))
                 for index, row in enumerate(
                     _rows(_mapping(self.payload.get("alerts")).get("rows")),
                     start=1,
@@ -2460,17 +2457,16 @@ class MarketRadarDashboardApp(App[int]):
             return (
                 "Alerts - research notifications, not trade signals",
                 [
-                    ("id", "ID", 18),
                     ("ticker", "Ticker", 8),
-                    ("status", "Status", 12),
-                    ("route", "Route", 22),
-                    ("priority", "Priority", 10),
-                    ("title", "Title", 58),
+                    ("status_label", "Status", 12),
+                    ("route_label", "Delivery", 22),
+                    ("priority_label", "Priority", 10),
+                    ("title", "Message", 76),
                 ],
                 rows,
                 (
-                    "Open <#|id> to review; feedback <#|id> <label> [notes] "
-                    "records local review only."
+                    "Open a row number to review; the detail view shows the exact "
+                    "feedback command."
                 ),
             )
         if page == "ipo":
@@ -2658,7 +2654,7 @@ class MarketRadarDashboardApp(App[int]):
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
         row = _alert_detail_row(self.payload, alert_id)
         return (
-            f"Alert {alert_id}",
+            _alert_display_title(row, alert_id),
             [("key", "Alert question", 24), ("value", "Answer", 110)],
             _alert_case_detail_table_rows(row),
             "Use feedback <alert-id|#> <label> [notes] to record alert usefulness.",
@@ -3540,14 +3536,14 @@ def _apply_command(
         return _CommandUpdate(
             page=next_page,
             filters=filters,
-            message=_page_navigation_status_message(next_page),
+            message=_page_navigation_status_message(next_page, payload),
         )
     next_page = _normalize_page(raw)
     if next_page != "help" or raw.lower() in PAGE_ALIASES:
         return _CommandUpdate(
             page=next_page,
             filters=dashboard_filters_for_page(filters, next_page),
-            message=_page_navigation_status_message(next_page),
+            message=_page_navigation_status_message(next_page, payload),
         )
     return _CommandUpdate(
         page=page,
@@ -6222,7 +6218,7 @@ def _header_lines(
     lines.extend(
         _wrap(
             (
-                f"Page: {_page_display_label(page)} | "
+                f"Page: {_page_display_label(page, payload)} | "
                 f"View: {view_label} | "
                 f"Answer: {_human_label(answer_status)} ({answer_ready}) | "
                 f"Trade status: {_human_label(readiness.get('status') or 'unknown')} | "
@@ -6247,13 +6243,19 @@ def _header_lines(
     return lines
 
 
-def _page_display_label(page: str) -> str:
+def _page_display_label(
+    page: str,
+    payload: Mapping[str, object] | None = None,
+) -> str:
     normalized = _normalize_page(page)
     if normalized.startswith("candidate:"):
         ticker = normalized.split(":", 1)[1].strip().upper()
         return f"Candidate {ticker}" if ticker else "Candidate"
     if normalized.startswith("alert:"):
         alert_id = normalized.split(":", 1)[1].strip()
+        row = _alert_detail_row(payload or {}, alert_id)
+        if row:
+            return _alert_display_title(row, alert_id)
         return f"Alert {alert_id}" if alert_id else "Alert"
     labels = {page_key: label for page_key, _, label in MODERN_PAGES}
     return labels.get(normalized, _human_label(normalized) or "Help")
@@ -6927,17 +6929,18 @@ def _help_row_status_message(row: Mapping[str, object]) -> str:
     )
 
 
-def _page_navigation_status_message(page: str) -> str:
+def _page_navigation_status_message(
+    page: str,
+    payload: Mapping[str, object] | None = None,
+) -> str:
     normalized = _normalize_page(page)
     if normalized.startswith("candidate:"):
         ticker = normalized.split(":", 1)[1].upper()
         return f"Opened candidate {ticker}. No calls. Review evidence before action."
     if normalized.startswith("alert:"):
         alert_id = normalized.split(":", 1)[1]
-        return (
-            f"No calls. Not a trade signal. Opened alert {alert_id}. "
-            "Record local feedback after review."
-        )
+        row = _alert_detail_row(payload or {}, alert_id)
+        return _alert_open_status_message(row, alert_id)
     labels = {page_key: label for page_key, _, label in MODERN_PAGES}
     labels.update(
         {
@@ -10160,7 +10163,11 @@ def _alert_case_summary_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, 
         or "No plain-language reason captured."
     )
     trigger = _join_nonempty(
-        (row.get("trigger_kind"), row.get("route"), row.get("priority")),
+        (
+            _human_status_label(row.get("trigger_kind")),
+            _human_status_label(row.get("route")),
+            _human_status_label(row.get("priority")),
+        ),
         separator=" / ",
     )
     feedback_command = f"feedback {alert_id} useful|noisy|acted [notes]"
@@ -10179,9 +10186,9 @@ def _alert_case_summary_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, 
 def _alert_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
     return (
         ("Ticker", row.get("ticker")),
-        ("Status", row.get("status")),
-        ("Route", row.get("route")),
-        ("Priority", row.get("priority")),
+        ("Status", _human_status_label(row.get("status"))),
+        ("Delivery", _human_status_label(row.get("route"))),
+        ("Priority", _human_status_label(row.get("priority"))),
         ("Title", row.get("title")),
         ("Reason", row.get("reason") or row.get("summary")),
         ("Created", row.get("created_at")),
@@ -10202,15 +10209,19 @@ def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.extend(_wrap("Alerts are research notifications, not trade signals or orders.", width))
     lines.extend(
         _table_lines(
-            _indexed(rows),
+            _indexed(
+                [
+                    _alert_table_row(row, row_key=str(row.get("id") or index))
+                    for index, row in enumerate(rows, start=1)
+                ]
+            ),
             [
                 ("index", "#", 4),
-                ("id", "ID", 18),
                 ("ticker", "Ticker", 8),
-                ("status", "Status", 12),
-                ("route", "Route", 22),
-                ("priority", "Priority", 10),
-                ("title", "Title", 48),
+                ("status_label", "Status", 12),
+                ("route_label", "Delivery", 22),
+                ("priority_label", "Priority", 10),
+                ("title", "Message", 68),
             ],
             width=width,
             limit=16,
@@ -10218,17 +10229,47 @@ def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
     )
     lines.extend(
         _wrap(
-            "Use `open <#|id>` to review; `feedback <#|id> <label> [notes]` "
-            "records local review only.",
+            "Use `open <#>` to review; the detail view shows the exact feedback "
+            "command and records local review only.",
             width,
         )
     )
     return lines
 
 
+def _alert_table_row(row: Mapping[str, object], *, row_key: str) -> Mapping[str, object]:
+    return {
+        **dict(row),
+        "_row_key": row_key,
+        "status_label": _human_status_label(row.get("status")),
+        "route_label": _human_status_label(row.get("route")),
+        "priority_label": _human_status_label(row.get("priority")),
+        "title": _humanize_dashboard_text(row.get("title")),
+    }
+
+
+def _alert_display_title(row: Mapping[str, object], alert_id: str) -> str:
+    ticker = str(row.get("ticker") or "").strip().upper()
+    if ticker:
+        return f"Alert {ticker}"
+    title = _humanize_dashboard_text(row.get("title")).strip()
+    if title:
+        return f"Alert - {title}"
+    return f"Alert {alert_id or 'n/a'}"
+
+
+def _alert_open_status_message(row: Mapping[str, object], alert_id: str) -> str:
+    ticker = str(row.get("ticker") or "").strip().upper()
+    label = f"{ticker} alert" if ticker else f"alert {alert_id}"
+    return (
+        f"No calls. Not a trade signal. Opened {label}. "
+        "Record local feedback after review."
+    )
+
+
 def _alert_detail_lines(payload: Mapping[str, object], alert_id: str, width: int) -> list[str]:
     row = _alert_detail_row(payload, alert_id)
-    lines = [_rule(f"Alert {alert_id or 'n/a'}", width)]
+    lines = [_rule(_alert_display_title(row, alert_id), width)]
     if not row:
         lines.append("Alert not found for the current filters.")
         return lines

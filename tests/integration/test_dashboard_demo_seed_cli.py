@@ -3822,11 +3822,20 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
 
     alerts = render_dashboard_tui(payload, page="alerts", width=180)
     assert "Alerts are research notifications, not trade signals or orders." in alerts
+    assert "research digest" in alerts
+    assert "research_digest" not in alerts
+    assert "alert-acme" not in alerts
     assert "records local review only" in alerts
     assert "NEXT SAFE ACTION: Research alerts only; not trade signals" in alerts
 
     alert_case = render_dashboard_tui(payload, page="alert:alert-acme", width=180)
-    assert "Alert alert-acme" in alert_case
+    assert "Page: Alert ACME" in alert_case
+    assert "Page: Alert alert-acme" not in alert_case
+    assert "Alert ACME" in alert_case
+    assert "research digest" in alert_case
+    assert "research_digest" not in alert_case
+    assert "Feedback command" in alert_case
+    assert "feedback alert-acme useful|noisy|acted [notes]" in alert_case
     assert "NEXT SAFE ACTION: Alert detail is a research notification" in alert_case
     assert "Use the workflow navigation or open the highlighted row" not in alert_case
 
@@ -7469,6 +7478,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert ">> 5  Alerts [1]" in frame
             assert "research notifications" in frame
             assert "not trade signals" in frame
+            assert "immediate manual" in frame
+            assert "immediate_manual_review" not in frame
+            assert "demo-alert-acme" not in frame
 
             assert await pilot.click("#nav-ipo")
             await pilot.pause()
@@ -7493,13 +7505,15 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             assert app.page == "alert:demo-alert-acme"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Alert demo-alert-acme" in frame
+            assert "Alert ACME" in frame
             assert "No calls" in frame
             assert "Why did I get this?" in frame
             assert "Is this a trade signal?" in frame
             assert "Next safe action" in frame
             assert "Feedback command" in frame
             assert "not trade approval" in frame
+            assert "immediate manual" in frame
+            assert "immediate_manual_review" not in frame
             assert "feedback demo-alert-acme" in frame
 
             app.query_one("#data-table").focus()
@@ -7894,13 +7908,13 @@ def test_modern_dashboard_open_command_accepts_global_text_identifiers(
         app = await run_command("readiness", "open demo-alert-acme")
         assert app.page == "alert:demo-alert-acme"
         assert app.status_message == (
-            "No calls. Not a trade signal. Opened alert demo-alert-acme. "
+            "No calls. Not a trade signal. Opened ACME alert. "
             "Record local feedback after review."
         )
 
         app = await run_command("readiness", "open 1")
         assert app.page == "readiness"
-        assert "No row 1 is openable on readiness" in app.status_message
+        assert "No row 1 is openable on Evidence Gaps" in app.status_message
         assert "No calls made" in app.status_message
         assert "open <ticker>" in app.status_message
 
