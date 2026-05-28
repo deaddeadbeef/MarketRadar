@@ -11126,13 +11126,21 @@ def _broker_next_safe_action(payload: Mapping[str, object]) -> str:
     )
 
 
-def _telemetry_event_rows(telemetry: Mapping[str, object]) -> list[Mapping[str, object]]:
+def _telemetry_event_rows(
+    telemetry: Mapping[str, object],
+    *,
+    setup_blocker: Mapping[str, object] | None = None,
+) -> list[Mapping[str, object]]:
     events = _rows(telemetry.get("events"))
     if events:
         return [
             _telemetry_event_table_row(row, row_key=str(index))
             for index, row in enumerate(events, start=1)
         ]
+    setup_note = ""
+    if setup_blocker:
+        area = str(setup_blocker.get("area") or "setup").strip()
+        setup_note = f" Clear {area} first."
     return [
         {
             "_row_key": "telemetry-empty",
@@ -11142,10 +11150,12 @@ def _telemetry_event_rows(telemetry: Mapping[str, object]) -> list[Mapping[str, 
             "status": "waiting",
             "status_label": "waiting",
             "summary": (
-                "Nothing has recorded telemetry locally. Refresh after an intentional run."
+                "Nothing has recorded telemetry locally."
+                f"{setup_note} Refresh after an intentional guarded run."
             ),
             "summary_label": (
-                "Nothing has recorded telemetry locally. Refresh after an intentional run."
+                "Nothing has recorded telemetry locally."
+                f"{setup_note} Refresh after an intentional guarded run."
             ),
         }
     ]
@@ -11201,6 +11211,13 @@ def _telemetry_next_safe_action(payload: Mapping[str, object]) -> str:
         for row in _rows(coverage.get("domains"))
         if str(row.get("status") or "").strip().lower() == "waiting"
     ]
+    if _real_results_empty(payload):
+        blocker = _readiness_first_setup_blocker(payload)
+        if blocker:
+            area = str(blocker.get("area") or "setup").strip()
+            next_action = str(blocker.get("next_action") or "").strip()
+            suffix = f": {next_action}" if next_action else "."
+            return f"Clear {area} first before using telemetry to diagnose runs{suffix}"
     if missing_required:
         return (
             f"Telemetry missing {missing_required} required domain(s). Inspect "
@@ -12222,6 +12239,9 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
 def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
     telemetry = _mapping(payload.get("telemetry"))
     coverage = _mapping(payload.get("telemetry_coverage"))
+    setup_blocker = (
+        _readiness_first_setup_blocker(payload) if _real_results_empty(payload) else {}
+    )
     lines = [_rule("Telemetry", width)]
     lines.extend(
         _kv_lines(
@@ -12253,10 +12273,20 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width=width,
         )
     )
+    if setup_blocker:
+        area = str(setup_blocker.get("area") or "setup").strip()
+        action = str(setup_blocker.get("next_action") or "").strip()
+        message = f"Setup blocker: Clear {area} first."
+        if action:
+            message = f"{message} {action}"
+        message = (
+            f"{message} Telemetry fills after setup and an intentional guarded run."
+        )
+        lines.extend(_wrap(message, width))
     lines.append("")
     lines.extend(
         _table_lines(
-            _telemetry_event_rows(telemetry),
+            _telemetry_event_rows(telemetry, setup_blocker=setup_blocker),
             [
                 ("occurred_at", "Occurred", 24),
                 ("event_label", "Event", 24),
@@ -12268,9 +12298,10 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.append("")
+    domain_rows = _telemetry_domain_rows(coverage, setup_blocker=setup_blocker)
     lines.extend(
         _table_lines(
-            _rows(coverage.get("domains")),
+            domain_rows,
             [
                 ("domain", "Domain", 30),
                 ("status", "Status", 12),
@@ -12282,6 +12313,28 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     return lines
+
+
+def _telemetry_domain_rows(
+    coverage: Mapping[str, object],
+    *,
+    setup_blocker: Mapping[str, object] | None = None,
+) -> list[Mapping[str, object]]:
+    rows = [dict(row) for row in _rows(coverage.get("domains"))]
+    if not setup_blocker:
+        return rows
+    area = str(setup_blocker.get("area") or "setup").strip()
+    action = str(setup_blocker.get("next_action") or "").strip()
+    setup_first = f"Clear {area} first"
+    if action:
+        setup_first = f"{setup_first}: {action}"
+    for row in rows:
+        status = str(row.get("status") or "").strip().lower()
+        if status == "missing":
+            row["operator_action"] = (
+                f"{setup_first} Telemetry fills after setup and an intentional guarded run."
+            )
+    return rows
 
 
 def _feature_lines(payload: Mapping[str, object], width: int) -> list[str]:
