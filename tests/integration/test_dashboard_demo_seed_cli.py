@@ -4493,9 +4493,61 @@ def test_telemetry_footer_uses_audit_status() -> None:
     telemetry = render_dashboard_tui(payload, page="telemetry", width=150)
 
     assert "Telemetry" in telemetry
-    assert "Attention                : 2" in telemetry
+    assert any(
+        line.startswith("Attention") and line.rstrip().endswith(": 2")
+        for line in telemetry.splitlines()
+    )
     assert "NEXT SAFE ACTION: Telemetry core ready; inspect 2 attention item(s)" in telemetry
     assert "Use the workflow navigation or open the highlighted row" not in telemetry
+
+
+def test_telemetry_page_humanizes_internal_status_tokens() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+        "telemetry": {
+            "status": "ready",
+            "headline": "Latest telemetry event is healthy.",
+            "event_count": 1,
+            "attention_count": 0,
+            "guarded_count": 0,
+            "events": [
+                {
+                    "occurred_at": "2026-05-22T22:18:11Z",
+                    "event": "radar_run.step_finished",
+                    "status": "expected_gate",
+                    "summary": (
+                        "step=llm_review; outcome=Expected gate; "
+                        "category=expected_gate; command=run_daily"
+                    ),
+                }
+            ],
+        },
+        "telemetry_coverage": {
+            "status": "ready",
+            "headline": "Telemetry covers the core radar run path.",
+            "ready_required_domain_count": 3,
+            "required_domain_count": 3,
+            "missing_required_count": 0,
+            "domains": [],
+        },
+    }
+
+    telemetry = render_dashboard_tui(payload, page="telemetry", width=180)
+
+    assert "radar run step finished" in telemetry
+    assert "expected gate" in telemetry
+    assert "llm review" in telemetry
+    assert "category expected" in telemetry
+    assert "radar_run.step_finished" not in telemetry
+    assert "expected_gate" not in telemetry
+    assert "llm_review" not in telemetry
+    assert "run_daily" not in telemetry
 
 
 def test_support_pages_have_specific_next_actions() -> None:
