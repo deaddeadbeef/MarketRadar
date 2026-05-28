@@ -1359,6 +1359,8 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "Continue only if you accept the data change or provider call" in normalized
     assert "Why this page is blank" in output.out
     assert "Do not run agent execute while this page says locked" in output.out
+    assert "Run the PowerShell setup command first" in output.out
+    assert "after real scan evidence exists" in output.out
     assert "Detailed agent roles" in output.out
     assert "Real results: missing" not in output.out
     assert "Kind      | Item" not in output.out
@@ -1882,6 +1884,8 @@ def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
     assert "not in the dashboard command box" in normalized
     assert "if you accept" in normalized
     assert "Do not type run execute while this page says locked" in output.out
+    assert "Run the PowerShell setup command in a normal PowerShell prompt first" in normalized
+    assert "use 2 Evidence Gaps only to inspect blockers" in normalized
     assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
     assert "Radar Run And Call Plan" not in output.out
     assert "Priced-in Evidence Plan" not in output.out
