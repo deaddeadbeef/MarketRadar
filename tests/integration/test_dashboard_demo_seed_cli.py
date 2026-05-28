@@ -1825,16 +1825,22 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
 
     assert main(["dashboard-tui", "--once", "--page", "readiness"]) == 0
     output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
 
     assert output.err == ""
     assert "Evidence Gaps And Work Queue" in output.out
     assert "First blocker" in output.out
     assert "setup: Active universe" in output.out
     assert "Seed or refresh the universe" in output.out
+    assert "PowerShell command" in output.out
+    assert "catalyst-radar ingest-csv" in output.out
+    assert "Where to run" in output.out
+    assert "normal PowerShell prompt" in normalized
+    assert "not in the dashboard command box" in normalized
     assert "setup blocked: Active universe; no market scan yet" in output.out
     assert "bars fresh; live data" not in output.out
     assert "Next action" in output.out
-    assert "Start here: Seed or refresh the universe" in output.out
+    assert "Start here: Run the PowerShell setup command" in output.out
     assert "Current Work Queue" in output.out
     assert "Setup is not complete yet" in output.out
     assert "Hidden until setup is complete" in output.out
