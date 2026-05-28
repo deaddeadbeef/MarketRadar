@@ -1330,6 +1330,73 @@ def _minimal_missing_real_results_payload() -> dict[str, object]:
     }
 
 
+def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
+    payload = _minimal_missing_real_results_payload()
+
+    rows = _market_inbox_rows(payload)
+
+    assert [row["mailbox"] for row in rows] == ["Setup", "Setup", "Setup"]
+    assert rows[0]["subject"] == "1. Build the stock universe"
+    assert rows[0]["target_page"] == "readiness"
+    assert "No calls were made" in rows[0]["status_message"]
+    assert "ACME" not in render_dashboard_tui(payload, page="overview", width=160)
+
+    screen = render_dashboard_tui(payload, page="overview", width=160)
+    assert "First real scan setup" in screen
+    assert "these are instructions, not stock results" in screen
+    assert "1. Build the stock universe" in screen
+    assert "2. Fill latest prices" in screen
+    assert "3. Run one capped scan" in screen
+    assert "NEXT SAFE ACTION: Start with Setup row 1" in screen
+    assert "No rows." not in screen
+
+
+def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-modern.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="overview",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "setup checklist" in frame
+            assert "no stock result rows yet" in frame
+            assert "3 setup row(s); 0 stock" in frame
+            assert "Build the stock" in frame
+            assert "Setup" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.page == "readiness"
+            assert "Setup step 1" in app.status_message
+            assert "No calls were made" in app.status_message
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "EVIDENCE GAPS" in frame
+
+    asyncio.run(run_app())
+
+
 def test_dashboard_tui_once_can_show_full_scan_mode(
     tmp_path: Path,
     monkeypatch,
@@ -1466,6 +1533,10 @@ def test_dashboard_tui_overview_is_novice_first_on_empty_database(
     assert "Best next step" in output.out
     assert "No scan rows yet" in output.out
     assert "Start here:" in output.out
+    assert "First real scan setup" in output.out
+    assert "these are instructions, not stock results" in output.out
+    assert "Build the stock" in output.out
+    assert "0 stock result rows" in output.out
     assert "Browsing this dashboard made 0 calls" in output.out
     assert "0 Start" in output.out
     assert "1 Inbox" in output.out
