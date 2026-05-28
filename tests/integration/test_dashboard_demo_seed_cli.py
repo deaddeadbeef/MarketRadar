@@ -2139,7 +2139,9 @@ def test_run_mission_brief_dedupes_setup_command_when_command_row_exists() -> No
     items = dict(_run_mission_brief_items(payload))
 
     assert "PowerShell command: catalyst-radar" not in items["Do now"]
-    assert "1 provider call(s) after approval" in items["Do now"]
+    assert "1 provider call after approval; 1 database change." == items["Setup cost"]
+    assert items["Why blocked"] == "Active universe is not set up yet."
+    assert "blocker universe; gap 0" not in items["Do now"]
     assert items["PowerShell command"].startswith("catalyst-radar ingest-polygon")
     assert "normal PowerShell prompt" in items["Where to run"]
 
@@ -3698,6 +3700,9 @@ def test_dashboard_start_page_empty_scan_points_to_setup_blocker() -> None:
     assert "Current answer" in screen
     assert "No market scan yet" in screen
     assert "Do now" in screen
+    assert "Setup cost" in screen
+    assert "Why blocked" in screen
+    assert "blocker universe; gap 0" not in screen
     assert "PowerShell command" in screen
     assert "catalyst-radar ingest-polygon tickers" in screen
     assert "Where to run" in screen
