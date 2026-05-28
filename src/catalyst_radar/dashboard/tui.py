@@ -2894,7 +2894,9 @@ def _operator_next_step_summary(step: Mapping[str, object]):
     if not step:
         return ""
     parts = [
-        str(step.get("action") or step.get("action_label") or "No action recorded.")
+        _human_source_status_text(
+            step.get("action") or step.get("action_label") or "No action recorded."
+        )
     ]
     command = step.get("tui_command") or step.get("command")
     if command:
@@ -2907,7 +2909,7 @@ def _operator_next_step_summary(step: Mapping[str, object]):
     blocker = step.get("first_blocker")
     gap = int(_number_or_zero(step.get("first_gap_count")))
     if blocker:
-        parts.append(f"blocker {blocker}; gap {gap}")
+        parts.append(f"blocker {_human_source_name(blocker)}; gap {gap}")
     return "; ".join(parts)
 
 
@@ -2935,7 +2937,7 @@ def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
     step = _priced_in_operator_step(payload)
     if not step:
         return "Review call budget, then type run execute only if intended."
-    action = str(
+    action = _human_source_status_text(
         step.get("action") or step.get("action_label") or "Review the next blocker."
     ).strip()
     command = str(step.get("tui_command") or step.get("command") or "").strip()
@@ -8897,7 +8899,9 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines: list[str] = []
     if mission_items:
         lines.append(_rule("Mission Brief", width))
-        lines.extend(_kv_lines(mission_items, width=width))
+        lines.extend(
+            _kv_lines(_run_source_status_display_items(mission_items), width=width)
+        )
         lines.append("")
     lines.append(_rule("Radar Run And Call Plan", width))
     lines.extend(
@@ -8981,7 +8985,9 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         provider_hint = _run_audit_provider_fill_hint(blocker)
         if provider_hint:
             evidence_items.append(("Direct provider fill", provider_hint))
-        lines.extend(_kv_lines(evidence_items, width=width))
+        lines.extend(
+            _kv_lines(_run_source_status_display_items(evidence_items), width=width)
+        )
         lines.append("")
         lines.extend(
             _table_lines(
@@ -9020,7 +9026,7 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
             evidence_items.append(("Inspect source blocker", blocker_hint))
         lines.extend(
             _kv_lines(
-                evidence_items,
+                _run_source_status_display_items(evidence_items),
                 width=width,
             )
         )
@@ -9205,6 +9211,12 @@ def _run_mission_brief_items(
             )
         )
     return items
+
+
+def _run_source_status_display_items(
+    items: Sequence[tuple[str, object]],
+) -> list[tuple[str, object]]:
+    return [(label, _human_source_status_text(value)) for label, value in items]
 
 
 def _trust_gate_blocker_ladder_summary(ladder: Mapping[str, object]):
@@ -9604,7 +9616,7 @@ def _run_audit_source_rows(
                 "status": _human_status_label(source.get("status")),
                 "coverage": f"{available}/{row_count}" if row_count else "n/a",
                 "gap_count": int(_number_or_zero(source.get("gap_count"))),
-                "next_action": _humanize_dashboard_text(source.get("next_action")),
+                "next_action": _human_source_status_text(source.get("next_action")),
                 "command": source.get("command"),
             }
         )
