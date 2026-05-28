@@ -7734,6 +7734,11 @@ def _priced_in_answer_text(
                 f"{scope} priced-in answer is not ready: core evidence layer "
                 f"{core_gap_name} still has {core_gap_count} gap row(s).{suffix}"
             )
+        if actionable_count <= 0 and blocked_count <= 0:
+            return (
+                "No market scan yet. Build the stock universe, fill prices, "
+                "then run one capped scan before reading this as analysis."
+            )
         return (
             f"{actionable_count or blocked_count} possible mismatch row(s) are blocked "
             "by missing evidence or scan readiness."
@@ -7778,6 +7783,11 @@ def _priced_in_answer_headline(
             return (
                 f"Full scan blocked by {core_gap_name} core evidence gap "
                 f"({core_gap_count} row(s)); {total_count} scanned row(s)."
+            )
+        if total_count <= 0 and actionable_count <= 0 and blocked_count <= 0:
+            return (
+                "No market scan yet; setup is waiting for the active universe "
+                "and first scan."
             )
         return (
             f"{blocked_count or actionable_count} row(s) need evidence cleanup before "
