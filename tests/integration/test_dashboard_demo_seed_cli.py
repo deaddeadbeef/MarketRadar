@@ -1851,6 +1851,8 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "Current Work Queue" in output.out
     assert "Setup is not complete yet" in output.out
     assert "Hidden until setup is complete" in output.out
+    assert "Run PowerShell command above." in output.out
+    assert "Clear the setup row first" not in output.out
     assert (
         "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
         in output.out
@@ -5141,6 +5143,7 @@ def test_evidence_gaps_setup_blocker_preserves_exact_setup_command() -> None:
     assert "First blocker" in readiness
     assert "Active universe" in readiness
     assert "catalyst-radar ingest-polygon tickers --max-pages 1" in readiness
+    assert "Run PowerShell command above." in readiness
     assert "accept the data change or provider call" in readiness
     assert "Trial gate" in readiness
     assert "Shadow gate" not in readiness
