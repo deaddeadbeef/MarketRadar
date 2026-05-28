@@ -9907,7 +9907,7 @@ def _agent_brief_rows(
     brief: Mapping[str, object],
     payload: Mapping[str, object] | None = None,
 ) -> list[Mapping[str, object]]:
-    rows: list[Mapping[str, object]] = _agent_coach_summary_rows(brief)
+    rows: list[Mapping[str, object]] = _agent_coach_summary_rows(brief, payload)
     runtime = _mapping(brief.get("runtime"))
     if runtime:
         rows.append(
@@ -9999,7 +9999,10 @@ def _agent_brief_rows(
     return rows
 
 
-def _agent_coach_summary_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]:
+def _agent_coach_summary_rows(
+    brief: Mapping[str, object],
+    payload: Mapping[str, object] | None = None,
+) -> list[Mapping[str, object]]:
     runtime = _mapping(brief.get("runtime"))
     real_results = _mapping(brief.get("real_results"))
     credit_gate = _mapping(brief.get("credit_gate"))
@@ -10014,8 +10017,14 @@ def _agent_coach_summary_rows(brief: Mapping[str, object]) -> list[Mapping[str, 
         if runtime.get(key) is False:
             blocked_tools.append(label)
     blocked = ", ".join(blocked_tools) or "none"
+    setup_action = (
+        _no_real_result_next_action(payload, real_results)
+        if payload is not None and _real_results_empty(payload)
+        else ""
+    )
     next_action = _human_agent_text(
-        _first_nonblank(
+        setup_action
+        or _first_nonblank(
             credit_gate.get("next_action"),
             real_results.get("next_action"),
             next_actions[0] if next_actions else None,
@@ -12514,6 +12523,9 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
     if page == "telemetry":
         return _telemetry_next_safe_action(payload)
     if page == "agent":
+        if _real_results_empty(payload):
+            real_results = _mapping(payload.get("real_results"))
+            return _no_real_result_next_action(payload, real_results)
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     if page == "themes":
         themes = _mapping(payload.get("themes"))
