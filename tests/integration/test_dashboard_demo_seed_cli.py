@@ -3472,6 +3472,21 @@ def test_dashboard_inbox_page_alias_opens_latest_scan_results() -> None:
     assert "Latest scan results" in screen
 
 
+def test_dashboard_visible_page_names_work_as_aliases() -> None:
+    gaps_screen = render_dashboard_tui({}, page="gaps", width=120)
+    evidence_screen = render_dashboard_tui({}, page="evidence gaps", width=120)
+    safe_run_screen = render_dashboard_tui({}, page="safe run", width=120)
+    candidates_screen = render_dashboard_tui({}, page="candidate review", width=120)
+
+    assert "Page: Evidence Gaps" in gaps_screen
+    assert "Evidence Gaps And Work Queue" in gaps_screen
+    assert "Page: Evidence Gaps" in evidence_screen
+    assert "Page: Safe Run" in safe_run_screen
+    assert "Radar Run And Call Plan" in safe_run_screen
+    assert "Page: Candidate Review" in candidates_screen
+    assert "Candidates" in candidates_screen
+
+
 def test_dashboard_help_starts_with_first_commands() -> None:
     screen = render_dashboard_tui({}, page="help", width=120)
 

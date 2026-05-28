@@ -361,13 +361,26 @@ PAGE_ALIASES: Mapping[str, str] = {
     "o": "overview",
     "overview": "overview",
     "2": "readiness",
+    "blockers": "readiness",
+    "evidence": "readiness",
+    "evidence-gaps": "readiness",
+    "evidence_gaps": "readiness",
+    "gaps": "readiness",
     "ready": "readiness",
     "readiness": "readiness",
     "3": "run",
+    "call-plan": "run",
+    "call_plan": "run",
+    "safe": "run",
+    "safe-run": "run",
+    "safe_run": "run",
     "run": "run",
     "plan": "run",
     "4": "candidates",
     "c": "candidates",
+    "candidate": "candidates",
+    "candidate-review": "candidates",
+    "candidate_review": "candidates",
     "candidates": "candidates",
     "11": "review",
     "d": "review",
@@ -13298,9 +13311,10 @@ def _rule(title: str, width: int, *, char: str = "-") -> str:
 
 
 def _normalize_page(value: str) -> str:
-    text = (value or "overview").strip().lower()
-    if text.startswith("candidate:") or text.startswith("alert:"):
-        return text
+    raw = (value or "overview").strip().lower()
+    if raw.startswith("candidate:") or raw.startswith("alert:"):
+        return raw
+    text = "-".join(raw.replace("_", " ").split())
     return PAGE_ALIASES.get(text, "help")
 
 

@@ -78,18 +78,69 @@ function Get-DashboardExpectedPageLabels {
         $normalized = "overview"
     }
     $normalized = $normalized.Trim().ToLowerInvariant()
+    $normalized = $normalized -replace "[\s_]+", "-"
     switch ($normalized) {
+        "0" { @("tutorial", "Start") }
+        "learn" { @("tutorial", "Start") }
         "start" { @("tutorial", "Start") }
+        "tut" { @("tutorial", "Start") }
         "tutorial" { @("tutorial", "Start") }
+        "1" { @("overview", "Inbox") }
         "overview" { @("overview", "Inbox") }
+        "home" { @("overview", "Inbox") }
         "inbox" { @("overview", "Inbox") }
+        "insight" { @("overview", "Inbox") }
+        "insights" { @("overview", "Inbox") }
+        "mail" { @("overview", "Inbox") }
+        "messages" { @("overview", "Inbox") }
+        "o" { @("overview", "Inbox") }
+        "2" { @("readiness", "Evidence Gaps") }
+        "blockers" { @("readiness", "Evidence Gaps") }
+        "evidence" { @("readiness", "Evidence Gaps") }
+        "evidence-gaps" { @("readiness", "Evidence Gaps") }
+        "gaps" { @("readiness", "Evidence Gaps") }
+        "ready" { @("readiness", "Evidence Gaps") }
+        "readiness" { @("readiness", "Evidence Gaps") }
+        "3" { @("run", "Safe Run") }
+        "call-plan" { @("run", "Safe Run") }
+        "plan" { @("run", "Safe Run") }
+        "safe" { @("run", "Safe Run") }
+        "safe-run" { @("run", "Safe Run") }
+        "run" { @("run", "Safe Run") }
+        "4" { @("candidates", "Candidate Review") }
+        "c" { @("candidates", "Candidate Review") }
+        "candidate" { @("candidates", "Candidate Review") }
+        "candidate-review" { @("candidates", "Candidate Review") }
         "agent" { @("agent", "Agent Coach") }
         "agents" { @("agent", "Agent Coach") }
         "candidates" { @("candidates", "Candidate Review") }
+        "11" { @("review", "Decision Review") }
+        "d" { @("review", "Decision Review") }
+        "decision" { @("review", "Decision Review") }
+        "decisions" { @("review", "Decision Review") }
+        "decision-ready" { @("review", "Decision Review") }
         "review" { @("review", "Decision Review") }
-        "readiness" { @("readiness", "Evidence Gaps") }
-        "run" { @("run", "Safe Run") }
+        "5" { @("alerts", "Alerts") }
+        "a" { @("alerts", "Alerts") }
+        "alerts" { @("alerts", "Alerts") }
+        "6" { @("ipo", "IPO/S-1") }
         "ipo" { @("ipo", "IPO/S-1") }
+        "s1" { @("ipo", "IPO/S-1") }
+        "7" { @("broker", "Broker") }
+        "b" { @("broker", "Broker") }
+        "broker" { @("broker", "Broker") }
+        "8" { @("ops", "Ops") }
+        "ops" { @("ops", "Ops") }
+        "9" { @("telemetry", "Telemetry") }
+        "t" { @("telemetry", "Telemetry") }
+        "telemetry" { @("telemetry", "Telemetry") }
+        "10" { @("agent", "Agent Coach") }
+        "brief" { @("agent", "Agent Coach") }
+        "themes" { @("themes", "Themes") }
+        "validation" { @("validation", "Validation") }
+        "costs" { @("costs", "Costs") }
+        "features" { @("features", "Features") }
+        "help" { @("help", "Help") }
         default { @($Page) }
     }
 }
