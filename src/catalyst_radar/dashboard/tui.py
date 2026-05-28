@@ -6993,18 +6993,21 @@ def _readiness_first_setup_blocker(payload: Mapping[str, object]) -> Mapping[str
 
 def _readiness_setup_next_action(row: Mapping[str, object]) -> str:
     code = str(row.get("code") or "").strip().lower()
+    row_action = _humanize_dashboard_text(row.get("next_action")).strip()
     if code == "active_universe":
+        if row_action:
+            return f"{row_action} Run only if you accept the data change or provider call."
         return (
-            "Seed or refresh the stock universe intentionally; execute only if "
-            "you accept the provider call."
+            "Seed or refresh the stock universe intentionally only after approving "
+            "the data change or provider call."
         )
     if code == "latest_market_bars":
-        return "Fill latest price bars after the universe exists."
+        return row_action or "Fill latest price bars after the universe exists."
     if code == "scan_scope":
-        return "Run one capped scan after the universe and prices are ready."
+        return row_action or "Run one capped scan after the universe and prices are ready."
     if code == "trust_gate":
-        return "Clear the first trust-gate blocker before treating rows as insight."
-    return _humanize_dashboard_text(row.get("next_action"))
+        return row_action or "Clear the first trust-gate blocker before treating rows as insight."
+    return row_action
 
 
 def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
@@ -7032,7 +7035,9 @@ def _readiness_row_status_message(row: Mapping[str, object]) -> str:
     area = str(row.get("area") or row.get("code") or row.get("item") or "Evidence gap")
     status = str(row.get("status") or row.get("priority") or "needs review")
     finding = str(row.get("finding") or row.get("item") or "").strip()
-    next_action = str(row.get("next_action") or row.get("action") or "").strip()
+    next_action = _humanize_dashboard_text(
+        row.get("next_action") or row.get("action") or ""
+    ).strip()
     finding_text = f" Finding: {_clip(finding, 90)}" if finding else ""
     next_text = f" Next: {_clip(next_action, 110)}" if next_action else ""
     return (
@@ -9110,18 +9115,21 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
             _kv_lines(
                 (
                     (
-                        "Shadow gate",
+                        "Trial gate",
                         f"{_human_status_label(shadow.get('status'))}; "
                         f"{_readiness_ready_label(shadow.get('ready'))}",
                     ),
-                    ("Shadow next", shadow.get("canonical_next_action")),
                     (
-                        "Shadow calls",
-                        "assert=0; writes=0; planned_run_max="
+                        "Trial next",
+                        _humanize_dashboard_text(shadow.get("canonical_next_action")),
+                    ),
+                    (
+                        "Trial call budget",
+                        "readiness check: 0 calls, 0 writes; trial run max="
                         f"{boundary.get('planned_run_external_call_count_max') or 0}",
                     ),
                     (
-                        "Latest shadow run",
+                        "Latest trial run",
                         (
                             f"{_human_status_label(latest_shadow.get('status'))}; "
                             f"run_date={latest_shadow.get('run_date') or 'n/a'}; "
@@ -9130,7 +9138,10 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                         if latest_shadow
                         else "none recorded",
                     ),
-                    ("Useful means", shadow.get("useful_definition")),
+                    (
+                        "Useful means",
+                        _humanize_dashboard_text(shadow.get("useful_definition")),
+                    ),
                 ),
                 width=width,
             )
@@ -13158,12 +13169,19 @@ _DASHBOARD_TEXT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("live_call_planned", "live call planned"),
     ("live_calls_planned", "live calls planned"),
     ("expected_gate", "expected gate"),
+    ("fixture_events", "sample events"),
+    ("fixture_market_data", "sample market data"),
     ("max_external_call_count", "max external calls"),
+    ("no_run", "no run"),
     ("order_submission_enabled=False", "orders enabled: no"),
     ("order_submission_enabled=True", "orders enabled: yes"),
     ("partial_success", "partial success"),
     ("read_only=False", "read-only: no"),
     ("read_only=True", "read-only: yes"),
+    ("shadow alerts", "dry-run alerts"),
+    ("shadow mode", "dry-run mode"),
+    ("shadow scans", "dry-run scans"),
+    ("shadow setup", "dry-run setup"),
     ("source_live=no", "source live: no"),
     ("source_live=yes", "source live: yes"),
     ("setup_blocked", "setup blocked"),

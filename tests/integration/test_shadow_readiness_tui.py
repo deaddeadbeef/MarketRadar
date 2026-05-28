@@ -3,14 +3,14 @@ from __future__ import annotations
 from catalyst_radar.dashboard.tui import render_dashboard_tui
 
 
-def test_readiness_page_renders_shadow_gate_contract() -> None:
+def test_readiness_page_renders_trial_gate_contract() -> None:
     text = render_dashboard_tui(
         {
             "readiness": {
                 "status": "research_only",
                 "decision_mode": "research_only",
                 "headline": "Research only.",
-                "next_action": "Open the shadow gate.",
+                "next_action": "Open the dry-run gate.",
                 "evidence": "local snapshot",
                 "readiness_checklist": [],
             },
@@ -41,6 +41,7 @@ def test_readiness_page_renders_shadow_gate_contract() -> None:
         width=140,
     )
 
-    assert "Shadow gate" in text
-    assert "planned_run_max=1" in text
-    assert "active_universe" in text
+    assert "Trial gate" in text
+    assert "dry-run alerts" in text
+    assert "trial run max=1" in text
+    assert "active universe" in text
