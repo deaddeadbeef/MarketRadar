@@ -2994,6 +2994,27 @@ def test_dashboard_tutorial_footer_points_to_first_real_step() -> None:
     assert "Use the workflow navigation or open the highlighted row" not in screen
 
 
+def test_dashboard_header_uses_human_status_labels() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {
+            "status": "research_only",
+            "safe_to_make_investment_decision": False,
+        },
+        "priced_in_answer": {"status": "blocked", "decision_ready": False},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+    }
+
+    screen = render_dashboard_tui(payload, page="overview", width=140)
+
+    assert "Answer: blocked (not ready)" in screen
+    assert "Trade safe: No - research only" in screen
+    assert "ready=false" not in screen
+    assert "Trade safe: False" not in screen
+
+
 def test_alias_analysis_pages_have_specific_next_actions() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},
