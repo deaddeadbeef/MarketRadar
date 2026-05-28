@@ -2105,6 +2105,31 @@ def test_run_mission_brief_labels_catalyst_tui_command_as_powershell() -> None:
     assert "dashboard command: catalyst-radar" not in items["Do now"]
 
 
+def test_run_mission_brief_dedupes_setup_command_when_command_row_exists() -> None:
+    payload = _minimal_missing_real_results_payload()
+    payload["priced_in_answer"] = {
+        "operator_next_step": {
+            "action": "Seed the ticker universe before calling this a full-market scan.",
+            "command": (
+                "catalyst-radar ingest-polygon tickers --max-pages 1 "
+                "--confirm-external-call"
+            ),
+            "external_calls_required": 1,
+            "approval_required": True,
+            "db_writes_required": 1,
+            "first_blocker": "universe",
+            "first_gap_count": 0,
+        },
+    }
+
+    items = dict(_run_mission_brief_items(payload))
+
+    assert "PowerShell command: catalyst-radar" not in items["Do now"]
+    assert "1 provider call(s) after approval" in items["Do now"]
+    assert items["PowerShell command"].startswith("catalyst-radar ingest-polygon")
+    assert "normal PowerShell prompt" in items["Where to run"]
+
+
 def test_run_mission_brief_useful_next_is_humanized() -> None:
     payload = {
         "priced_in_answer": {

@@ -2941,7 +2941,11 @@ def _priced_in_operator_step(payload: Mapping[str, object]):
     return _mapping(payload.get("priced_in_operator_next_step"))
 
 
-def _operator_next_step_summary(step: Mapping[str, object]):
+def _operator_next_step_summary(
+    step: Mapping[str, object],
+    *,
+    include_command: bool = True,
+):
     if not step:
         return ""
     action = _human_source_status_text(
@@ -2949,7 +2953,7 @@ def _operator_next_step_summary(step: Mapping[str, object]):
     ).rstrip(".;")
     parts = [action]
     command = str(step.get("tui_command") or step.get("command") or "").strip()
-    if command:
+    if command and include_command:
         command_label = (
             "PowerShell command"
             if command.startswith("catalyst-radar")
@@ -9693,11 +9697,20 @@ def _run_mission_brief_items(
     if current:
         items.append(("Current answer", current))
     trust_gate = _mapping(answer.get("full_market_trust_gate"))
-    operator_step_text = _operator_next_step_summary(operator_step)
+    separate_setup_command = _real_results_empty(payload) and bool(
+        _first_scan_setup_command(payload)
+        or str(
+            operator_step.get("tui_command") or operator_step.get("command") or ""
+        ).strip()
+    )
+    operator_step_text = _operator_next_step_summary(
+        operator_step,
+        include_command=not separate_setup_command,
+    )
     if operator_step_text:
         items.append(("Do now", operator_step_text))
     command = ""
-    if _real_results_empty(payload):
+    if separate_setup_command:
         command = _first_scan_setup_command(payload) or str(
             operator_step.get("tui_command") or operator_step.get("command") or ""
         ).strip()
