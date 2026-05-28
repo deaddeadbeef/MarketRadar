@@ -6211,10 +6211,10 @@ def _header_lines(
     audit_status = str(audit.get("status") or "").strip().lower()
     answer_status = audit_status or str(answer.get("status") or "unknown")
     answer_ready = (
-        "true"
+        "ready"
         if bool(answer.get("decision_ready"))
         and audit_status not in {"blocked", "attention"}
-        else "false"
+        else "not ready"
     )
     view_label = _priced_in_view_label(payload)
     lines = [_rule("Market Radar Terminal Dashboard", width, char="=")]
@@ -6223,10 +6223,9 @@ def _header_lines(
             (
                 f"Page: {page} | "
                 f"View: {view_label} | "
-                f"Answer: {_human_label(answer_status)} "
-                f"ready={answer_ready} | "
+                f"Answer: {_human_label(answer_status)} ({answer_ready}) | "
                 f"Trade status: {_human_label(readiness.get('status') or 'unknown')} | "
-                f"Trade safe: {_text(readiness.get('safe_to_make_investment_decision'))} | "
+                f"Trade safe: {_decision_label(readiness)} | "
                 f"External calls made: {_text(payload.get('external_calls_made', 0))}"
             ),
             width,
