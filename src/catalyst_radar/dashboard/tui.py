@@ -11698,6 +11698,11 @@ def _footer_lines(
 def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
     if page.startswith("candidate:"):
         return _candidate_case_next_safe_action(payload, page.split(":", 1)[1])
+    if page.startswith("alert:"):
+        return (
+            "Alert detail is a research notification, not trade approval. "
+            "Review evidence, then record local feedback."
+        )
     if page == "overview":
         if _market_inbox_rows(payload):
             return _market_inbox_next_safe_action(payload)
@@ -11724,6 +11729,13 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
                 "local feedback."
             )
         return "No alert rows yet. Alerts are research notifications, not trade signals."
+    if page == "review":
+        if _priced_in_review_rows(payload):
+            return (
+                "Decision Review is not trade approval. Verify optional gaps, "
+                "then open the top row manually."
+            )
+        return "No decision-ready review rows. Fix Evidence Gaps before any decision."
     if page == "ipo":
         ipo = _mapping(payload.get("ipo_s1"))
         count = int(_number_or_zero(ipo.get("count")))
