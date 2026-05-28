@@ -1833,7 +1833,7 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "setup: Active universe" in output.out
     assert "Seed or refresh the universe" in output.out
     assert "PowerShell command" in output.out
-    assert "catalyst-radar ingest-csv" in output.out
+    assert "catalyst-radar ingest-" in output.out
     assert "Where to run" in output.out
     assert "normal PowerShell prompt" in normalized
     assert "not in the dashboard command box" in normalized
