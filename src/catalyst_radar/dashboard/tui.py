@@ -7989,7 +7989,7 @@ def _market_bar_provider_fill_summary(payload: Mapping[str, object]) -> str:
     calls = int(_number_or_zero(provider_plan.get("execute_external_call_count")))
     if not command or calls <= 0:
         return ""
-    status = str(provider_plan.get("status") or "unknown").strip()
+    status = _human_status_label(provider_plan.get("status") or "unknown")
     warning = str(provider_plan.get("provider_health_warning") or "").strip()
     saved_command = str(
         provider_plan.get("provider_saved_file_capture_command") or ""
@@ -8046,7 +8046,8 @@ def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> st
     if not command:
         return ""
     calls = int(_number_or_zero(provider_plan.get("provider_saved_file_external_call_count")))
-    status = str(provider_plan.get("provider_saved_file_status") or "unknown").strip()
+    raw_status = str(provider_plan.get("provider_saved_file_status") or "unknown").strip()
+    status = _human_status_label(raw_status)
     exists_value = provider_plan.get("provider_saved_file_exists")
     boundary = _saved_file_request_boundary(
         provider_plan,
@@ -8056,7 +8057,7 @@ def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> st
         ),
         "request bodies",
     )
-    if status == "missing" or (exists_value is False and status != "available"):
+    if raw_status == "missing" or (exists_value is False and raw_status != "available"):
         next_action = str(
             provider_plan.get("provider_saved_file_next_action") or ""
         ).strip()
@@ -8082,16 +8083,25 @@ def _market_bar_provider_saved_file_capture_summary(
         return ""
     packet = _mapping(provider_plan.get("provider_saved_file_capture_approval_packet"))
     if packet:
-        status = str(packet.get("status") or "unknown")
+        status = _human_status_label(packet.get("status") or "unknown")
         missing = int(_number_or_zero(packet.get("missing_as_of_bar_count")))
         calls = int(_number_or_zero(packet.get("external_calls_if_approved")))
         db_writes = int(_number_or_zero(packet.get("db_writes_during_capture")))
-        confirm = str(packet.get("tui_confirm_command") or "n/a")
+        confirm = str(packet.get("tui_confirm_command") or "").strip()
         question = str(packet.get("question") or "").strip()
+        next_action = str(
+            provider_plan.get("provider_saved_file_next_action") or question
+        ).strip()
+        instruction = (
+            f"type `{confirm}`"
+            if confirm and calls > 0
+            else "no capture command needed"
+        )
+        action_suffix = f" {next_action}" if next_action else ""
         return (
             f"{status}; {missing} bars targeted; {calls} external call(s) if "
-            f"approved; {db_writes} db writes during capture; type `{confirm}`. "
-            f"{question}"
+            f"approved; {db_writes} db writes during capture; {instruction}."
+            f"{action_suffix}"
         )
     calls = int(
         _number_or_zero(
@@ -8132,14 +8142,15 @@ def _market_bar_provider_saved_file_validate_summary(
     if not command:
         return ""
     calls = int(_number_or_zero(provider_plan.get("provider_saved_file_external_call_count")))
-    status = str(provider_plan.get("provider_saved_file_status") or "unknown").strip()
+    raw_status = str(provider_plan.get("provider_saved_file_status") or "unknown").strip()
+    status = _human_status_label(raw_status)
     exists_value = provider_plan.get("provider_saved_file_exists")
     boundary = _saved_file_request_boundary(
         provider_plan,
         (("provider_saved_file_validate_request_body", "fixture_path", "validate"),),
         "request body",
     )
-    if status == "missing" or (exists_value is False and status != "available"):
+    if raw_status == "missing" or (exists_value is False and raw_status != "available"):
         next_action = str(
             provider_plan.get("provider_saved_file_next_action") or ""
         ).strip()
@@ -9054,7 +9065,9 @@ def _run_mission_brief_items(
                 _number_or_zero(blocker_detail.get("missing_as_of_bar"))
             )
             empty = int(_number_or_zero(blocker_detail.get("empty_rows")))
-            saved = blocker_detail.get("provider_saved_file_status") or "n/a"
+            saved = _human_status_label(
+                blocker_detail.get("provider_saved_file_status") or "n/a"
+            )
             gate_text = (
                 f"{gate_text}; manual CSV {complete}/{missing} complete"
                 f", empty {empty}; saved file {saved}"
@@ -9264,8 +9277,8 @@ def _market_bar_manual_csv_summary(manual_csv: Mapping[str, object]):
 def _market_bar_saved_capture_summary(saved_capture: Mapping[str, object]):
     if not saved_capture:
         return ""
-    status = str(saved_capture.get("status") or "unknown")
-    saved_file = str(saved_capture.get("saved_file_status") or "n/a")
+    status = _human_status_label(saved_capture.get("status") or "unknown")
+    saved_file = _human_status_label(saved_capture.get("saved_file_status") or "n/a")
     approval = "yes" if saved_capture.get("approval_required") else "no"
     provider_key = "yes" if saved_capture.get("provider_key_configured") else "no"
     calls = int(_number_or_zero(saved_capture.get("external_calls_if_approved")))
@@ -9361,17 +9374,24 @@ def _run_market_bar_unblock_summary(
 
 def _market_bar_unblock_option_summary(options):
     parts = []
+    kind_labels = {
+        "manual_csv": "manual CSV",
+        "saved_provider_capture": "saved file capture",
+        "validate_saved_file": "saved file check",
+        "preview_import": "saved file import preview",
+    }
     for option in options[:4]:
         if not isinstance(option, Mapping):
             continue
         kind = str(option.get("kind") or "option")
-        status = str(option.get("status") or "unknown")
+        kind_label = kind_labels.get(kind, _human_label(kind))
+        status = _human_status_label(option.get("status") or "unknown")
         calls = int(_number_or_zero(option.get("external_calls_required")))
         command = str(option.get("command") or "").strip()
         if command:
-            parts.append(f"{kind}: {status}, {calls} call(s), `{command}`")
+            parts.append(f"{kind_label}: {status}, {calls} call(s), `{command}`")
         else:
-            parts.append(f"{kind}: {status}, {calls} call(s)")
+            parts.append(f"{kind_label}: {status}, {calls} call(s)")
     return "; ".join(parts)
 
 
@@ -9489,7 +9509,7 @@ def _run_audit_provider_fill_hint(blocker: Mapping[str, object] | None) -> str |
     command = str(blocker.get("provider_fill_command") or "").strip()
     if not command:
         return None
-    status = str(blocker.get("provider_fill_status") or "unknown").strip()
+    status = _human_status_label(blocker.get("provider_fill_status") or "unknown")
     calls = int(_number_or_zero(blocker.get("provider_fill_external_call_count")))
     return (
         f"{status}; {calls} external call(s) only after explicit approval; "
