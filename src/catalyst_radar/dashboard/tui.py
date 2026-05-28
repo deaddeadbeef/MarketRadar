@@ -11724,6 +11724,15 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
                 "local feedback."
             )
         return "No alert rows yet. Alerts are research notifications, not trade signals."
+    if page == "ipo":
+        ipo = _mapping(payload.get("ipo_s1"))
+        count = int(_number_or_zero(ipo.get("count")))
+        if count:
+            return (
+                "IPO/S-1 rows are catalyst evidence only. Open a filing row; "
+                "browsing makes 0 SEC calls."
+            )
+        return "No IPO/S-1 rows in this snapshot. Continue with Inbox or Candidates."
     if page == "broker":
         return _broker_next_safe_action(payload)
     if page == "ops":
@@ -11732,6 +11741,10 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         return _telemetry_next_safe_action(payload)
     if page == "agent":
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
+    if page == "features":
+        return "Use Features as the map of what exists. Press Enter on a row to jump there."
+    if page == "help":
+        return "Use Help as the command reference. Type a command below; browsing makes 0 calls."
     return "Use the workflow navigation or open the highlighted row."
 
 

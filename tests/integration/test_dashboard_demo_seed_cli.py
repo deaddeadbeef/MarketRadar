@@ -3410,6 +3410,37 @@ def test_telemetry_footer_uses_audit_status() -> None:
     assert "Use the workflow navigation or open the highlighted row" not in telemetry
 
 
+def test_support_pages_have_specific_next_actions() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+        "ipo_s1": {"count": 1, "rows": []},
+        "feature_inventory": [
+            {
+                "area": "Review",
+                "feature": "Candidate review",
+                "page": "Candidate Review",
+                "use": "Inspect evidence.",
+            }
+        ],
+    }
+
+    pages = {
+        "ipo": "NEXT SAFE ACTION: IPO/S-1 rows are catalyst evidence only",
+        "features": "NEXT SAFE ACTION: Use Features as the map of what exists",
+        "help": "NEXT SAFE ACTION: Use Help as the command reference",
+    }
+    for page, expected in pages.items():
+        rendered = render_dashboard_tui(payload, page=page, width=150)
+        assert expected in rendered
+        assert "Use the workflow navigation or open the highlighted row" not in rendered
+
+
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
