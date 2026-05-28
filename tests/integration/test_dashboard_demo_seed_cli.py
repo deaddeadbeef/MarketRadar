@@ -3019,6 +3019,38 @@ def test_alias_analysis_pages_have_specific_next_actions() -> None:
         assert "Use the workflow navigation or open the highlighted row" not in rendered
 
 
+def test_dashboard_text_render_respects_requested_width() -> None:
+    width = 80
+    pages = [
+        "tutorial",
+        "overview",
+        "readiness",
+        "run",
+        "candidates",
+        "review",
+        "alerts",
+        "ipo",
+        "broker",
+        "ops",
+        "telemetry",
+        "agent",
+        "features",
+        "help",
+        "themes",
+        "validation",
+        "costs",
+    ]
+
+    offenders: list[str] = []
+    for page in pages:
+        rendered = render_dashboard_tui({}, page=page, width=width)
+        for line_number, line in enumerate(rendered.splitlines(), start=1):
+            if len(line) > width:
+                offenders.append(f"{page}:{line_number}:{len(line)}:{line[:60]}")
+
+    assert offenders == []
+
+
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     review_filters = dashboard_filters_for_page(DashboardFilters(), "review")
     assert review_filters.priced_in_status == "actionable"
