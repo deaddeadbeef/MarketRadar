@@ -3354,6 +3354,16 @@ def test_dashboard_inbox_page_alias_opens_latest_scan_results() -> None:
     assert "Latest scan results" in screen
 
 
+def test_dashboard_help_starts_with_first_commands() -> None:
+    screen = render_dashboard_tui({}, page="help", width=120)
+
+    assert "First commands: start opens the walkthrough" in screen
+    assert "inbox shows scan messages" in screen
+    assert "Commands with execute are deliberate actions" in screen
+    assert "Command Reference" in screen
+    assert "batch <source> execute" in screen
+
+
 def test_dashboard_tutorial_footer_points_to_first_real_step() -> None:
     screen = render_dashboard_tui({}, page="tutorial", width=140)
 
