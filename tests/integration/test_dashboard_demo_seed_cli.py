@@ -1322,6 +1322,8 @@ def test_dashboard_empty_candidates_points_to_first_setup_blocker(
     assert "not in the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
     assert "Why this page is blank" in output.out
+    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" not in output.out
     assert "Run/import real market data" not in output.out
     assert "External calls made: 0" in output.out
 

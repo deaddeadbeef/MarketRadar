@@ -3009,6 +3009,8 @@ def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
 
 
 def _candidates_next_safe_action(payload: Mapping[str, object]) -> str:
+    if _real_results_empty(payload):
+        return _no_real_result_next_action(payload, _mapping(payload.get("real_results")))
     readiness = _mapping(payload.get("readiness"))
     if readiness.get("safe_to_make_investment_decision") is True:
         return "Open a candidate, then verify evidence before any manual decision."
