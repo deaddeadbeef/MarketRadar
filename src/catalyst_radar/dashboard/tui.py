@@ -2642,7 +2642,9 @@ class MarketRadarDashboardApp(App[int]):
     def _tutorial_model(
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
-        rows = _tutorial_mission_rows(self.payload) + _tutorial_control_rows()
+        rows = _tutorial_mission_rows(self.payload) + _tutorial_control_rows(
+            self.payload
+        )
         return (
             "Tutorial - your first 90 seconds",
             [("step", "Step", 6), ("do", "Do this", 34), ("result", "What happens", 96)],
@@ -6374,7 +6376,51 @@ def _tutorial_mission_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
     return rows
 
 
-def _tutorial_control_rows() -> list[Mapping[str, object]]:
+def _tutorial_control_rows(
+    payload: Mapping[str, object] | None = None,
+) -> list[Mapping[str, object]]:
+    if payload is not None and _real_results_empty(payload):
+        return [
+            {
+                "step": "1",
+                "do": "Read Mission setup command",
+                "result": (
+                    "Run the PowerShell command outside the dashboard only if "
+                    "you accept the provider call or data write."
+                ),
+            },
+            {
+                "_target_page": "readiness",
+                "step": "2",
+                "do": "Press 2: Evidence Gaps",
+                "result": "Verify the first blocker and setup cost.",
+            },
+            {
+                "_target_page": "run",
+                "step": "3",
+                "do": "Press 3: Safe Run",
+                "result": "After setup, review one capped scan before executing.",
+            },
+            {
+                "_target_page": "overview",
+                "step": "4",
+                "do": "Press 1: Inbox",
+                "result": "After a real scan, read the insight queue.",
+            },
+            {
+                "_target_page": "candidates",
+                "step": "5",
+                "do": "Press 4: Candidate Review",
+                "result": "Review companies. These are research rows, not trade signals.",
+            },
+            {
+                "step": "6",
+                "do": "Use the bottom command box",
+                "result": (
+                    "Dashboard commands only; run setup commands in PowerShell."
+                ),
+            },
+        ]
     return [
         {
             "_target_page": "overview",
@@ -6438,7 +6484,7 @@ def _tutorial_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append(_rule("Tutorial - your first 90 seconds", width))
     lines.extend(
         _table_lines(
-            _tutorial_control_rows(),
+            _tutorial_control_rows(payload),
             [
                 ("step", "Step", 6),
                 ("do", "Do this", 28),
