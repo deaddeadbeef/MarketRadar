@@ -615,6 +615,11 @@ alert detail, blocker rows open readiness or ops, and refresh rows open the
 guarded run plan.
 When there are no scan rows yet, the empty state gives the beginner path:
 import or fetch a universe, fill fresh market bars, then run a capped scan.
+The first-run wording is literal: `No market scan yet` means MarketRadar has
+not analyzed the market, not that it found zero opportunities. Run the displayed
+`PowerShell setup command` in a normal PowerShell prompt after reviewing the
+provider-call/database-write note. The dashboard command box is only for TUI
+commands such as `refresh`, `help`, page names, and `q`.
 Click or press `Enter` on an inbox message to open the right operational view.
 Inside the TUI, the left sidebar is the primary navigation: click a sidebar row,
 press a page number, use `Ctrl+N` / `Ctrl+P`, or focus the sidebar and use
