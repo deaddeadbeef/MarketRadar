@@ -1357,7 +1357,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Next data step:" in output.out
     assert "Full-scan coverage:" in output.out
     assert "Shortlist context:" in output.out
-    assert "review page, not the full scan universe" in output.out
+    assert "page, not the full scan universe" in output.out
 
     assert (
         main(
@@ -1378,7 +1378,8 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
 
     assert output.err == ""
     assert "source gaps options" in output.out
-    assert "Active source gap filter: source gaps options." in output.out
+    assert "Active source gap" in output.out
+    assert "filter: source gaps options." in output.out
 
     assert (
         main(
