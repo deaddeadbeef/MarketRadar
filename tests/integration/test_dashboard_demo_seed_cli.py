@@ -3641,9 +3641,12 @@ def test_readiness_page_uses_human_gate_labels() -> None:
     assert "live data" in screen
     assert "provider call boundary" in screen
     assert "Run plan: live calls planned" in screen
-    assert "Shadow gate                  : setup required; not ready" in screen
-    assert "Latest shadow run" in screen
+    assert "Trial gate                   : setup required; not ready" in screen
+    assert "Trial next                   : Run dry-run setup." in screen
+    assert "Latest trial run" in screen
     assert "setup required; run_date=2026-05-22; writes=1" in screen
+    assert "Shadow gate" not in screen
+    assert "Latest shadow run" not in screen
     assert "research_only" not in screen
     assert "setup_required" not in screen
     assert "snapshot_status=" not in screen
@@ -4867,6 +4870,56 @@ def test_evidence_gaps_footer_names_first_must_fix_gap() -> None:
     assert "0 calls, 0 orders" in readiness
     assert "Research-only" in readiness
     assert "Use the workflow navigation or open the highlighted row" not in readiness
+
+
+def test_evidence_gaps_setup_blocker_preserves_exact_setup_command() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "real_results": {"status": "missing"},
+        "readiness": {
+            "status": "research_only",
+            "decision_mode": "research_only",
+            "headline": "Setup is not complete.",
+            "next_action": "Clear setup blockers first.",
+            "readiness_checklist": [],
+        },
+        "shadow_readiness": {
+            "status": "setup_required",
+            "ready": False,
+            "canonical_next_action": (
+                "Seed or refresh the universe with `catalyst-radar "
+                "ingest-polygon tickers --max-pages 1 --confirm-external-call` "
+                "before relying on broad discovery."
+            ),
+            "call_boundary": {"planned_run_external_call_count_max": 1},
+            "checks": [
+                {
+                    "code": "active_universe",
+                    "area": "Active universe",
+                    "status": "blocked",
+                    "finding": "No active scan universe is loaded.",
+                    "next_action": (
+                        "Seed or refresh the universe with `catalyst-radar "
+                        "ingest-polygon tickers --max-pages 1 "
+                        "--confirm-external-call` before relying on broad discovery."
+                    ),
+                },
+            ],
+        },
+        "operator_work_queue": {"status": "blocked", "headline": "Setup blocked."},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "candidates": {"rows": []},
+    }
+
+    readiness = render_dashboard_tui(payload, page="readiness", width=150)
+
+    assert "First blocker" in readiness
+    assert "Active universe" in readiness
+    assert "catalyst-radar ingest-polygon tickers --max-pages 1" in readiness
+    assert "accept the data change or provider call" in readiness
+    assert "Trial gate" in readiness
+    assert "Shadow gate" not in readiness
 
 
 def test_broker_page_labels_empty_local_artifact_sections() -> None:
