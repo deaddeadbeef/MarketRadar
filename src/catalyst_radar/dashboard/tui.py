@@ -6370,31 +6370,31 @@ def _tutorial_control_rows() -> list[Mapping[str, object]]:
         {
             "_target_page": "overview",
             "step": "1",
-            "do": "Press 1 or click Inbox",
+            "do": "Press 1: Inbox",
             "result": "See the current insight queue: ticker, signal, why, and action.",
         },
         {
             "_target_page": "readiness",
             "step": "2",
-            "do": "Press 2 or click Evidence Gaps",
+            "do": "Press 2: Evidence Gaps",
             "result": "See exactly what blocks a decision-useful workflow.",
         },
         {
             "_target_page": "review",
             "step": "3",
-            "do": "Press D or click Decision-ready",
+            "do": "Press D: Decision Review",
             "result": "Show only not-priced-in rows that passed the usefulness gate.",
         },
         {
             "_target_page": "candidates",
             "step": "4",
-            "do": "Press 4 or click Candidates",
+            "do": "Press 4: Candidate Review",
             "result": "Review companies. These are research rows, not trade signals.",
         },
         {
             "_target_page": "run",
             "step": "5",
-            "do": "Press 3 or click Run",
+            "do": "Press 3: Safe Run",
             "result": "Review external-call budget before running anything.",
         },
         {
