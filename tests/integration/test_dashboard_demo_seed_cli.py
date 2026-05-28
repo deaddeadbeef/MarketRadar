@@ -3756,7 +3756,8 @@ def test_costs_page_explains_missing_validation_baselines() -> None:
     costs = render_dashboard_tui(payload, page="costs", width=120)
 
     assert "Validation evidence" in costs
-    assert "no_validation_runs" in costs
+    assert "No validation runs yet" in costs
+    assert "no_validation_runs" not in costs
     assert "Mission baselines measured" in costs
     assert "0/3" in costs
     assert "No validation baseline yet" in costs
@@ -3764,6 +3765,95 @@ def test_costs_page_explains_missing_validation_baselines() -> None:
     assert "Precision at 5 / 10" not in costs
     assert "Backtest hit rate" not in costs
     assert " : n/a" not in costs
+
+
+def test_dashboard_humanizes_internal_status_tokens() -> None:
+    payload = _minimal_missing_real_results_payload()
+    payload.update(
+        {
+            "readiness": {"status": "research_only"},
+            "priced_in_answer": {
+                "status": "blocked",
+                "answer": "Research only.",
+                "decision_ready": False,
+            },
+            "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+            "agent_brief": {
+                "mode": "dry_run",
+                "status": "dry_run",
+                "external_calls_made": {"openai": 0, "market_data": 0, "broker": 0},
+                "runtime": {"orchestrator": "openai_agents_sdk"},
+                "decision_boundary": "setup_blocked; research/manual triage only",
+                "agents": [
+                    {
+                        "agent": "Data Sentinel",
+                        "summary": "Readiness is research_only; no calls made.",
+                    },
+                    {
+                        "agent": "Risk Officer",
+                        "summary": (
+                            "Broker read_only=True; "
+                            "order_submission_enabled=False."
+                        ),
+                    },
+                ],
+                "insights": [
+                    (
+                        "Priced-in answer is blocked; decision_ready=false; "
+                        "continue review."
+                    )
+                ],
+                "next_actions": [],
+                "security_checks": [],
+            },
+            "ops_health": {
+                "database": {"status": "ok"},
+                "degraded_mode": {"enabled": True, "max_action_state": "Warning"},
+                "providers": [],
+                "jobs": [],
+            },
+            "value_report": {
+                "verdict": "insufficient_evidence",
+                "month": "2026-05",
+                "plausibly_earned_at_least_40_usd": False,
+                "validation_evidence": {
+                    "status": "no_validation_runs",
+                    "measured_baselines": [],
+                    "required_baselines": ["manual_watchlist"],
+                },
+                "first_blocker": "candidate_ledger_coverage",
+                "canonical_next_action": "Record evidence first.",
+                "canonical_next_command": "catalyst-radar value-ledger coverage --json",
+            },
+        }
+    )
+
+    agent = render_dashboard_tui(payload, page="agent", width=140)
+    costs = render_dashboard_tui(payload, page="costs", width=140)
+    ops = render_dashboard_tui(payload, page="ops", width=140)
+    combined = "\n".join((agent, costs, ops))
+
+    assert "Mode: dry run" in agent
+    assert "Readiness is research only" in agent
+    assert "Broker read-only: yes; orders enabled: no" in agent
+    assert "decision ready: no" in agent
+    assert "Monthly value verdict" in costs
+    assert "Insufficient evidence" in costs
+    assert "No validation runs yet" in costs
+    assert "Candidate ledger coverage" in costs
+    assert "Degraded mode" in ops
+    assert "Enabled" in ops
+    for raw in (
+        "research_only",
+        "decision_ready=false",
+        "read_only=True",
+        "order_submission_enabled=False",
+        "insufficient_evidence",
+        "no_validation_runs",
+        "candidate_ledger_coverage",
+        "Degraded mode                 : True",
+    ):
+        assert raw not in combined
 
 
 def test_costs_page_only_shows_available_validation_metrics() -> None:
