@@ -2985,6 +2985,15 @@ def test_dashboard_start_page_alias_opens_latest_scan_results() -> None:
     assert "Latest scan results" in screen
 
 
+def test_dashboard_tutorial_footer_points_to_first_real_step() -> None:
+    screen = render_dashboard_tui({}, page="tutorial", width=140)
+
+    assert "Tutorial - your first 90 seconds" in screen
+    assert "NEXT SAFE ACTION: Start with Inbox: press 1 or click Inbox" in screen
+    assert "0 provider calls" in screen
+    assert "Use the workflow navigation or open the highlighted row" not in screen
+
+
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     review_filters = dashboard_filters_for_page(DashboardFilters(), "review")
     assert review_filters.priced_in_status == "actionable"
