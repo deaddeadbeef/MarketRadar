@@ -1604,11 +1604,14 @@ def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
 
     assert output.err == ""
     assert "Mission Brief" in output.out
+    assert "Required path" in output.out
+    assert "setup blocked; clear Active universe first" in output.out
     assert "Operational note: Run execute is not the next step yet." in output.out
     assert "Clear Active universe first" in output.out
     assert "Seed or refresh the stock universe" in output.out
     assert "intentionally; execute only if you accept the provider call" in output.out
     assert "Type `run execute` to start one capped cycle" not in output.out
+    assert "None/None" not in output.out
 
 
 def test_dashboard_tui_overview_explains_scan_legend_for_novices(
