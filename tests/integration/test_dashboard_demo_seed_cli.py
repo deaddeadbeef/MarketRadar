@@ -1707,6 +1707,31 @@ def test_dashboard_footer_separates_browsing_cost_from_guarded_budget(
     assert "External calls made: 0" in output.out
 
 
+def test_dashboard_ops_empty_state_names_empty_sections_and_setup_first(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-ops.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "ops"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Page: Ops" in output.out
+    assert "Provider Health" in output.out
+    assert "Provider health: no local provider checks recorded." in output.out
+    assert "Recent Jobs" in output.out
+    assert "Recent jobs: no local job rows recorded." in output.out
+    assert "Blocker                  : First setup: Active universe" in output.out
+    assert "Next                     : Seed or refresh the stock universe" in output.out
+    assert "NEXT SAFE ACTION: Research-only. First setup: Active universe." in output.out
+    assert "Coverage-first: market bars" not in output.out
+    assert "Next                     : Type batch market_bars" not in output.out
+    assert "No rows." not in output.out
+
+
 def test_run_mission_brief_useful_next_prefers_operator_step() -> None:
     payload = {
         "priced_in_answer": {
