@@ -10123,13 +10123,30 @@ def _themes_lines(payload: Mapping[str, object], width: int) -> list[str]:
 
 def _validation_lines(payload: Mapping[str, object], width: int) -> list[str]:
     validation = _mapping(payload.get("validation"))
+    latest_run = _mapping(validation.get("latest_run"))
     report = _mapping(validation.get("report"))
     lines = [_rule("Validation", width)]
+    if not latest_run and not report:
+        lines.extend(
+            _wrap(
+                "No validation report yet. Keep this research-only until shadow or "
+                "paper validation has outcomes to measure.",
+                width,
+            )
+        )
+        lines.extend(
+            _wrap(
+                "Next: use Inbox and Candidates for research review; return here after "
+                "validation replay or outcome tracking exists.",
+                width,
+            )
+        )
+        return lines
     lines.extend(
         _kv_lines(
             (
-                ("Latest run", _nested(validation, "latest_run", "id") or "n/a"),
-                ("Status", _nested(validation, "latest_run", "status") or "n/a"),
+                ("Latest run", latest_run.get("id") or "n/a"),
+                ("Status", latest_run.get("status") or "n/a"),
                 ("Candidate count", report.get("candidate_count")),
                 ("Useful alert rate", report.get("useful_alert_rate")),
                 ("False positive count", report.get("false_positive_count")),
