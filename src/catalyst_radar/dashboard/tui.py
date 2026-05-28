@@ -9820,7 +9820,11 @@ def _run_mission_brief_items(
             universe_text = _market_bar_missing_universe_summary(
                 _mapping(blocker_detail.get("missing_universe"))
             )
-        items.append(("Trust gate", gate_text))
+        trust_label = "Trust gate"
+        if _real_results_empty(payload):
+            trust_label = "Evidence check"
+            gate_text = _setup_evidence_check_text(trust_gate)
+        items.append((trust_label, gate_text))
         recommended_unblock = _market_bar_recommended_action_summary(
             {
                 "recommended_action": _mapping(
@@ -9834,11 +9838,15 @@ def _run_mission_brief_items(
         )
         if recommended_unblock:
             items.append(("Recommended unblock", recommended_unblock))
-        ladder_text = _trust_gate_blocker_ladder_summary(
-            _mapping(trust_gate.get("blocker_ladder"))
-        )
+        ladder = _mapping(trust_gate.get("blocker_ladder"))
+        if _real_results_empty(payload):
+            ladder_text = _setup_blocker_ladder_summary(ladder)
+            ladder_label = "Setup order"
+        else:
+            ladder_text = _trust_gate_blocker_ladder_summary(ladder)
+            ladder_label = "Blocker ladder"
         if ladder_text:
-            items.append(("Blocker ladder", ladder_text))
+            items.append((ladder_label, ladder_text))
         after_current_text = _after_current_blocker_summary(
             _mapping(trust_gate.get("after_current_blocker"))
         )
@@ -9901,6 +9909,44 @@ def _operator_next_step_setup_blocker(step: Mapping[str, object]) -> str:
 def _count_text(count: int, noun: str) -> str:
     suffix = "" if count == 1 else "s"
     return f"{count} {noun}{suffix}"
+
+
+def _setup_evidence_check_text(trust_gate: Mapping[str, object]) -> str:
+    status = _human_status_label(trust_gate.get("status") or "blocked")
+    answer = _human_source_status_text(trust_gate.get("answer"))
+    answer = answer.replace(
+        "priced-in evidence layer(s) complete",
+        "evidence layers ready",
+    )
+    if answer:
+        return f"{status}; {answer}"
+    return f"{status}; setup evidence is not ready yet."
+
+
+def _setup_blocker_ladder_summary(ladder: Mapping[str, object]) -> str:
+    rows = [row for row in _rows(ladder.get("rows")) if isinstance(row, Mapping)]
+    if not rows:
+        return ""
+    parts = []
+    for row in rows[:5]:
+        step = int(_number_or_zero(row.get("step")))
+        source = _setup_blocker_name(row.get("source"))
+        status = _human_status_label(row.get("status") or "waiting")
+        prefix = f"{step}. " if step else ""
+        parts.append(f"{prefix}{source} ({status})")
+    return "; ".join(parts)
+
+
+def _setup_blocker_name(source: object) -> str:
+    key = str(source or "").strip().lower()
+    names = {
+        "universe": "Active universe",
+        "active_universe": "Active universe",
+        "market_bars": "Latest market bars",
+        "agent_review": "AI review",
+        "scan": "Capped scan",
+    }
+    return names.get(key, _human_source_name(source or "setup"))
 
 
 def _run_source_status_display_items(
