@@ -12647,13 +12647,29 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if setup_blocker:
         area = str(setup_blocker.get("area") or "setup").strip()
         action = str(setup_blocker.get("next_action") or "").strip()
-        message = f"Setup blocker: Clear {area} first."
-        if action:
-            message = f"{message} {action}"
-        message = (
-            f"{message} Telemetry fills after setup and an intentional guarded run."
+        setup_command = _first_scan_setup_command(payload)
+        setup_items: list[tuple[str, object]] = [
+            ("Setup blocker", f"Clear {area} first."),
+            ("Do first", action),
+        ]
+        if setup_command:
+            setup_items.extend(
+                [
+                    ("PowerShell command", setup_command),
+                    (
+                        "Where to run",
+                        "Run it in a normal PowerShell prompt, not in the "
+                        "dashboard command box.",
+                    ),
+                ]
+            )
+        setup_items.append(
+            (
+                "Telemetry useful after",
+                "Setup is complete and one guarded run has recorded local events.",
+            )
         )
-        lines.extend(_wrap(message, width))
+        lines.extend(_kv_lines(setup_items, width=width))
     lines.append("")
     lines.extend(
         _table_lines(

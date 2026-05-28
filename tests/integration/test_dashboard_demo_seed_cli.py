@@ -1899,17 +1899,23 @@ def test_dashboard_tui_telemetry_points_to_setup_before_run_on_empty_database(
 
     assert main(["dashboard-tui", "--once", "--page", "telemetry"]) == 0
     output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
 
     assert output.err == ""
     assert "Page: Telemetry" in output.out
     assert "No local audit events" in output.out
     assert "Clear Active universe first" in output.out
-    assert "Seed or refresh the stock universe intentionally" in output.out
+    assert "PowerShell command" in output.out
+    assert "catalyst-radar ingest-" in output.out
+    assert "Where to run" in output.out
+    assert "normal PowerShell prompt" in normalized
+    assert "not in the dashboard command box" in normalized
     assert (
         "NEXT SAFE ACTION: Clear Active universe first before using telemetry"
         in output.out
     )
-    assert "Telemetry fills after setup and an intentional guarded run" in output.out
+    assert "Telemetry useful after" in output.out
+    assert "one guarded run has recorded local events" in output.out
     assert "Run a radar cycle to create the first telemetry event" not in output.out
     assert "Start one capped radar run from the dashboard or API" not in output.out
 
