@@ -9544,23 +9544,25 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
         )
     real_results = _mapping(brief.get("real_results"))
     if real_results:
+        status = _human_status_label(real_results.get("status") or "unknown")
         rows.append(
             {
                 "kind": "Gate",
-                "item": f"Real results: {real_results.get('status') or 'unknown'}",
+                "item": f"Real results: {status}",
                 "detail": (
                     f"rows={real_results.get('row_count', 0)}; "
                     f"latest_run={real_results.get('latest_run_id') or 'n/a'}; "
-                    f"next={real_results.get('next_action') or 'n/a'}"
+                    f"next={_humanize_dashboard_text(real_results.get('next_action'))}"
                 ),
             }
         )
     credit_gate = _mapping(brief.get("credit_gate"))
     if credit_gate:
+        status = _human_status_label(credit_gate.get("status") or "unknown")
         rows.append(
             {
                 "kind": "Gate",
-                "item": f"OpenAI budget: {credit_gate.get('status') or 'unknown'}",
+                "item": f"OpenAI budget: {status}",
                 "detail": (
                     f"estimate=${credit_gate.get('estimated_cost_usd', 0)}; "
                     f"daily={credit_gate.get('daily_spend_usd', 0)}/"
@@ -9575,21 +9577,35 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
             {
                 "kind": "Agent",
                 "item": agent.get("agent") or "agent",
-                "detail": agent.get("summary") or agent.get("role") or "",
+                "detail": _humanize_dashboard_text(
+                    agent.get("summary") or agent.get("role") or ""
+                ),
             }
         )
     for index, insight in enumerate(_texts(brief.get("insights")), start=1):
-        rows.append({"kind": "Insight", "item": str(index), "detail": insight})
+        rows.append(
+            {
+                "kind": "Insight",
+                "item": str(index),
+                "detail": _humanize_dashboard_text(insight),
+            }
+        )
     for index, action in enumerate(_texts(brief.get("next_actions")), start=1):
-        rows.append({"kind": "Next", "item": str(index), "detail": action})
+        rows.append(
+            {
+                "kind": "Next",
+                "item": str(index),
+                "detail": _humanize_dashboard_text(action),
+            }
+        )
     for check in _rows(brief.get("security_checks")):
         name = str(check.get("name") or "check")
-        status = str(check.get("status") or "unknown")
+        status = _human_status_label(check.get("status") or "unknown")
         rows.append(
             {
                 "kind": "Safety",
                 "item": f"{name}: {status}",
-                "detail": check.get("detail") or "",
+                "detail": _humanize_dashboard_text(check.get("detail") or ""),
             }
         )
     if not rows:
@@ -10172,7 +10188,7 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     validation_items: list[tuple[str, object]] = [
         (
             "Validation evidence",
-            validation_evidence.get("status") or "not_started",
+            _human_status_label(validation_evidence.get("status") or "not_started"),
         ),
     ]
     if validation_evidence:
@@ -10225,13 +10241,19 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.extend(
         _kv_lines(
             (
-                ("Monthly value verdict", value_report.get("verdict") or "n/a"),
+                (
+                    "Monthly value verdict",
+                    _human_status_label(value_report.get("verdict") or "n/a"),
+                ),
                 ("Report month", value_report.get("month") or "n/a"),
                 (
                     "Net decision-support value",
                     value_report.get("net_decision_support_value_usd"),
                 ),
-                ("$40 threshold met", value_report.get("plausibly_earned_at_least_40_usd")),
+                (
+                    "$40 threshold met",
+                    _yes_no_label(value_report.get("plausibly_earned_at_least_40_usd")),
+                ),
                 ("Useful insights", value_report.get("useful_insights_count")),
                 ("Noisy insights", value_report.get("noisy_insights_count")),
                 ("False positives", value_report.get("false_positive_count")),
@@ -10252,7 +10274,10 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     outcome_coverage.get("missing_outcome_count"),
                 ),
                 *validation_items,
-                ("Monthly value blocker", value_report.get("first_blocker") or "none"),
+                (
+                    "Monthly value blocker",
+                    _human_status_label(value_report.get("first_blocker") or "none"),
+                ),
                 ("Value next action", value_report.get("canonical_next_action") or "n/a"),
                 (
                     "Value next command",
@@ -11470,8 +11495,8 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 ("Packets", database.get("candidate_packet_count")),
                 ("Decision cards", database.get("decision_card_count")),
                 ("Latest daily bar", database.get("latest_daily_bar_date")),
-                ("Degraded mode", degraded.get("enabled")),
-                ("Max action state", degraded.get("max_action_state")),
+                ("Degraded mode", _enabled_label(degraded.get("enabled"))),
+                ("Max action state", _human_status_label(degraded.get("max_action_state"))),
             ),
             width=width,
         )
@@ -11689,8 +11714,8 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     lines.extend(
         _wrap(
-            f"Mode: {brief.get('mode') or 'dry_run'} | "
-            f"Status: {brief.get('status') or 'unknown'} | "
+            f"Mode: {_human_status_label(brief.get('mode') or 'dry_run')} | "
+            f"Status: {_human_status_label(brief.get('status') or 'unknown')} | "
             f"Calls: openai={calls.get('openai', 0)}, "
             f"market={calls.get('market_data', 0)}, broker={calls.get('broker', 0)}",
             width,
@@ -11700,7 +11725,7 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.extend(_wrap(f"Runtime: {_agent_runtime_label(runtime)}", width))
     boundary = brief.get("decision_boundary")
     if boundary:
-        lines.extend(_wrap(f"Boundary: {boundary}", width))
+        lines.extend(_wrap(f"Boundary: {_humanize_dashboard_text(boundary)}", width))
     lines.extend(
         _table_lines(
             _agent_brief_rows(brief),
@@ -11990,6 +12015,62 @@ def _candidate_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]
 def _join_nonempty(values: Sequence[object], *, separator: str = " ") -> str:
     parts = [_text(value) for value in values if value not in (None, "", [], {})]
     return separator.join(part for part in parts if part != "n/a")
+
+
+_STATUS_LABELS: Mapping[str, str] = {
+    "candidate_ledger_coverage": "Candidate ledger coverage",
+    "decision_ready": "decision ready",
+    "dry_run": "dry run",
+    "insufficient_evidence": "Insufficient evidence",
+    "manual_review_ready": "manual review ready",
+    "no_validation_runs": "No validation runs yet",
+    "not_started": "not started",
+    "read_only": "read only",
+    "read_only_decision_support": "read-only decision support",
+    "read_only_research": "read-only research",
+    "research_only": "research only",
+    "safe_read_only": "safe read-only",
+    "setup_blocked": "setup blocked",
+}
+
+_DASHBOARD_TEXT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("decision_ready=false", "decision ready: no"),
+    ("decision_ready=true", "decision ready: yes"),
+    ("order_submission_enabled=False", "orders enabled: no"),
+    ("order_submission_enabled=True", "orders enabled: yes"),
+    ("read_only=False", "read-only: no"),
+    ("read_only=True", "read-only: yes"),
+    ("setup_blocked", "setup blocked"),
+    ("manual_review_ready", "manual review ready"),
+    ("research_only", "research only"),
+)
+
+
+def _human_status_label(value: object) -> str:
+    text = _text(value)
+    if text == "n/a":
+        return text
+    normalized = text.strip().lower()
+    return _STATUS_LABELS.get(normalized, _human_label(text))
+
+
+def _humanize_dashboard_text(value: object) -> str:
+    text = _text(value)
+    for raw, replacement in _DASHBOARD_TEXT_REPLACEMENTS:
+        text = text.replace(raw, replacement)
+    return text
+
+
+def _yes_no_label(value: object) -> str:
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return _text(value)
+
+
+def _enabled_label(value: object) -> str:
+    if isinstance(value, bool):
+        return "Enabled" if value else "Disabled"
+    return _human_status_label(value)
 
 
 def _human_label(value: object) -> str:
