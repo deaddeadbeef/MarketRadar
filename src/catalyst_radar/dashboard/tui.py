@@ -9373,11 +9373,39 @@ def _readiness_setup_ladder_rows(value: object) -> list[Mapping[str, object]]:
     return [
         {
             **dict(row),
+            "code": _readiness_setup_ladder_label(row),
+            "finding": _readiness_setup_ladder_finding(row),
             "next_action": _readiness_setup_ladder_action(row),
         }
         for row in _rows(value)
         if str(row.get("code") or "").strip().lower() in setup_codes
     ]
+
+
+def _readiness_setup_ladder_label(row: Mapping[str, object]) -> str:
+    code = str(row.get("code") or "").strip().lower()
+    if code == "active_universe":
+        return "Active universe"
+    if code == "latest_market_bars":
+        return "Latest market bars"
+    if code == "scan_scope":
+        return "Scan rows"
+    if code == "trust_gate":
+        return "Evidence layers"
+    return _human_source_name(row.get("code"))
+
+
+def _readiness_setup_ladder_finding(row: Mapping[str, object]) -> str:
+    code = str(row.get("code") or "").strip().lower()
+    if code == "active_universe":
+        return "No stock universe is loaded yet."
+    if code == "latest_market_bars":
+        return "Latest prices wait for the universe."
+    if code == "scan_scope":
+        return "No priced-in scan rows exist yet."
+    if code == "trust_gate":
+        return "Enough evidence is not ready yet."
+    return _humanize_dashboard_text(row.get("finding"))
 
 
 def _readiness_setup_ladder_action(row: Mapping[str, object]) -> str:

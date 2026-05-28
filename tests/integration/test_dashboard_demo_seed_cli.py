@@ -1855,6 +1855,10 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "Trial gate" not in output.out
     assert "Trial next" not in output.out
     assert "Useful means" not in output.out
+    assert "Evidence layers" in output.out
+    assert "Enough evidence is not ready yet." in output.out
+    assert "trust gate" not in output.out
+    assert "priced-in evidence layer(s)" not in output.out
     assert "Current Work Queue" in output.out
     assert "Setup is not complete yet" in output.out
     assert "Hidden until setup is complete" in output.out
