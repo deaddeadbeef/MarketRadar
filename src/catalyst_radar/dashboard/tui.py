@@ -10559,6 +10559,25 @@ def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = _rows(_mapping(payload.get("alerts")).get("rows"))
     lines = [_rule("Alerts", width)]
     lines.extend(_wrap("Alerts are research notifications, not trade signals or orders.", width))
+    if not rows:
+        if _real_results_empty(payload):
+            lines.extend(_no_real_result_lines(payload, width))
+            lines.extend(
+                _wrap(
+                    "Alerts appear only after real scan rows survive the evidence gates. "
+                    "There is nothing to open or act on yet.",
+                    width,
+                )
+            )
+        else:
+            lines.extend(
+                _wrap(
+                    "No alert rows yet. Alerts appear after reviewed candidates create "
+                    "research notifications; nothing here is a trade signal.",
+                    width,
+                )
+            )
+        return lines
     lines.extend(
         _table_lines(
             _indexed(
@@ -12645,12 +12664,16 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         return _candidates_next_safe_action(payload)
     if page == "alerts":
         alerts = _mapping(payload.get("alerts"))
-        count = int(_number_or_zero(alerts.get("count")))
+        count = int(_number_or_zero(alerts.get("count"))) or len(
+            _rows(alerts.get("rows"))
+        )
         if count:
             return (
                 "Research alerts only; not trade signals. Open one, then record "
                 "local feedback."
             )
+        if _real_results_empty(payload):
+            return _no_real_result_next_action(payload, _mapping(payload.get("real_results")))
         return "No alert rows yet. Alerts are research notifications, not trade signals."
     if page == "review":
         if _priced_in_review_rows(payload):
