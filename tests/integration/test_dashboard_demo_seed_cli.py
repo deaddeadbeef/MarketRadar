@@ -2134,6 +2134,16 @@ def test_run_mission_brief_dedupes_setup_command_when_command_row_exists() -> No
             "first_blocker": "universe",
             "first_gap_count": 0,
         },
+        "full_market_trust_gate": {
+            "status": "blocked",
+            "answer": "0/6 priced-in evidence layer(s) complete; core 0/3.",
+            "blocker_ladder": {
+                "rows": [
+                    {"step": 1, "source": "universe", "status": "blocked"},
+                    {"step": 2, "source": "market_bars", "status": "blocked"},
+                ]
+            },
+        },
     }
 
     items = dict(_run_mission_brief_items(payload))
@@ -3677,6 +3687,16 @@ def test_dashboard_start_page_empty_scan_points_to_setup_blocker() -> None:
             "first_blocker": "universe",
             "first_gap_count": 0,
         },
+        "full_market_trust_gate": {
+            "status": "blocked",
+            "answer": "0/6 priced-in evidence layer(s) complete; core 0/3.",
+            "blocker_ladder": {
+                "rows": [
+                    {"step": 1, "source": "universe", "status": "blocked"},
+                    {"step": 2, "source": "market_bars", "status": "blocked"},
+                ]
+            },
+        },
     }
     payload["shadow_readiness"] = {
         "checks": [
@@ -3703,6 +3723,12 @@ def test_dashboard_start_page_empty_scan_points_to_setup_blocker() -> None:
     assert "Setup cost" in screen
     assert "Why blocked" in screen
     assert "blocker universe; gap 0" not in screen
+    assert "Evidence check" in screen
+    assert "Trust gate" not in screen
+    assert "Setup order" in screen
+    assert "Blocker ladder" not in screen
+    assert "universe blocked gaps 0" not in screen
+    assert "Active universe (blocked)" in screen
     assert "PowerShell command" in screen
     assert "catalyst-radar ingest-polygon tickers" in screen
     assert "Where to run" in screen
