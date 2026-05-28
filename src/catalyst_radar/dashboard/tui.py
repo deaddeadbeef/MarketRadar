@@ -348,7 +348,7 @@ DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
 PAGE_ALIASES: Mapping[str, str] = {
     "0": "tutorial",
     "learn": "tutorial",
-    "start": "overview",
+    "start": "tutorial",
     "tut": "tutorial",
     "tutorial": "tutorial",
     "1": "overview",
@@ -2677,8 +2677,8 @@ class MarketRadarDashboardApp(App[int]):
             {"command": "Click candidate/alert row", "meaning": "Open the selected detail view."},
             {"command": "0, 1..9, Ctrl+A, f, ?", "meaning": "Keyboard page shortcuts."},
             {
-                "command": "start / insights / tutorial",
-                "meaning": "Start on Market Inbox; open tutorial only when needed.",
+                "command": "start / tutorial / inbox",
+                "meaning": "Use start/tutorial for the walkthrough; inbox for scan messages.",
             },
             {
                 "command": "stocks / ready / full / mismatches",

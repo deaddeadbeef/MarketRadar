@@ -79,7 +79,8 @@ function Get-DashboardExpectedPageLabels {
     }
     $normalized = $normalized.Trim().ToLowerInvariant()
     switch ($normalized) {
-        "start" { @("overview", "Inbox") }
+        "start" { @("tutorial", "Start") }
+        "tutorial" { @("tutorial", "Start") }
         "overview" { @("overview", "Inbox") }
         "inbox" { @("overview", "Inbox") }
         "agent" { @("agent", "Agent Coach") }
