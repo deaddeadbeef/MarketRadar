@@ -1873,9 +1873,12 @@ def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
     assert "Do this first" in output.out
     assert "Run execute later" in output.out
     assert "Clear Active universe first" in output.out
-    assert "Seed or refresh the stock universe" in output.out
-    assert "intentionally; execute only" in normalized
-    assert "if you accept the provider call" in normalized
+    assert "PowerShell command" in output.out
+    assert "catalyst-radar ingest-" in output.out
+    assert "Where to run" in output.out
+    assert "normal PowerShell prompt" in normalized
+    assert "not in the dashboard command box" in normalized
+    assert "if you accept" in normalized
     assert "Do not type run execute while this page says locked" in output.out
     assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
     assert "Radar Run And Call Plan" not in output.out
