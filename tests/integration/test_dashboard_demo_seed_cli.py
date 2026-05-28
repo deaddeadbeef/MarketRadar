@@ -1591,6 +1591,26 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" not in output.out
 
 
+def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "run"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Mission Brief" in output.out
+    assert "Operational note: Run execute is not the next step yet." in output.out
+    assert "Clear Active universe first" in output.out
+    assert "Seed or refresh the stock universe" in output.out
+    assert "intentionally; execute only if you accept the provider call" in output.out
+    assert "Type `run execute` to start one capped cycle" not in output.out
+
+
 def test_dashboard_tui_overview_explains_scan_legend_for_novices(
     tmp_path: Path,
     monkeypatch,
