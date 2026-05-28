@@ -50,6 +50,7 @@ from catalyst_radar.dashboard.tui import (
     _run_mission_brief_items,
     _run_page_next_safe_action,
     _stock_market_bar_next_summary,
+    _tutorial_control_rows,
     dashboard_filters_for_page,
     dashboard_snapshot_payload,
     render_dashboard_tui,
@@ -3546,6 +3547,16 @@ def test_dashboard_tutorial_footer_points_to_first_real_step() -> None:
     assert "NEXT SAFE ACTION: Start with Inbox: press 1 or click Inbox" in screen
     assert "0 provider calls" in screen
     assert "Use the workflow navigation or open the highlighted row" not in screen
+
+
+def test_dashboard_tutorial_rows_match_visible_navigation_labels() -> None:
+    rows = {str(row["step"]): str(row["do"]) for row in _tutorial_control_rows()}
+
+    assert rows["1"] == "Press 1: Inbox"
+    assert rows["2"] == "Press 2: Evidence Gaps"
+    assert rows["3"] == "Press D: Decision Review"
+    assert rows["4"] == "Press 4: Candidate Review"
+    assert rows["5"] == "Press 3: Safe Run"
 
 
 def test_dashboard_header_uses_human_status_labels() -> None:
