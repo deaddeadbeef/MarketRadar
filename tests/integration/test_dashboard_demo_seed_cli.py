@@ -2095,11 +2095,11 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in ops
     assert "Regenerate the blank local CSV so it includes name" in overview
     assert "Regenerate the blank local CSV so it includes name" in ops
-    assert "Direct provider fill: ready_for_approval_with_health_warning" in overview
-    assert "Direct provider fill: ready_for_approval_with_health_warning" in ops
+    assert "Direct provider fill: ready for approval with health warning" in overview
+    assert "Direct provider fill: ready for approval with health warning" in ops
     assert overview.index("Saved file capture") < overview.index("Direct provider fill")
     assert ops.index("Saved file capture") < ops.index("Direct provider fill")
-    assert "Saved file capture: approval_required" in overview
+    assert "Saved file capture: approval required" in overview
     assert "bars targeted; 1 external call(s) if approved" in overview
     assert "type `bars saved capture confirm`" in ops
     assert "manual CSV 12/523 complete" in run
@@ -2123,6 +2123,64 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in ops
+
+
+def test_saved_file_capture_summary_skips_missing_confirm_command() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {
+            "status": "blocked",
+            "answer": "Research only.",
+            "full_market_trust_gate": {
+                "blocker_detail": {
+                    "source": "market_bars",
+                    "provider_fill_status": "ready_for_approval",
+                    "provider_fill_external_call_count": 1,
+                    "provider_fill_command": "catalyst-radar market-bars repair",
+                }
+            },
+        },
+        "priced_in_audit": {
+            "market_bars": {
+                "repair": {
+                    "provider_fill_plan": {
+                        "status": "ready_for_approval",
+                        "provider_call_command": "catalyst-radar market-bars repair",
+                        "execute_external_call_count": 1,
+                        "provider_saved_file_capture_command": (
+                            "catalyst-radar market-bars saved-capture"
+                        ),
+                        "provider_saved_file_next_action": (
+                            "Validate the saved grouped-daily JSON response, then "
+                            "import it."
+                        ),
+                        "provider_saved_file_capture_approval_packet": {
+                            "status": "saved_file_available",
+                            "missing_as_of_bar_count": 579,
+                            "external_calls_if_approved": 0,
+                            "db_writes_during_capture": 0,
+                        },
+                    }
+                }
+            }
+        },
+    }
+
+    ops = render_dashboard_tui(payload, page="ops", width=160)
+    run = render_dashboard_tui(payload, page="run", width=160)
+    combined = f"{ops}\n{run}"
+
+    assert "Saved file capture: saved file available" in ops
+    assert "no capture command needed" in ops
+    assert "Validate the saved grouped-daily JSON response" in combined
+    assert "Direct provider fill: ready for approval" in ops
+    assert "type `n/a`" not in combined
+    assert "ready_for_approval" not in combined
+    assert "saved_file_available" not in combined
 
 
 def _saved_file_command_payload(fixture_path, output_path):
