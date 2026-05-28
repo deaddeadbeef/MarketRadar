@@ -7742,6 +7742,16 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
         "No real result yet.",
     ]
     lines.extend(_wrap(f"Required next step: {next_action}", width))
+    command = _first_scan_setup_command(payload)
+    if command:
+        lines.extend(_wrap(f"Suggested setup command: {command}", width))
+        lines.extend(
+            _wrap(
+                "The dashboard will not run this for you; execute it only after "
+                "you accept the provider call.",
+                width,
+            )
+        )
     lines.extend(
         _wrap(
             "Why this page is blank: MarketRadar has no real scan rows to review yet.",
@@ -7755,6 +7765,24 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
         "when you intentionally want a demo."
     )
     return lines
+
+
+def _first_scan_setup_command(payload: Mapping[str, object]) -> str:
+    for row in _first_scan_setup_rows(payload):
+        command = str(row.get("command") or "").strip()
+        if command:
+            return command
+    answer = _mapping(payload.get("priced_in_answer"))
+    minimum_useful = _mapping(payload.get("minimum_useful_product"))
+    return str(
+        _first_nonblank(
+            payload.get("canonical_next_command"),
+            answer.get("canonical_next_command"),
+            minimum_useful.get("canonical_next_command"),
+            minimum_useful.get("next_command"),
+        )
+        or ""
+    ).strip()
 
 
 def _no_real_result_next_action(

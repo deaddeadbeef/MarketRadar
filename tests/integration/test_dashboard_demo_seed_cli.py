@@ -1288,6 +1288,8 @@ def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
     assert output.err == ""
     assert "No real result yet" in output.out
     assert "Required next step:" in output.out
+    assert "Suggested setup command: catalyst-radar" in output.out
+    assert "The dashboard will not run this for you" in output.out
     assert "Why this page is blank" in output.out
     assert "Provider calls made while viewing: 0" in output.out
     assert "ACME" not in output.out
