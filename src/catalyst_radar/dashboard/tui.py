@@ -6905,6 +6905,10 @@ def _candidate_case_source_gap_summary(
 
 
 def _readiness_first_work_item(payload: Mapping[str, object]) -> Mapping[str, object]:
+    if _real_results_empty(payload):
+        setup_blocker = _readiness_first_setup_blocker(payload)
+        if setup_blocker:
+            return setup_blocker
     queue = _mapping(payload.get("operator_work_queue"))
     rows = _rows(queue.get("rows"))
     priority_order = {"must_fix": 0, "blocked": 1, "attention": 2, "research": 3}
@@ -6916,6 +6920,40 @@ def _readiness_first_work_item(payload: Mapping[str, object]) -> Mapping[str, ob
         ),
     )
     return ordered_rows[0] if ordered_rows else {}
+
+
+def _readiness_first_setup_blocker(payload: Mapping[str, object]) -> Mapping[str, object]:
+    shadow = _mapping(payload.get("shadow_readiness"))
+    for row in _rows(shadow.get("checks")):
+        status = str(row.get("status") or "").strip().lower()
+        if status not in {"blocked", "attention", "setup_required"}:
+            continue
+        code = str(row.get("code") or "").strip()
+        area = str(row.get("area") or code or "Setup blocker").strip()
+        return {
+            **dict(row),
+            "priority": "setup",
+            "area": area,
+            "item": row.get("finding") or area,
+            "next_action": _readiness_setup_next_action(row),
+        }
+    return {}
+
+
+def _readiness_setup_next_action(row: Mapping[str, object]) -> str:
+    code = str(row.get("code") or "").strip().lower()
+    if code == "active_universe":
+        return (
+            "Seed or refresh the stock universe intentionally; execute only if "
+            "you accept the provider call."
+        )
+    if code == "latest_market_bars":
+        return "Fill latest price bars after the universe exists."
+    if code == "scan_scope":
+        return "Run one capped scan after the universe and prices are ready."
+    if code == "trust_gate":
+        return "Clear the first trust-gate blocker before treating rows as insight."
+    return _humanize_dashboard_text(row.get("next_action"))
 
 
 def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
@@ -8915,6 +8953,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     queue = _mapping(payload.get("operator_work_queue"))
     lines = [_rule("Evidence Gaps And Work Queue", width)]
     first_gap = _readiness_first_work_item(payload)
+    readiness_next_action = readiness.get("next_action")
     if first_gap:
         priority = _human_status_label(first_gap.get("priority") or "gap")
         area = _human_source_name(
@@ -8938,13 +8977,15 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
         lines.append("")
+        if _real_results_empty(payload):
+            readiness_next_action = f"Start here: {action}"
     lines.extend(
         _kv_lines(
             (
                 ("Status", _human_label(readiness.get("status"))),
                 ("Decision mode", _human_label(readiness.get("decision_mode"))),
                 ("Headline", readiness.get("headline")),
-                ("Next action", readiness.get("next_action")),
+                ("Next action", readiness_next_action),
                 ("Evidence", _human_readiness_evidence(readiness.get("evidence"))),
                 (
                     "Queue",
@@ -12524,6 +12565,10 @@ _STATUS_LABELS: Mapping[str, str] = {
 }
 
 _DASHBOARD_TEXT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    (
+        "Raise CATALYST_POLYGON_TICKERS_MAX_PAGES if needed, then seed tickers.",
+        "Seed the ticker universe before calling this a full-market scan.",
+    ),
     ("Run plan status=", "Run plan: "),
     ("decision_ready=false", "decision ready: no"),
     ("decision_ready=true", "decision ready: yes"),

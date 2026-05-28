@@ -1405,8 +1405,11 @@ def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
             assert app.page == "readiness"
             assert "Setup step 1" in app.status_message
             assert "No calls were made" in app.status_message
-            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            frame = await wait_for_frame("EVIDENCE GAPS", "Active universe")
             assert "EVIDENCE GAPS" in frame
+            assert "First blocker" in frame
+            assert "Active universe" in frame
+            assert "refresh the stock universe intentionally" in frame
 
     asyncio.run(run_app())
 
@@ -1562,6 +1565,30 @@ def test_dashboard_tui_overview_is_novice_first_on_empty_database(
     assert "Ctrl+A Agent Coach" in output.out
     assert "10 Agent Coach" not in output.out
     assert "11 Review" not in output.out
+
+
+def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "readiness"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Evidence Gaps And Work Queue" in output.out
+    assert "First blocker" in output.out
+    assert "setup: Active universe" in output.out
+    assert "Seed or refresh the stock universe intentionally" in output.out
+    assert "Next action" in output.out
+    assert "Start here: Seed or refresh the stock universe intentionally" in output.out
+    assert "NEXT SAFE ACTION: Research-only. First setup: Active universe." in output.out
+    assert "First must fix: Decision Cards" not in output.out
+    assert "Clear 2 setup blockers" not in output.out
+    assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" not in output.out
 
 
 def test_dashboard_tui_overview_explains_scan_legend_for_novices(
