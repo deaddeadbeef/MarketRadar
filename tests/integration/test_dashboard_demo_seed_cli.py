@@ -1688,15 +1688,26 @@ def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
 
     assert main(["dashboard-tui", "--once", "--page", "run"]) == 0
     output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
 
     assert output.err == ""
     assert "Mission Brief" in output.out
-    assert "Required path" in output.out
-    assert "setup blocked; clear Active universe first" in output.out
-    assert "Operational note: Run execute is not the next step yet." in output.out
+    assert "Safe Run Locked Until Setup Is Complete" in output.out
+    assert "Can I run now?" in output.out
+    assert "No. No real scan rows exist yet." in output.out
+    assert "Why locked?" in output.out
+    assert "Do this first" in output.out
+    assert "Run execute later" in output.out
     assert "Clear Active universe first" in output.out
     assert "Seed or refresh the stock universe" in output.out
-    assert "intentionally; execute only if you accept the provider call" in output.out
+    assert "intentionally; execute only" in normalized
+    assert "if you accept the provider call" in normalized
+    assert "Do not type run execute while this page says locked" in output.out
+    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "Radar Run And Call Plan" not in output.out
+    assert "Priced-in Evidence Plan" not in output.out
+    assert "Layer             | Provider" not in output.out
+    assert "Operational note: Run execute is not the next step yet." not in output.out
     assert "Type `run execute` to start one capped cycle" not in output.out
     assert "None/None" not in output.out
 
