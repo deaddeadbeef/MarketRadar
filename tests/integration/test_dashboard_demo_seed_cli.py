@@ -3689,7 +3689,7 @@ def test_dashboard_start_page_empty_scan_points_to_setup_blocker() -> None:
     assert "Where to run" in screen
     assert "not in the dashboard command box" in screen
     assert "Read Mission setup command" in screen
-    assert "Run the PowerShell command outside the dashboard" in screen
+    assert "If you accept the call/write, run it in PowerShell." in screen
     assert "After setup, review one capped scan before executing" in screen
     assert "NEXT SAFE ACTION: Clear Active universe first" in screen
     assert "Start with Inbox: press 1 or click Inbox" not in screen
@@ -3768,7 +3768,7 @@ def test_dashboard_setup_tutorial_starts_with_setup_command() -> None:
     }
 
     assert rows["1"] == "Read Mission setup command"
-    assert "outside the dashboard" in results["1"]
+    assert results["1"] == "If you accept the call/write, run it in PowerShell."
     assert rows["2"] == "Press 2: Evidence Gaps"
     assert rows["3"] == "Press 3: Safe Run"
     assert rows["4"] == "Press 1: Inbox"
