@@ -9647,6 +9647,17 @@ def _run_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[s
     max_calls = call_plan.get("max_external_call_count")
     if max_calls in (None, ""):
         max_calls = 0
+    max_call_count = int(_number_or_zero(max_calls))
+    display_next_action = next_action
+    if setup_command:
+        blocker = _readiness_first_setup_blocker(payload)
+        area = _human_source_name(
+            blocker.get("area") if blocker else "setup blocker"
+        )
+        display_next_action = (
+            f"{_setup_blocker_first_label(area)}. Use the PowerShell command "
+            "below after accepting the data change or provider call."
+        )
     first_step_items: list[tuple[str, object]] = [
         ("Can I run now?", "No. No real scan rows exist yet."),
         (
@@ -9656,7 +9667,7 @@ def _run_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[s
                 "reaction before it can compare emotion against price."
             ),
         ),
-        ("Do this first", next_action),
+        ("Do this first", display_next_action),
     ]
     if setup_command:
         first_step_items.extend(
@@ -9679,7 +9690,10 @@ def _run_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[s
                 ),
             ),
             ("Browsing cost", "0 provider calls, 0 OpenAI calls, 0 orders."),
-            ("Current execute cap", f"{max_calls} provider call(s) after approval."),
+            (
+                "Current execute cap",
+                f"{_count_text(max_call_count, 'provider call')} after approval.",
+            ),
         ]
     )
     lines = [_rule("Safe Run Locked Until Setup Is Complete", width)]
