@@ -3208,6 +3208,49 @@ def test_run_page_uses_human_status_labels() -> None:
     assert "expected_gate" not in screen
 
 
+def test_market_inbox_uses_human_summary_labels() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "trial_readiness": {
+            "minimum_useful_product": {
+                "ready": False,
+                "status": "blocked",
+                "first_blocker": "llm_real_mode_disabled",
+            }
+        },
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_ready": False,
+            "answer": "Full-market answer is not ready.",
+            "evidence_completeness": {
+                "summary": (
+                    "1/6 priced-in evidence layer(s) complete; "
+                    "first gaps market_bars:5, catalyst_events:2, local_text:1."
+                )
+            },
+        },
+        "priced_in_queue": {
+            "filters": {"status": "all"},
+            "count": 0,
+            "rows": [],
+        },
+    }
+
+    screen = render_dashboard_tui(payload, page="overview", width=160)
+
+    assert "blocker LLM real mode disabled" in screen
+    assert "market bars:5" in screen
+    assert "catalyst events:2" in screen
+    assert "local text:1" in screen
+    assert "llm_real_mode_disabled" not in screen
+    assert "market_bars" not in screen
+    assert "catalyst_events" not in screen
+    assert "local_text" not in screen
+
+
 def test_alias_analysis_pages_have_specific_next_actions() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},

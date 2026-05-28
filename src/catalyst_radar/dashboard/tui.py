@@ -2967,10 +2967,11 @@ def _minimum_product_stop_line_summary(payload: Mapping[str, object]) -> str:
         return ""
     if bool(gate.get("ready")):
         return "ready for read-only decision support; still not trade approval."
-    blocker = gate.get("first_blocker") or "unknown"
+    blocker = _human_status_label(gate.get("first_blocker") or "unknown")
+    status = _human_status_label(gate.get("status") or "blocked")
     command = str(gate.get("next_command") or "").strip()
     parts = [
-        f"{gate.get('status') or 'blocked'}; blocker {blocker}",
+        f"{status}; blocker {blocker}",
     ]
     if command:
         parts.append(f"inspect `{command}`")
@@ -7421,12 +7422,13 @@ def _source_coverage_gap_text(source_coverage: Mapping[str, object]) -> str:
         missing = int(_number_or_zero(values.get("missing")))
         stale = int(_number_or_zero(values.get("stale")))
         row_count = int(_number_or_zero(values.get("row_count")))
+        source_label = _human_source_name(source)
         if missing:
-            detail = f"{source} missing {missing}/{row_count or missing}"
+            detail = f"{source_label} missing {missing}/{row_count or missing}"
         elif stale:
-            detail = f"{source} stale {stale}/{row_count or stale}"
+            detail = f"{source_label} stale {stale}/{row_count or stale}"
         else:
-            detail = f"{source} coverage {_text(values.get('coverage_pct'))}%"
+            detail = f"{source_label} coverage {_text(values.get('coverage_pct'))}%"
         raw_samples = values.get("sample_tickers")
         samples = [
             str(ticker)
@@ -7935,7 +7937,7 @@ def _full_scan_audit_summary(payload: Mapping[str, object]) -> str:
     source_count = int(_number_or_zero(coverage.get("source_count")))
     next_action = _clip(str(audit.get("next_action") or "").strip(), 120)
     parts = [
-        f"{audit.get('status')}",
+        _human_status_label(audit.get("status")),
         f"ranked {ranked}/{active}",
         f"bars {with_bars}/{active}",
         f"sources {ready_sources}/{source_count}",
@@ -8452,15 +8454,16 @@ def _answer_evidence_completeness_summary(payload: Mapping[str, object]) -> str:
         return ""
     summary = str(evidence.get("summary") or "").strip()
     if summary:
-        return f"Evidence layers: {summary}"
+        return f"Evidence layers: {_human_source_status_text(summary)}"
     ready = int(_number_or_zero(evidence.get("ready_source_count")))
     total = int(_number_or_zero(evidence.get("total_source_count")))
     if total <= 0:
         return ""
     first_gap = str(evidence.get("first_gap_source") or "").strip()
     first_gap_count = int(_number_or_zero(evidence.get("first_gap_count")))
+    first_gap_label = _human_source_name(first_gap)
     suffix = (
-        f"; first gap {first_gap}:{first_gap_count}"
+        f"; first gap {first_gap_label}:{first_gap_count}"
         if first_gap and first_gap_count
         else ""
     )
@@ -12179,6 +12182,7 @@ _STATUS_LABELS: Mapping[str, str] = {
     "insufficient_evidence": "Insufficient evidence",
     "live_call_planned": "live call planned",
     "live_calls_planned": "live calls planned",
+    "llm_real_mode_disabled": "LLM real mode disabled",
     "local_text": "local text",
     "manual_review_ready": "manual review ready",
     "market_bars": "market bars",
