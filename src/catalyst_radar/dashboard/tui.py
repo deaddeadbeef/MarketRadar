@@ -9749,6 +9749,7 @@ def _run_mission_brief_items(
             operator_step.get("tui_command") or operator_step.get("command") or ""
         ).strip()
     )
+    setup_do_now = ""
     if separate_setup_command:
         action = _human_source_status_text(
             operator_step.get("action")
@@ -9757,6 +9758,7 @@ def _run_mission_brief_items(
             or "Run the setup command."
         ).rstrip(".;")
         if action:
+            setup_do_now = action
             items.append(("Do now", action))
         setup_cost = _operator_next_step_setup_cost(operator_step)
         if setup_cost:
@@ -9863,7 +9865,13 @@ def _run_mission_brief_items(
     if blocker_text:
         items.append(("Trust blocker", blocker_text))
     if next_action:
-        items.append(("Useful next", _humanize_dashboard_text(next_action)))
+        useful_next = _humanize_dashboard_text(next_action)
+        if not (
+            separate_setup_command
+            and setup_do_now
+            and _same_dashboard_sentence(useful_next, setup_do_now)
+        ):
+            items.append(("Useful next", useful_next))
     unblock_summary = _run_market_bar_unblock_summary(payload, blocker)
     if unblock_summary:
         items.append(("Unblock options", unblock_summary))
@@ -9909,6 +9917,14 @@ def _operator_next_step_setup_blocker(step: Mapping[str, object]) -> str:
 def _count_text(count: int, noun: str) -> str:
     suffix = "" if count == 1 else "s"
     return f"{count} {noun}{suffix}"
+
+
+def _same_dashboard_sentence(left: object, right: object) -> bool:
+    return _sentence_key(left) == _sentence_key(right)
+
+
+def _sentence_key(value: object) -> str:
+    return str(value or "").strip().rstrip(".;").casefold()
 
 
 def _setup_evidence_check_text(trust_gate: Mapping[str, object]) -> str:
