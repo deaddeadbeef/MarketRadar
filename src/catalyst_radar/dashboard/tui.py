@@ -8966,6 +8966,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     queue = _mapping(payload.get("operator_work_queue"))
     lines = [_rule("Evidence Gaps And Work Queue", width)]
     first_gap = _readiness_first_work_item(payload)
+    setup_first = bool(first_gap and _real_results_empty(payload))
     readiness_next_action = readiness.get("next_action")
     if first_gap:
         priority = _human_status_label(first_gap.get("priority") or "gap")
@@ -8990,7 +8991,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
         lines.append("")
-        if _real_results_empty(payload):
+        if setup_first:
             readiness_next_action = f"Start here: {action}"
     lines.extend(
         _kv_lines(
@@ -9043,9 +9044,14 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
         lines.append("")
+        check_rows = (
+            _readiness_setup_ladder_rows(shadow.get("checks"))
+            if setup_first
+            else shadow.get("checks")
+        )
         lines.extend(
             _table_lines(
-                _readiness_table_rows(shadow.get("checks")),
+                _readiness_table_rows(check_rows),
                 [
                     ("code", "Check", 24),
                     ("status", "Status", 10),
@@ -9057,34 +9063,87 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
         lines.append("")
-    lines.extend(
-        _table_lines(
-            _readiness_table_rows(readiness.get("readiness_checklist")),
-            [
-                ("area", "Area", 24),
-                ("status", "Status", 10),
-                ("finding", "Finding", 44),
-                ("next_action", "Next Action", 36),
-            ],
-            width=width,
-            limit=12,
+    if setup_first:
+        lines.append(_rule("Current Work Queue", width))
+        lines.extend(
+            _wrap(
+                "Setup is not complete yet. Later evidence, Decision Card, LLM, "
+                "telemetry, alert, and broker tasks stay hidden until the active "
+                "universe exists.",
+                width,
+            )
         )
-    )
-    lines.append("")
-    lines.extend(
-        _table_lines(
-            _readiness_table_rows(queue.get("rows")),
-            [
-                ("priority", "Priority", 14),
-                ("area", "Area", 18),
-                ("item", "Item", 42),
-                ("next_action", "Action", 42),
-            ],
-            width=width,
-            limit=10,
+        lines.extend(
+            _table_lines(
+                _readiness_table_rows(_readiness_setup_first_rows(first_gap)),
+                [
+                    ("priority", "Priority", 14),
+                    ("area", "Area", 18),
+                    ("item", "Item", 42),
+                    ("next_action", "Action", 42),
+                ],
+                width=width,
+                limit=4,
+            )
         )
-    )
+    else:
+        lines.extend(
+            _table_lines(
+                _readiness_table_rows(readiness.get("readiness_checklist")),
+                [
+                    ("area", "Area", 24),
+                    ("status", "Status", 10),
+                    ("finding", "Finding", 44),
+                    ("next_action", "Next Action", 36),
+                ],
+                width=width,
+                limit=12,
+            )
+        )
+        lines.append("")
+        lines.extend(
+            _table_lines(
+                _readiness_table_rows(queue.get("rows")),
+                [
+                    ("priority", "Priority", 14),
+                    ("area", "Area", 18),
+                    ("item", "Item", 42),
+                    ("next_action", "Action", 42),
+                ],
+                width=width,
+                limit=10,
+            )
+        )
     return lines
+
+
+def _readiness_setup_first_rows(
+    first_gap: Mapping[str, object],
+) -> list[Mapping[str, object]]:
+    area = first_gap.get("area") or first_gap.get("item") or "Setup"
+    return [
+        {
+            "priority": first_gap.get("priority") or "setup",
+            "area": area,
+            "item": first_gap.get("item") or area,
+            "next_action": first_gap.get("next_action") or first_gap.get("action"),
+        },
+        {
+            "priority": "later",
+            "area": "Later tasks",
+            "item": "Hidden until setup is complete",
+            "next_action": "Clear the setup row first; browsing still makes 0 calls.",
+        },
+    ]
+
+
+def _readiness_setup_ladder_rows(value: object) -> list[Mapping[str, object]]:
+    setup_codes = {"active_universe", "latest_market_bars", "scan_scope", "trust_gate"}
+    return [
+        row
+        for row in _rows(value)
+        if str(row.get("code") or "").strip().lower() in setup_codes
+    ]
 
 
 def _readiness_table_rows(value: object) -> list[Mapping[str, object]]:
