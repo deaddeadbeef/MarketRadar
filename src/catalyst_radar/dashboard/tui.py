@@ -9581,8 +9581,9 @@ def _run_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[s
     lines.extend(
         _wrap(
             (
-                "Do not type run execute while this page says locked. Open 2 "
-                "Evidence Gaps to clear the first blocker, then return here."
+                "Do not type run execute while this page says locked. Run the "
+                "PowerShell setup command in a normal PowerShell prompt first; "
+                "use 2 Evidence Gaps only to inspect blockers."
             ),
             width,
         )
@@ -12895,8 +12896,9 @@ def _agent_setup_locked_lines(
     lines.extend(
         _wrap(
             (
-                "Do not run agent execute while this page says locked. Clear "
-                "Evidence Gaps first, then return here for a zero-call preview."
+                "Do not run agent execute while this page says locked. Run the "
+                "PowerShell setup command first, then return here for a zero-call "
+                "preview after real scan evidence exists."
             ),
             width,
         )
