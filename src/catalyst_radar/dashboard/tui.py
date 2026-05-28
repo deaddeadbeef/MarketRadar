@@ -2940,6 +2940,8 @@ def _operator_next_step_message(payload: Mapping[str, object]):
 
 
 def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
+    if _real_results_empty(payload):
+        return _no_real_result_next_action(payload, _mapping(payload.get("real_results")))
     step = _priced_in_operator_step(payload)
     if not step:
         return "Review call budget, then type run execute only if intended."
@@ -9188,6 +9190,9 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
             _kv_lines(_run_source_status_display_items(mission_items), width=width)
         )
         lines.append("")
+    if _real_results_empty(payload):
+        lines.extend(_run_setup_locked_lines(payload, width))
+        return lines
     lines.append(_rule("Radar Run And Call Plan", width))
     lines.extend(
         _kv_lines(
@@ -9333,6 +9338,52 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append("")
     lines.extend(
         _wrap(_run_operational_note(payload), width)
+    )
+    return lines
+
+
+def _run_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    call_plan = _mapping(payload.get("call_plan"))
+    real_results = _mapping(payload.get("real_results"))
+    next_action = _no_real_result_next_action(payload, real_results)
+    max_calls = call_plan.get("max_external_call_count")
+    if max_calls in (None, ""):
+        max_calls = 0
+    lines = [_rule("Safe Run Locked Until Setup Is Complete", width)]
+    lines.extend(
+        _kv_lines(
+            (
+                ("Can I run now?", "No. No real scan rows exist yet."),
+                (
+                    "Why locked?",
+                    (
+                        "MarketRadar needs an active universe and fresh price "
+                        "reaction before it can compare emotion against price."
+                    ),
+                ),
+                ("Do this first", next_action),
+                (
+                    "Run execute later",
+                    (
+                        "After setup, this page reviews one capped radar cycle "
+                        "before you intentionally run it."
+                    ),
+                ),
+                ("Browsing cost", "0 provider calls, 0 OpenAI calls, 0 orders."),
+                ("Current execute cap", f"{max_calls} provider call(s) after approval."),
+            ),
+            width=width,
+        )
+    )
+    lines.append("")
+    lines.extend(
+        _wrap(
+            (
+                "Do not type run execute while this page says locked. Open 2 "
+                "Evidence Gaps to clear the first blocker, then return here."
+            ),
+            width,
+        )
     )
     return lines
 
