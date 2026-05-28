@@ -1897,12 +1897,15 @@ def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
     assert "Do this first" in output.out
     assert "Run execute later" in output.out
     assert "Set up Active universe first" in output.out
+    assert "Use the PowerShell command below" in output.out
+    assert "Set up Active universe first: Seed or refresh the universe" not in output.out
+    assert "provider call(s) after approval" not in output.out
     assert "PowerShell command" in output.out
     assert "catalyst-radar ingest-" in output.out
     assert "Where to run" in output.out
     assert "normal PowerShell prompt" in normalized
     assert "not in the dashboard command box" in normalized
-    assert "if you accept" in normalized
+    assert "after accepting" in normalized
     assert "Do not type run execute while this page says locked" in output.out
     assert "Run the PowerShell setup command in a normal PowerShell prompt first" in normalized
     assert "use 2 Evidence Gaps only to inspect blockers" in normalized
