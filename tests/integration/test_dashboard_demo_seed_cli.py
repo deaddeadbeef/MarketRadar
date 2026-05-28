@@ -3065,6 +3065,36 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
                 },
             ],
         },
+        "candidates": {
+            "rows": [
+                {
+                    "ticker": "ACME",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "emotion_score": 80,
+                    "reaction_score": 25,
+                    "emotion_reaction_gap": 55,
+                    "candidate_theme": "margin_inflection",
+                    "data_sources": {
+                        "available": ["market_bars", "catalyst_events", "local_text"],
+                        "missing": ["options", "broker_context"],
+                        "stale": [],
+                    },
+                },
+                {
+                    "ticker": "BETA",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "emotion_score": 70,
+                    "reaction_score": 20,
+                    "emotion_reaction_gap": 50,
+                    "candidate_theme": "product_launch",
+                    "data_sources": {
+                        "available": ["market_bars"],
+                        "missing": ["candidate_packet", "decision_card"],
+                        "stale": [],
+                    },
+                },
+            ],
+        },
     }
 
     review_rows = _priced_in_review_rows(payload)
@@ -3084,6 +3114,12 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "Latest scan results" in overview
     assert "ACME" in overview
     assert "BETA" in overview
+
+    candidates = render_dashboard_tui(payload, page="candidates", width=180)
+    assert "Research-only: candidates are inspection targets, not trade ideas" in candidates
+    assert "Fix Evidence Gaps first." in candidates
+    assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" in candidates
+    assert "not trade approval" in candidates
 
     case = render_dashboard_tui(payload, page="candidate:ACME", width=180)
     assert "Candidate ACME" in case
@@ -6222,6 +6258,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "candidates"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> 4  Candidate Review" in frame
+            assert "Research-only" in frame
+            assert "not trade ideas" in frame
+            assert "Evidence Gaps first" in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")

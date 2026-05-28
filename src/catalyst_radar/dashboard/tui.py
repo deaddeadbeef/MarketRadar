@@ -1831,7 +1831,7 @@ class MarketRadarDashboardApp(App[int]):
                 f"candidate and Decision Card context.{page_text}"
             ),
             "run": _run_page_next_safe_action(self.payload),
-            "candidates": "Click or focus a row and press Enter to open a candidate.",
+            "candidates": _candidates_next_safe_action(self.payload),
             "alerts": "Click or focus a row and press Enter to open an alert.",
             "agent": "Review the dry-run multi-agent brief; it makes zero provider calls.",
             "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
@@ -2892,6 +2892,16 @@ def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
     if command:
         parts.append(f"Use `{_clip(command, 100)}`.")
     return " ".join(parts)
+
+
+def _candidates_next_safe_action(payload: Mapping[str, object]) -> str:
+    readiness = _mapping(payload.get("readiness"))
+    if readiness.get("safe_to_make_investment_decision") is True:
+        return "Open a candidate, then verify evidence before any manual decision."
+    return (
+        "Research-only. Press 2 Evidence Gaps first; candidate rows are not trade "
+        "ideas yet."
+    )
 
 
 def _minimum_product_stop_line_summary(payload: Mapping[str, object]) -> str:
@@ -9565,14 +9575,21 @@ def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
 
 
 def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    readiness = _mapping(payload.get("readiness"))
+    decision_safe = readiness.get("safe_to_make_investment_decision") is True
     rows = [
-        _candidate_table_row(row, row_key=str(index))
+        _candidate_table_row(row, row_key=str(index), decision_safe=decision_safe)
         for index, row in enumerate(_candidate_rows(payload), start=1)
     ]
     lines = [_rule("Candidates", width)]
     if _real_results_empty(payload):
         lines.extend(_no_real_result_lines(payload, width))
         return lines
+    if not decision_safe:
+        lines.append(
+            "Research-only: candidates are inspection targets, not trade ideas. "
+            "Press 2 Evidence Gaps before acting."
+        )
     lines.extend(
         _table_lines(
             _indexed(rows),
@@ -9594,17 +9611,29 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
         "Gap is emotion minus price reaction. Positive gap means the market may not "
         "have fully priced the catalyst."
     )
-    lines.append("Use `open <#|ticker>` to inspect a candidate.")
+    lines.append(
+        "Use `open <#|ticker>` to inspect a candidate; this is not trade approval."
+    )
     return lines
 
 
-def _candidate_table_row(row: Mapping[str, object], *, row_key: str) -> Mapping[str, object]:
+def _candidate_table_row(
+    row: Mapping[str, object],
+    *,
+    row_key: str,
+    decision_safe: bool = False,
+) -> Mapping[str, object]:
     brief = _mapping(row.get("research_brief"))
-    next_step = (
+    source_next_step = (
         ((_priced_in_reason(row) and row.get("priced_in_next_step")) or None)
         or row.get("next_step")
         or row.get("decision_next_step")
         or brief.get("next_step")
+    )
+    next_step = (
+        source_next_step
+        if decision_safe
+        else "Fix Evidence Gaps first."
     )
     return {
         **dict(row),
@@ -11485,6 +11514,8 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         return _readiness_next_safe_action(payload)
     if page == "run":
         return _run_page_next_safe_action(payload)
+    if page == "candidates":
+        return _candidates_next_safe_action(payload)
     if page == "agent":
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     return "Use the workflow navigation or open the highlighted row."
