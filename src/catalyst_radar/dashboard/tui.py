@@ -10511,6 +10511,40 @@ def _telemetry_event_rows(telemetry: Mapping[str, object]) -> list[Mapping[str, 
     ]
 
 
+def _telemetry_next_safe_action(payload: Mapping[str, object]) -> str:
+    telemetry = _mapping(payload.get("telemetry"))
+    coverage = _mapping(payload.get("telemetry_coverage"))
+    missing_required = int(_number_or_zero(coverage.get("missing_required_count")))
+    attention = int(_number_or_zero(telemetry.get("attention_count")))
+    event_count = int(_number_or_zero(telemetry.get("event_count")))
+    waiting_domains = [
+        row
+        for row in _rows(coverage.get("domains"))
+        if str(row.get("status") or "").strip().lower() == "waiting"
+    ]
+    if missing_required:
+        return (
+            f"Telemetry missing {missing_required} required domain(s). Inspect "
+            "coverage rows before trusting run diagnosis."
+        )
+    if attention:
+        return (
+            f"Telemetry core ready; inspect {attention} attention item(s), then "
+            "use the audit tape after runs."
+        )
+    if waiting_domains:
+        return (
+            "Telemetry core ready; optional waiting domains fill after universe "
+            "seed or dashboard actions."
+        )
+    if event_count <= 0:
+        return (
+            "No telemetry yet. Refresh after an intentional run before diagnosing "
+            "workflow health."
+        )
+    return "Telemetry core ready; use this page as the audit trail after intentional runs."
+
+
 def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
     broker = _mapping(payload.get("broker"))
     snapshot = _mapping(broker.get("snapshot"))
@@ -11694,6 +11728,8 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         return _broker_next_safe_action(payload)
     if page == "ops":
         return _ops_next_safe_action(payload)
+    if page == "telemetry":
+        return _telemetry_next_safe_action(payload)
     if page == "agent":
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     return "Use the workflow navigation or open the highlighted row."

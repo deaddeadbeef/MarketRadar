@@ -3366,6 +3366,50 @@ def test_ops_footer_uses_coverage_first_source_step() -> None:
     assert "Use the workflow navigation or open the highlighted row" not in ops
 
 
+def test_telemetry_footer_uses_audit_status() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+        "telemetry": {
+            "status": "ready",
+            "headline": "Latest telemetry event is healthy.",
+            "event_count": 25,
+            "attention_count": 2,
+            "guarded_count": 0,
+            "events": [],
+        },
+        "telemetry_coverage": {
+            "status": "ready",
+            "headline": "Telemetry covers the core radar run path.",
+            "ready_required_domain_count": 3,
+            "required_domain_count": 3,
+            "missing_required_count": 0,
+            "domains": [
+                {
+                    "domain": "Interactive dashboard actions",
+                    "status": "waiting",
+                    "event_count": 0,
+                    "operator_action": (
+                        "Optional until you save an action, trigger, or order preview."
+                    ),
+                }
+            ],
+        },
+    }
+
+    telemetry = render_dashboard_tui(payload, page="telemetry", width=150)
+
+    assert "Telemetry" in telemetry
+    assert "Attention                : 2" in telemetry
+    assert "NEXT SAFE ACTION: Telemetry core ready; inspect 2 attention item(s)" in telemetry
+    assert "Use the workflow navigation or open the highlighted row" not in telemetry
+
+
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
@@ -6413,6 +6457,14 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "full-scan" in frame
             assert "first provider chunk" in frame
             assert "provider calls" in frame
+
+            assert await pilot.click("#nav-telemetry")
+            await pilot.pause()
+            assert app.page == "telemetry"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Telemetry audit tape" in frame
+            assert "NEXT SAFE ACTION" in frame
+            assert "Use the workflow navigation or open the highlighted row" not in frame
 
             app.query_one("#nav-help").focus()
             await pilot.press("up")
