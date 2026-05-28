@@ -12933,6 +12933,11 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
             return _no_real_result_next_action(payload, _mapping(payload.get("real_results")))
         return "No alert rows yet. Alerts are research notifications, not trade signals."
     if page == "review":
+        if _real_results_empty(payload):
+            return _no_real_result_next_action(
+                payload,
+                _mapping(payload.get("real_results")),
+            )
         if _priced_in_review_rows(payload):
             return (
                 "Decision Review is not trade approval. Verify optional gaps, "
