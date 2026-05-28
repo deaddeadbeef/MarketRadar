@@ -1284,13 +1284,14 @@ def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
 
     assert main(["dashboard-tui", "--once"]) == 0
     output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
 
     assert output.err == ""
     assert "No real result yet" in output.out
     assert "no market scan has run" in output.out
     assert "Required next step:" in output.out
     assert "PowerShell setup command: catalyst-radar" in output.out
-    assert "not in the dashboard command box" in output.out
+    assert "not in the dashboard command box" in normalized
     assert "Why this page is blank" in output.out
     assert "Provider calls made while viewing: 0" in output.out
     assert "ACME" not in output.out
@@ -1318,7 +1319,7 @@ def test_dashboard_empty_candidates_points_to_first_setup_blocker(
     assert "Clear Active universe first" in output.out
     assert "Seed or refresh the universe" in output.out
     assert "Run setup commands in PowerShell" in output.out
-    assert "not in the dashboard command box" in output.out
+    assert "not in the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
     assert "Why this page is blank" in output.out
     assert "Run/import real market data" not in output.out
@@ -1388,7 +1389,7 @@ def test_dashboard_empty_decision_review_points_to_first_setup_blocker(
     assert "Clear Active universe first" in output.out
     assert "Seed or refresh the universe" in output.out
     assert "Run setup commands in PowerShell" in output.out
-    assert "not in the dashboard command box" in output.out
+    assert "not in the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
     assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
     assert "No decision-ready review rows. Fix Evidence Gaps" not in output.out
@@ -1413,7 +1414,7 @@ def test_dashboard_empty_themes_points_to_first_setup_blocker(
     assert "Clear Active universe first" in output.out
     assert "Seed or refresh the universe" in output.out
     assert "Run setup commands in PowerShell" in output.out
-    assert "not in the dashboard command box" in output.out
+    assert "not in the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
     assert "Theme clusters appear only after real scan rows exist" in output.out
     assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
