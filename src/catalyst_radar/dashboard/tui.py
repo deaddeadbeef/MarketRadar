@@ -7081,6 +7081,9 @@ def _readiness_setup_next_action(row: Mapping[str, object]) -> str:
 
 
 def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
+    setup_footer = _setup_command_footer_action(payload)
+    if setup_footer:
+        return setup_footer
     row = _readiness_first_work_item(payload)
     if row:
         priority = str(row.get("priority") or "gap").replace("_", " ")
@@ -7859,6 +7862,19 @@ def _first_scan_setup_command(payload: Mapping[str, object]) -> str:
         )
         or ""
     ).strip()
+
+
+def _setup_command_footer_action(payload: Mapping[str, object]) -> str:
+    if not _real_results_empty(payload) or not _first_scan_setup_command(payload):
+        return ""
+    blocker = _readiness_first_setup_blocker(payload)
+    area = _human_source_name(
+        blocker.get("area") if blocker else "setup blocker"
+    )
+    return (
+        f"Clear {area} first: run PowerShell command above after accepting "
+        "call/write."
+    )
 
 
 def _no_real_result_next_action(
@@ -13173,6 +13189,19 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
             "Alert detail is a research notification, not trade approval. "
             "Review evidence, then record local feedback."
         )
+    setup_footer = _setup_command_footer_action(payload)
+    if setup_footer and page in {
+        "readiness",
+        "run",
+        "candidates",
+        "alerts",
+        "review",
+        "broker",
+        "ops",
+        "agent",
+        "themes",
+    }:
+        return setup_footer
     if page == "tutorial":
         if _real_results_empty(payload):
             return _no_real_result_next_action(

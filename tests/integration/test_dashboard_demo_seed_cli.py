@@ -1851,7 +1851,11 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "Current Work Queue" in output.out
     assert "Setup is not complete yet" in output.out
     assert "Hidden until setup is complete" in output.out
-    assert "NEXT SAFE ACTION: Research-only. First setup: Active universe." in output.out
+    assert (
+        "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
+        in output.out
+    )
+    assert "above after accepting call/write" in output.out
     assert "First must fix: Decision Cards" not in output.out
     assert "Decision Cards were not generated" not in output.out
     assert "Run the radar once" not in output.out
@@ -2007,7 +2011,11 @@ def test_dashboard_ops_empty_state_names_empty_sections_and_setup_first(
     assert "Where to run             : Run it in a normal PowerShell prompt" in output.out
     assert "not in the dashboard command box" in output.out
     assert "Hidden for now" in output.out
-    assert "NEXT SAFE ACTION: Research-only. First setup: Active universe." in output.out
+    assert (
+        "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
+        in output.out
+    )
+    assert "above after accepting call/write" in output.out
     assert "Source Fill Workflow" not in output.out
     assert "Visible Review Page Source Gaps" not in output.out
     assert "batch <source>" not in output.out
