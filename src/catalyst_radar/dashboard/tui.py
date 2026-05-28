@@ -2212,6 +2212,30 @@ class MarketRadarDashboardApp(App[int]):
                 ]
             )
         if page == "readiness":
+            first_gap = _readiness_first_work_item(self.payload)
+            if first_gap:
+                priority = str(first_gap.get("priority") or "gap").replace("_", " ")
+                area = str(
+                    first_gap.get("area")
+                    or first_gap.get("item")
+                    or "Evidence gap"
+                ).strip()
+                action = str(
+                    first_gap.get("next_action") or first_gap.get("action") or ""
+                ).strip()
+                return "\n".join(
+                    [
+                        (
+                            f"[bold #7ee787]STOPLIGHT[/] {can_act}; "
+                            "0 calls, 0 orders; red rows block trust."
+                        ),
+                        f"[bold]First blocker:[/] {priority} - {area}.",
+                        (
+                            f"[bold]Safe:[/] 0 calls, 0 orders. "
+                            f"[bold]Do next:[/] {_clip(action or next_action, 110)}"
+                        ),
+                    ]
+                )
             return "\n".join(
                 [
                     "[bold #7ee787]USE THIS PAGE[/] Clear blockers before trusting output.",
@@ -2365,7 +2389,10 @@ class MarketRadarDashboardApp(App[int]):
                     ("next_action", "Next action", 58),
                 ],
                 _rows(_mapping(self.payload.get("readiness")).get("readiness_checklist")),
-                "Use this page to see which evidence gaps block a human decision.",
+                (
+                    "Rows explain evidence areas. Start with blocked rows; "
+                    "Enter only inspects and makes no calls."
+                ),
             )
         if page == "run":
             call_plan = _mapping(self.payload.get("call_plan"))
@@ -6690,19 +6717,23 @@ def _candidate_case_source_gap_summary(
     return "; ".join(parts) if parts else "none"
 
 
-def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
+def _readiness_first_work_item(payload: Mapping[str, object]) -> Mapping[str, object]:
     queue = _mapping(payload.get("operator_work_queue"))
     rows = _rows(queue.get("rows"))
     priority_order = {"must_fix": 0, "blocked": 1, "attention": 2, "research": 3}
-    actionable_rows = sorted(
+    ordered_rows = sorted(
         rows,
         key=lambda row: priority_order.get(
             str(row.get("priority") or "").strip().lower(),
             9,
         ),
     )
-    if actionable_rows:
-        row = actionable_rows[0]
+    return ordered_rows[0] if ordered_rows else {}
+
+
+def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
+    row = _readiness_first_work_item(payload)
+    if row:
         priority = str(row.get("priority") or "gap").replace("_", " ")
         area = str(row.get("area") or row.get("item") or "Evidence gap").strip()
         action = str(row.get("next_action") or row.get("action") or "").strip()
@@ -6729,7 +6760,7 @@ def _readiness_row_status_message(row: Mapping[str, object]) -> str:
     finding_text = f" Finding: {_clip(finding, 90)}" if finding else ""
     next_text = f" Next: {_clip(next_action, 110)}" if next_action else ""
     return (
-        f"Research-only blocker selected: {area} ({status})."
+        f"No calls. Research-only blocker selected: {area} ({status})."
         f"{finding_text}{next_text}"
     )
 
@@ -8631,6 +8662,30 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     boundary = _mapping(shadow.get("call_boundary"))
     queue = _mapping(payload.get("operator_work_queue"))
     lines = [_rule("Evidence Gaps And Work Queue", width)]
+    first_gap = _readiness_first_work_item(payload)
+    if first_gap:
+        priority = str(first_gap.get("priority") or "gap").replace("_", " ")
+        area = str(
+            first_gap.get("area") or first_gap.get("item") or "Evidence gap"
+        ).strip()
+        action = str(
+            first_gap.get("next_action") or first_gap.get("action") or ""
+        ).strip()
+        lines.extend(
+            _kv_lines(
+                (
+                    ("Stoplight", "Red rows block trust; green rows are already clear."),
+                    ("First blocker", f"{priority}: {area}"),
+                    (
+                        "Safe interaction",
+                        "Open rows to inspect; 0 calls, 0 orders.",
+                    ),
+                    ("Do next", action),
+                ),
+                width=width,
+            )
+        )
+        lines.append("")
     lines.extend(
         _kv_lines(
             (
