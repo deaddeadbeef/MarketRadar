@@ -70,6 +70,29 @@ function Get-CurrentPowerShellPath {
     return "powershell.exe"
 }
 
+function Get-DashboardExpectedPageLabels {
+    param([string]$Page)
+
+    $normalized = $Page
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        $normalized = "overview"
+    }
+    $normalized = $normalized.Trim().ToLowerInvariant()
+    switch ($normalized) {
+        "start" { @("overview", "Inbox") }
+        "overview" { @("overview", "Inbox") }
+        "inbox" { @("overview", "Inbox") }
+        "agent" { @("agent", "Agent Coach") }
+        "agents" { @("agent", "Agent Coach") }
+        "candidates" { @("candidates", "Candidate Review") }
+        "review" { @("review", "Decision Review") }
+        "readiness" { @("readiness", "Evidence Gaps") }
+        "run" { @("run", "Safe Run") }
+        "ipo" { @("ipo", "IPO/S-1") }
+        default { @($Page) }
+    }
+}
+
 Write-Output "MarketRadar dashboard end-to-end debug"
 Write-Output "Repo: $repoRoot"
 Write-Output "Page: $Page"
@@ -174,8 +197,9 @@ if ($stdout -notmatch "External calls made:\s*0") {
     exit 4
 }
 
-$expectedPage = if ($Page -eq "start") { "overview" } else { $Page }
-if ($stdout -notmatch ("Page:\s*{0}" -f [regex]::Escape($expectedPage))) {
+$expectedPageLabels = @(Get-DashboardExpectedPageLabels -Page $Page)
+$expectedPagePattern = ($expectedPageLabels | ForEach-Object { [regex]::Escape($_) }) -join "|"
+if ($stdout -notmatch ("Page:\s*({0})" -f $expectedPagePattern)) {
     Write-Output "stdout:"
     Write-Output $stdout
     Write-Error "Dashboard debug smoke did not open the expected page."
