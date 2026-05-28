@@ -8733,8 +8733,8 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.extend(
         _kv_lines(
             (
-                ("Status", readiness.get("status")),
-                ("Decision mode", readiness.get("decision_mode")),
+                ("Status", _human_label(readiness.get("status"))),
+                ("Decision mode", _human_label(readiness.get("decision_mode"))),
                 ("Headline", readiness.get("headline")),
                 ("Next action", readiness.get("next_action")),
                 ("Evidence", readiness.get("evidence")),
@@ -8748,7 +8748,11 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.extend(
             _kv_lines(
                 (
-                    ("Shadow gate", f"{shadow.get('status')}; ready={shadow.get('ready')}"),
+                    (
+                        "Shadow gate",
+                        f"{_human_label(shadow.get('status'))}; "
+                        f"{_readiness_ready_label(shadow.get('ready'))}",
+                    ),
                     ("Shadow next", shadow.get("canonical_next_action")),
                     (
                         "Shadow calls",
@@ -8758,7 +8762,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     (
                         "Latest shadow run",
                         (
-                            f"{latest_shadow.get('status')}; "
+                            f"{_human_label(latest_shadow.get('status'))}; "
                             f"run_date={latest_shadow.get('run_date') or 'n/a'}; "
                             f"writes={latest_shadow.get('db_writes_made') or 0}"
                         )
@@ -11809,6 +11813,10 @@ def _decision_label(readiness: Mapping[str, object]) -> str:
     if status:
         return f"No - {status}"
     return "No - not decision ready"
+
+
+def _readiness_ready_label(value: object) -> str:
+    return "ready" if value is True else "not ready"
 
 
 def _ops_detail(payload: Mapping[str, object]) -> str:
