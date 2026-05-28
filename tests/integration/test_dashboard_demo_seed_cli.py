@@ -3051,6 +3051,88 @@ def test_dashboard_text_render_respects_requested_width() -> None:
     assert offenders == []
 
 
+def test_overview_audit_summary_respects_requested_width() -> None:
+    width = 80
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "real_results": {"status": "available"},
+        "priced_in_queue": {
+            "count": 1,
+            "returned_count": 1,
+            "total_count": 1,
+            "rows": [
+                {
+                    "ticker": "ACME",
+                    "priced_in_status": "neutral",
+                    "emotion_score": 0,
+                    "reaction_score": 0,
+                    "emotion_reaction_gap": 0,
+                    "data_sources": {"missing": ["market_bars"]},
+                }
+            ],
+        },
+        "priced_in_audit": {
+            "status": "blocked",
+            "next_action": (
+                "Review residual market-bar rows before filling remaining scan-date "
+                "price reaction evidence."
+            ),
+            "scope": {"active_securities": 12669, "ranked_rows": 2429},
+            "market_bars": {
+                "with_as_of_bar": 12090,
+                "repair": {
+                    "stock_scope": {
+                        "stock_like_with_as_of_bar": 5521,
+                        "stock_like_active": 5673,
+                        "stock_like_missing_as_of_bar": 152,
+                    }
+                },
+            },
+            "source_coverage": {"ready_source_count": 1, "source_count": 6},
+            "instrument_scope": {
+                "row_count": 2429,
+                "company_like_rows": 2429,
+                "non_company_rows": 0,
+                "unknown_type_rows": 0,
+                "sec_catalyst_applicability": {
+                    "next_action": (
+                        "SEC company catalyst evidence applies to this selected scan scope."
+                    )
+                },
+            },
+        },
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_readiness": {
+                "summary": (
+                    "The full scan is blocked by missing market-bar row evidence."
+                ),
+                "recommended_gap": {
+                    "command": (
+                        "catalyst-radar market-bars residual-review "
+                        "--expected-as-of 2026-05-15"
+                    )
+                },
+            },
+        },
+    }
+
+    rendered = render_dashboard_tui(payload, page="overview", width=width)
+
+    assert "Full scan audit:" in rendered
+    assert "Instrument scope:" in rendered
+    assert "Decision readiness:" in rendered
+    offenders = [
+        f"{line_number}:{len(line)}:{line[:60]}"
+        for line_number, line in enumerate(rendered.splitlines(), start=1)
+        if len(line) > width
+    ]
+    assert offenders == []
+
+
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     review_filters = dashboard_filters_for_page(DashboardFilters(), "review")
     assert review_filters.priced_in_status == "actionable"
