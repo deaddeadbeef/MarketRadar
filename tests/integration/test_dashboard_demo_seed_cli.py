@@ -1329,8 +1329,12 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "Page: Agent Coach" in output.out
     assert "Agent preview is still safe" in output.out
     assert "Real results: missing" in output.out
+    assert "Safe next action" in output.out
+    assert "NEXT SAFE ACTION:" in output.out
     assert "Clear Active universe first" in output.out
+    assert "Fill the missing env/budget values" not in output.out
     assert "Run/import real market data" not in output.out
+    assert "Use agent for a zero-call preview" not in output.out
     assert "OpenAI calls" in output.out
     assert "External calls made: 0" in output.out
 
