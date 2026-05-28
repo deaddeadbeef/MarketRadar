@@ -11245,6 +11245,29 @@ def _source_coverage_workbench_detail(
     )
 
 
+def _ops_next_safe_action(payload: Mapping[str, object]) -> str:
+    rows = _source_coverage_workbench_rows(payload)
+    if rows:
+        row = rows[0]
+        source = str(row.get("source") or "source").strip()
+        action = str(row.get("next_action") or row.get("plan") or "").strip()
+        action_text = f" {_clip(action, 48)}" if action else ""
+        return (
+            f"Coverage-first: {source}. Plan-only; "
+            f"execute: batch {source} execute.{action_text}"
+        )
+    workflow = _mapping(payload.get("priced_in_source_workflow"))
+    action = str(
+        workflow.get("coverage_first_action")
+        or workflow.get("next_action")
+        or "Review source gaps."
+    ).strip()
+    return (
+        f"Coverage-first: {_clip(action, 72)} Plan-only; "
+        "execute requires an explicit batch command."
+    )
+
+
 def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     ops = _mapping(payload.get("ops_health"))
     database = _mapping(ops.get("database"))
@@ -11669,6 +11692,8 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         return "No alert rows yet. Alerts are research notifications, not trade signals."
     if page == "broker":
         return _broker_next_safe_action(payload)
+    if page == "ops":
+        return _ops_next_safe_action(payload)
     if page == "agent":
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     return "Use the workflow navigation or open the highlighted row."
