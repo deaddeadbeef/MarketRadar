@@ -1631,8 +1631,13 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "Seed or refresh the stock universe intentionally" in output.out
     assert "Next action" in output.out
     assert "Start here: Seed or refresh the stock universe intentionally" in output.out
+    assert "Current Work Queue" in output.out
+    assert "Setup is not complete yet" in output.out
+    assert "Hidden until setup is complete" in output.out
     assert "NEXT SAFE ACTION: Research-only. First setup: Active universe." in output.out
     assert "First must fix: Decision Cards" not in output.out
+    assert "Decision Cards were not generated" not in output.out
+    assert "Run the radar once" not in output.out
     assert "Clear 2 setup blockers" not in output.out
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" not in output.out
 
