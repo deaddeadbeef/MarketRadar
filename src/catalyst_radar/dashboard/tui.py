@@ -7761,22 +7761,38 @@ def _review_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if boundary:
         lines.append(f"Boundary: {boundary}")
     lines.append(f"Remaining optional context: {_decision_review_optional_summary(rows)}")
-    lines.extend(
-        _table_lines(
-            rows,
-            [
-                ("rank", "#", 3),
-                ("ticker", "Ticker", 6),
-                ("signal", "Signal", 19),
-                ("emotion_reaction_gap", "Gap", 6),
-                ("optional_gaps", "Optional gaps", 22),
-                ("top_evidence", "Top evidence", 30),
-                ("next_action", "Next action", 34),
-            ],
-            width=width,
-            limit=50,
+    if rows:
+        lines.extend(
+            _table_lines(
+                rows,
+                [
+                    ("rank", "#", 3),
+                    ("ticker", "Ticker", 6),
+                    ("signal", "Signal", 19),
+                    ("emotion_reaction_gap", "Gap", 6),
+                    ("optional_gaps", "Optional gaps", 22),
+                    ("top_evidence", "Top evidence", 30),
+                    ("next_action", "Next action", 34),
+                ],
+                width=width,
+                limit=50,
+            )
         )
-    )
+    else:
+        lines.extend(
+            _wrap(
+                "No decision-ready rows yet. Evidence Gaps must clear before "
+                "Decision Review can show reviewable candidates.",
+                width,
+            )
+        )
+        lines.extend(
+            _wrap(
+                "Next: press 2 for Evidence Gaps, or press 1 to return to Inbox "
+                "research messages.",
+                width,
+            )
+        )
     lines.append("")
     lines.extend(_wrap(_decision_review_caption(payload, rows), width))
     return lines
