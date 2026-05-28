@@ -3340,6 +3340,41 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     )
 
 
+def test_empty_ipo_and_cost_pages_explain_absence() -> None:
+    payload = {
+        "runtime_context": {
+            "database": {"name": "demo.db"},
+            "build": {"commit": "test"},
+        },
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_ready": False,
+            "answer": "Full-market priced-in answer is not ready.",
+        },
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "call_plan": {"max_external_call_count": 0},
+        "ipo_s1": {"count": 0, "rows": []},
+        "costs": {},
+        "value_ledger": {},
+        "value_outcomes": {},
+        "value_report": {},
+    }
+
+    ipo = render_dashboard_tui(payload, page="ipo", width=120)
+    assert "No IPO/S-1 rows in this snapshot" in ipo
+    assert "SEC ingestion" in ipo
+    assert "filings" in ipo
+    assert "No rows." not in ipo
+
+    costs = render_dashboard_tui(payload, page="costs", width=120)
+    assert "No value-ledger entries yet" in costs
+    assert "No cost attempts have been recorded" in costs
+    assert "No rows." not in costs
+
+
 def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},

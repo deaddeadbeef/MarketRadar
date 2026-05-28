@@ -10073,6 +10073,15 @@ def _alert_detail_lines(payload: Mapping[str, object], alert_id: str, width: int
 def _ipo_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = _rows(_mapping(payload.get("ipo_s1")).get("rows"))
     lines = [_rule("IPO / S-1", width)]
+    if not rows:
+        lines.extend(
+            _wrap(
+                "No IPO/S-1 rows in this snapshot. Continue with Inbox or Candidates, "
+                "or refresh SEC ingestion if you expected new filings.",
+                width,
+            )
+        )
+        return lines
     lines.extend(
         _table_lines(
             _indexed(rows),
@@ -10277,32 +10286,52 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.append("")
-    lines.extend(
-        _table_lines(
-            _rows(value_ledger.get("top_entries")),
-            [
-                ("entry_date", "Date", 12),
-                ("ticker", "Ticker", 8),
-                ("label", "Label", 20),
-                ("supported_action", "Action", 14),
-                ("user_decision", "Decision", 14),
-                ("confidence_weighted_value_usd", "Weighted", 12),
-                ("outcome_status", "Outcome", 12),
-                ("artifact_id", "Artifact", 36),
-            ],
-            width=width,
-            limit=8,
+    top_entries = _rows(value_ledger.get("top_entries"))
+    if top_entries:
+        lines.extend(
+            _table_lines(
+                top_entries,
+                [
+                    ("entry_date", "Date", 12),
+                    ("ticker", "Ticker", 8),
+                    ("label", "Label", 20),
+                    ("supported_action", "Action", 14),
+                    ("user_decision", "Decision", 14),
+                    ("confidence_weighted_value_usd", "Weighted", 12),
+                    ("outcome_status", "Outcome", 12),
+                    ("artifact_id", "Artifact", 36),
+                ],
+                width=width,
+                limit=8,
+            )
         )
-    )
+    else:
+        lines.extend(
+            _wrap(
+                "No value-ledger entries yet. Record alert feedback and outcomes before "
+                "judging whether Market Radar is worth its cost.",
+                width,
+            )
+        )
     lines.append("")
-    lines.extend(
-        _table_lines(
-            _mapping_items(_mapping(costs.get("status_counts"))),
-            [("key", "Status", 24), ("value", "Count", 12)],
-            width=width,
-            limit=10,
+    status_counts = _mapping_items(_mapping(costs.get("status_counts")))
+    if status_counts:
+        lines.extend(
+            _table_lines(
+                status_counts,
+                [("key", "Status", 24), ("value", "Count", 12)],
+                width=width,
+                limit=10,
+            )
         )
-    )
+    else:
+        lines.extend(
+            _wrap(
+                "No cost attempts have been recorded. Browse freely; provider and OpenAI "
+                "costs appear here only after an executed run.",
+                width,
+            )
+        )
     return lines
 
 
