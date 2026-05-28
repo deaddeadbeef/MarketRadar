@@ -1924,9 +1924,10 @@ def test_dashboard_tui_telemetry_points_to_setup_before_run_on_empty_database(
     assert "normal PowerShell prompt" in normalized
     assert "not in the dashboard command box" in normalized
     assert (
-        "NEXT SAFE ACTION: Clear Active universe first before using telemetry"
+        "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
         in output.out
     )
+    assert "above after accepting call/write" in output.out
     assert "Telemetry useful after" in output.out
     assert "one guarded run has recorded local events" in output.out
     assert "Run a radar cycle to create the first telemetry event" not in output.out
