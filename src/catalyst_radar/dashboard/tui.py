@@ -9114,8 +9114,7 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         _kv_lines(
             (
                 ("Latest run", _human_status_label(latest.get("status") or "unknown")),
-                ("Required path", f"{latest.get('required_completed_count')}/"
-                f"{latest.get('required_step_count')}"),
+                ("Required path", _run_required_path_text(payload, latest)),
                 ("Run as-of", latest.get("as_of") or "n/a"),
                 (
                     "Activation",
@@ -9257,6 +9256,22 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         _wrap(_run_operational_note(payload), width)
     )
     return lines
+
+
+def _run_required_path_text(
+    payload: Mapping[str, object],
+    latest: Mapping[str, object],
+) -> str:
+    completed = latest.get("required_completed_count")
+    total = latest.get("required_step_count")
+    if completed is not None and total is not None:
+        return f"{completed}/{total}"
+    if _real_results_empty(payload):
+        blocker = _readiness_first_setup_blocker(payload)
+        if blocker:
+            area = _human_source_name(blocker.get("area") or "setup blocker")
+            return f"setup blocked; clear {area} first"
+    return "not started"
 
 
 def _run_operational_note(payload: Mapping[str, object]) -> str:
