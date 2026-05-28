@@ -1660,6 +1660,31 @@ def test_dashboard_tui_run_page_does_not_offer_run_execute_before_setup(
     assert "None/None" not in output.out
 
 
+def test_dashboard_tui_telemetry_points_to_setup_before_run_on_empty_database(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-telemetry.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "telemetry"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Page: Telemetry" in output.out
+    assert "No local audit events" in output.out
+    assert "Clear Active universe first" in output.out
+    assert "Seed or refresh the stock universe intentionally" in output.out
+    assert (
+        "NEXT SAFE ACTION: Clear Active universe first before using telemetry"
+        in output.out
+    )
+    assert "Telemetry fills after setup and an intentional guarded run" in output.out
+    assert "Run a radar cycle to create the first telemetry event" not in output.out
+    assert "Start one capped radar run from the dashboard or API" not in output.out
+
+
 def test_dashboard_tui_overview_explains_scan_legend_for_novices(
     tmp_path: Path,
     monkeypatch,
