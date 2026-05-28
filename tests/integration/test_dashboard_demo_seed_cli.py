@@ -1831,6 +1831,8 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "First blocker" in output.out
     assert "setup: Active universe" in output.out
     assert "Seed or refresh the universe" in output.out
+    assert "setup blocked: Active universe; no market scan yet" in output.out
+    assert "bars fresh; live data" not in output.out
     assert "Next action" in output.out
     assert "Start here: Seed or refresh the universe" in output.out
     assert "Current Work Queue" in output.out

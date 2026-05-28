@@ -9085,6 +9085,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     first_gap = _readiness_first_work_item(payload)
     setup_first = bool(first_gap and _real_results_empty(payload))
     readiness_next_action = readiness.get("next_action")
+    readiness_evidence = _human_readiness_evidence(readiness.get("evidence"))
     if first_gap:
         priority = _human_status_label(first_gap.get("priority") or "gap")
         area = _human_source_name(
@@ -9110,6 +9111,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append("")
         if setup_first:
             readiness_next_action = f"Start here: {action}"
+            readiness_evidence = f"setup blocked: {area}; no market scan yet"
     lines.extend(
         _kv_lines(
             (
@@ -9117,7 +9119,7 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 ("Decision mode", _human_label(readiness.get("decision_mode"))),
                 ("Headline", readiness.get("headline")),
                 ("Next action", readiness_next_action),
-                ("Evidence", _human_readiness_evidence(readiness.get("evidence"))),
+                ("Evidence", readiness_evidence),
                 (
                     "Queue",
                     (
