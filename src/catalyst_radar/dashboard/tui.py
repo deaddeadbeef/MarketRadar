@@ -7528,7 +7528,7 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
     audit_summary = _full_scan_audit_summary(payload)
     if audit_summary:
-        lines.append(f"Full scan audit: {audit_summary}")
+        lines.extend(_wrap(f"Full scan audit: {audit_summary}", width))
     stock_bar_summary = _stock_market_bar_next_summary(payload)
     full_scan_summary = _answer_full_scan_scope_summary(payload)
     if full_scan_summary:
@@ -7620,10 +7620,10 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     instrument_summary = _full_scan_instrument_scope_summary(payload)
     if instrument_summary:
-        lines.append(f"Instrument scope: {instrument_summary}")
+        lines.extend(_wrap(f"Instrument scope: {instrument_summary}", width))
     decision_summary = _decision_readiness_summary(payload)
     if decision_summary:
-        lines.append(f"Decision readiness: {decision_summary}")
+        lines.extend(_wrap(f"Decision readiness: {decision_summary}", width))
     overview_rows = _market_inbox_rows(payload)
     if overview_rows:
         lines.extend(
