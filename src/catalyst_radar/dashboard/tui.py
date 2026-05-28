@@ -1593,7 +1593,8 @@ class MarketRadarDashboardApp(App[int]):
             if alert_id:
                 self.page = f"alert:{alert_id}"
                 self.status_message = (
-                    f"Opened alert {alert_id}. No calls. Record feedback after review."
+                    f"No calls. Not a trade signal. Opened alert {alert_id}. "
+                    "Record local feedback after review."
                 )
                 self.refresh_view()
         elif self.page.startswith("candidate:"):
@@ -2246,12 +2247,18 @@ class MarketRadarDashboardApp(App[int]):
         if page == "alerts":
             return "\n".join(
                 [
-                    "[bold #7ee787]USE THIS PAGE[/] Judge whether alert output is useful or noisy.",
+                    (
+                        "[bold #7ee787]USE THIS PAGE[/] Review alert "
+                        "notifications, not trade signals."
+                    ),
                     (
                         f"[bold]Rows:[/] {alerts.get('count') or 0}. "
-                        "Click an alert row or press Enter."
+                        "Click an alert row or press Enter; no broker/order call."
                     ),
-                    "[bold]Do next:[/] use feedback <#|id> useful|noisy|acted [notes].",
+                    (
+                        "[bold]Do next:[/] open one alert, then record local "
+                        "feedback useful/noisy/acted."
+                    ),
                 ]
             )
         if page == "agent":
@@ -2405,7 +2412,7 @@ class MarketRadarDashboardApp(App[int]):
                 )
             ]
             return (
-                "Alerts - click a row or press Enter to open",
+                "Alerts - research notifications, not trade signals",
                 [
                     ("id", "ID", 18),
                     ("ticker", "Ticker", 8),
@@ -2415,7 +2422,10 @@ class MarketRadarDashboardApp(App[int]):
                     ("title", "Title", 58),
                 ],
                 rows,
-                "Commands: alert-status <status|all>, feedback <#|id> <label> [notes]",
+                (
+                    "Open <#|id> to review; feedback <#|id> <label> [notes] "
+                    "records local review only."
+                ),
             )
         if page == "ipo":
             return (
@@ -6852,7 +6862,10 @@ def _page_navigation_status_message(page: str) -> str:
         return f"Opened candidate {ticker}. No calls. Review evidence before action."
     if normalized.startswith("alert:"):
         alert_id = normalized.split(":", 1)[1]
-        return f"Opened alert {alert_id}. No calls. Record feedback after review."
+        return (
+            f"No calls. Not a trade signal. Opened alert {alert_id}. "
+            "Record local feedback after review."
+        )
     labels = {page_key: label for page_key, _, label in MODERN_PAGES}
     labels.update(
         {
@@ -7086,9 +7099,11 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
                 "scope": ticker,
                 "signal": "Planned alert",
                 "why_now": alert.get("summary") or alert.get("title") or status,
-                "next_action": "Open alert, then record useful/noisy/acted feedback.",
+                "next_action": "Review alert; record local feedback only.",
                 "target_page": f"alert:{alert_id}",
-                "status_message": f"Opened alert insight for {ticker}.",
+                "status_message": (
+                    f"Opened alert insight for {ticker}; not a trade signal."
+                ),
             }
         )
         if index >= 3:
@@ -9901,6 +9916,7 @@ def _alert_evidence_summary(row: Mapping[str, object]) -> str:
 def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = _rows(_mapping(payload.get("alerts")).get("rows"))
     lines = [_rule("Alerts", width)]
+    lines.append("Alerts are research notifications, not trade signals or orders.")
     lines.extend(
         _table_lines(
             _indexed(rows),
@@ -9918,8 +9934,8 @@ def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.append(
-        "Use `alert-status planned|dry_run|sent|failed|all`, `open <#|id>`, "
-        "or `feedback <#|id> <label> [notes]`."
+        "Use `open <#|id>` to review; `feedback <#|id> <label> [notes]` "
+        "records local review only."
     )
     return lines
 
@@ -11516,6 +11532,15 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         return _run_page_next_safe_action(payload)
     if page == "candidates":
         return _candidates_next_safe_action(payload)
+    if page == "alerts":
+        alerts = _mapping(payload.get("alerts"))
+        count = int(_number_or_zero(alerts.get("count")))
+        if count:
+            return (
+                "Research alerts only; not trade signals. Open one, then record "
+                "local feedback."
+            )
+        return "No alert rows yet. Alerts are research notifications, not trade signals."
     if page == "agent":
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     return "Use the workflow navigation or open the highlighted row."

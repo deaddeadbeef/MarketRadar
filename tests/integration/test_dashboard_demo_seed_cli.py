@@ -3095,6 +3095,19 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
                 },
             ],
         },
+        "alerts": {
+            "count": 1,
+            "rows": [
+                {
+                    "id": "alert-acme",
+                    "ticker": "ACME",
+                    "status": "planned",
+                    "route": "research_digest",
+                    "priority": "high",
+                    "title": "ACME research notification",
+                }
+            ],
+        },
     }
 
     review_rows = _priced_in_review_rows(payload)
@@ -3120,6 +3133,11 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "Fix Evidence Gaps first." in candidates
     assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" in candidates
     assert "not trade approval" in candidates
+
+    alerts = render_dashboard_tui(payload, page="alerts", width=180)
+    assert "Alerts are research notifications, not trade signals or orders." in alerts
+    assert "records local review only" in alerts
+    assert "NEXT SAFE ACTION: Research alerts only; not trade signals" in alerts
 
     case = render_dashboard_tui(payload, page="candidate:ACME", width=180)
     assert "Candidate ACME" in case
@@ -6206,6 +6224,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "alerts"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> 5  Alerts [1]" in frame
+            assert "research notifications" in frame
+            assert "not trade signals" in frame
 
             assert await pilot.click("#nav-ipo")
             await pilot.pause()
@@ -6618,7 +6638,8 @@ def test_modern_dashboard_open_command_accepts_global_text_identifiers(
         app = await run_command("readiness", "open demo-alert-acme")
         assert app.page == "alert:demo-alert-acme"
         assert app.status_message == (
-            "Opened alert demo-alert-acme. No calls. Record feedback after review."
+            "No calls. Not a trade signal. Opened alert demo-alert-acme. "
+            "Record local feedback after review."
         )
 
         app = await run_command("readiness", "open 1")
