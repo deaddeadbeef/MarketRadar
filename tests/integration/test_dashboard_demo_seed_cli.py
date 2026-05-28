@@ -3655,6 +3655,10 @@ def test_dashboard_start_page_empty_scan_points_to_setup_blocker() -> None:
     assert "Current answer" in screen
     assert "No market scan yet" in screen
     assert "Do now" in screen
+    assert "PowerShell command" in screen
+    assert "catalyst-radar ingest-polygon tickers" in screen
+    assert "Where to run" in screen
+    assert "not in the dashboard command box" in screen
     assert "NEXT SAFE ACTION: Clear Active universe first" in screen
     assert "Start with Inbox: press 1 or click Inbox" not in screen
 
