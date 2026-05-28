@@ -9749,12 +9749,28 @@ def _run_mission_brief_items(
             operator_step.get("tui_command") or operator_step.get("command") or ""
         ).strip()
     )
-    operator_step_text = _operator_next_step_summary(
-        operator_step,
-        include_command=not separate_setup_command,
-    )
-    if operator_step_text:
-        items.append(("Do now", operator_step_text))
+    if separate_setup_command:
+        action = _human_source_status_text(
+            operator_step.get("action")
+            or operator_step.get("action_label")
+            or next_action
+            or "Run the setup command."
+        ).rstrip(".;")
+        if action:
+            items.append(("Do now", action))
+        setup_cost = _operator_next_step_setup_cost(operator_step)
+        if setup_cost:
+            items.append(("Setup cost", setup_cost))
+        setup_blocker = _operator_next_step_setup_blocker(operator_step)
+        if setup_blocker:
+            items.append(("Why blocked", setup_blocker))
+    else:
+        operator_step_text = _operator_next_step_summary(
+            operator_step,
+            include_command=True,
+        )
+        if operator_step_text:
+            items.append(("Do now", operator_step_text))
     command = ""
     if separate_setup_command:
         command = _first_scan_setup_command(payload) or str(
@@ -9854,6 +9870,37 @@ def _run_mission_brief_items(
             )
         )
     return items
+
+
+def _operator_next_step_setup_cost(step: Mapping[str, object]) -> str:
+    calls = int(_number_or_zero(step.get("external_calls_required")))
+    changes = int(_number_or_zero(step.get("db_" + "writes_required")))
+    call_text = _count_text(calls, "provider call")
+    if bool(step.get("approval_required")) and calls:
+        call_text = f"{call_text} after approval"
+    return f"{call_text}; {_count_text(changes, 'database change')}."
+
+
+def _operator_next_step_setup_blocker(step: Mapping[str, object]) -> str:
+    blocker = str(step.get("first_blocker") or "").strip().lower()
+    if not blocker:
+        return ""
+    labels = {
+        "universe": "Active universe is not set up yet.",
+        "active_universe": "Active universe is not set up yet.",
+        "market_bars": "Latest market bars are missing or stale.",
+        "scan": "No scan rows exist yet.",
+        "agent_review": "AI review has not been approved or run.",
+    }
+    return labels.get(
+        blocker,
+        f"{_human_source_name(blocker)} is not set up yet.",
+    )
+
+
+def _count_text(count: int, noun: str) -> str:
+    suffix = "" if count == 1 else "s"
+    return f"{count} {noun}{suffix}"
 
 
 def _run_source_status_display_items(
