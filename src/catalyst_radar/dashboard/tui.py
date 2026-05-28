@@ -9254,13 +9254,25 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     lines.append("")
     lines.extend(
-        _wrap(
-            "Operational note: execute live runs only after this call plan matches intent. "
-            "Type `run execute` to start one capped cycle.",
-            width,
-        )
+        _wrap(_run_operational_note(payload), width)
     )
     return lines
+
+
+def _run_operational_note(payload: Mapping[str, object]) -> str:
+    if _real_results_empty(payload):
+        blocker = _readiness_first_setup_blocker(payload)
+        if blocker:
+            area = _human_source_name(blocker.get("area") or "setup blocker")
+            action = _humanize_dashboard_text(blocker.get("next_action"))
+            return (
+                f"Operational note: Run execute is not the next step yet. "
+                f"Clear {area} first: {action}"
+            )
+    return (
+        "Operational note: execute live runs only after this call plan matches intent. "
+        "Type `run execute` to start one capped cycle."
+    )
 
 
 def _call_plan_table_rows(call_plan: Mapping[str, object]) -> list[Mapping[str, object]]:
