@@ -2519,12 +2519,15 @@ class MarketRadarDashboardApp(App[int]):
                 "Telemetry audit tape",
                 [
                     ("occurred_at", "Occurred", 24),
-                    ("event", "Event", 28),
-                    ("status", "Status", 12),
-                    ("summary", "Summary", 72),
+                    ("event_label", "Event", 28),
+                    ("status_label", "Status", 14),
+                    ("summary_label", "Summary", 70),
                 ],
                 _telemetry_event_rows(telemetry),
-                f"{telemetry.get('headline') or ''} Next: {telemetry.get('next_action') or ''}",
+                _humanize_dashboard_text(
+                    f"{telemetry.get('headline') or ''} "
+                    f"Next: {telemetry.get('next_action') or ''}"
+                ),
             )
         if page == "themes":
             return (
@@ -6877,9 +6880,17 @@ def _broker_row_status_message(row: Mapping[str, object]) -> str:
 
 
 def _telemetry_row_status_message(row: Mapping[str, object]) -> str:
-    event = str(row.get("event") or "Telemetry event").strip()
-    status = str(row.get("status") or "review").strip()
-    summary = str(row.get("summary") or "").strip()
+    event = str(
+        row.get("event_label")
+        or _human_telemetry_event(row.get("event"))
+        or "Telemetry event"
+    ).strip()
+    status = str(row.get("status_label") or _human_status_label(row.get("status"))).strip()
+    summary = str(
+        row.get("summary_label")
+        or _humanize_telemetry_summary(row.get("summary"))
+        or ""
+    ).strip()
     summary_text = f" Summary: {_clip(summary, 104)}" if summary else ""
     return (
         f"Telemetry row selected: No calls. Refresh after run. "
@@ -10843,18 +10854,65 @@ def _broker_next_safe_action(payload: Mapping[str, object]) -> str:
 def _telemetry_event_rows(telemetry: Mapping[str, object]) -> list[Mapping[str, object]]:
     events = _rows(telemetry.get("events"))
     if events:
-        return events
+        return [
+            _telemetry_event_table_row(row, row_key=str(index))
+            for index, row in enumerate(events, start=1)
+        ]
     return [
         {
             "_row_key": "telemetry-empty",
             "occurred_at": "No telemetry yet",
             "event": "No local audit events",
+            "event_label": "No local audit events",
             "status": "waiting",
+            "status_label": "waiting",
             "summary": (
+                "Nothing has recorded telemetry locally. Refresh after an intentional run."
+            ),
+            "summary_label": (
                 "Nothing has recorded telemetry locally. Refresh after an intentional run."
             ),
         }
     ]
+
+
+def _telemetry_event_table_row(
+    row: Mapping[str, object],
+    *,
+    row_key: str,
+) -> Mapping[str, object]:
+    return {
+        **dict(row),
+        "_row_key": str(row.get("id") or row.get("event_id") or row_key),
+        "event_label": _human_telemetry_event(row.get("event")),
+        "status_label": _human_status_label(row.get("status")),
+        "summary_label": _humanize_telemetry_summary(row.get("summary")),
+    }
+
+
+def _human_telemetry_event(value: object) -> str:
+    text = _text(value)
+    if text == "n/a":
+        return text
+    return _human_label(text.replace(".", " "))
+
+
+def _humanize_telemetry_summary(value: object) -> str:
+    text = _humanize_dashboard_text(value)
+    replacements = (
+        ("step=", "step "),
+        ("outcome=", "outcome "),
+        ("category=", "category "),
+        ("provider=", "provider "),
+        ("status=", "status "),
+        ("command=", "command "),
+        ("llm_review", "llm review"),
+        ("validation_update", "validation update"),
+        ("run_daily", "run daily"),
+    )
+    for raw, replacement in replacements:
+        text = text.replace(raw, replacement)
+    return text
 
 
 def _telemetry_next_safe_action(payload: Mapping[str, object]) -> str:
@@ -11860,11 +11918,23 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.extend(
         _kv_lines(
             (
-                ("Telemetry", f"{telemetry.get('status')}; {telemetry.get('headline')}"),
+                (
+                    "Telemetry",
+                    (
+                        f"{_human_status_label(telemetry.get('status'))}; "
+                        f"{_humanize_dashboard_text(telemetry.get('headline'))}"
+                    ),
+                ),
                 ("Events", telemetry.get("event_count")),
                 ("Attention", telemetry.get("attention_count")),
                 ("Guarded", telemetry.get("guarded_count")),
-                ("Coverage", f"{coverage.get('status')}; {coverage.get('headline')}"),
+                (
+                    "Coverage",
+                    (
+                        f"{_human_status_label(coverage.get('status'))}; "
+                        f"{_humanize_dashboard_text(coverage.get('headline'))}"
+                    ),
+                ),
                 (
                     "Required ready",
                     f"{coverage.get('ready_required_domain_count')}/"
@@ -11881,9 +11951,9 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
             _telemetry_event_rows(telemetry),
             [
                 ("occurred_at", "Occurred", 24),
-                ("event", "Event", 24),
-                ("status", "Status", 12),
-                ("summary", "Summary", 66),
+                ("event_label", "Event", 24),
+                ("status_label", "Status", 14),
+                ("summary_label", "Summary", 64),
             ],
             width=width,
             limit=12,
