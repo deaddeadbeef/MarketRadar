@@ -10166,6 +10166,30 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     candidate_coverage = _mapping(value_report.get("candidate_ledger_coverage"))
     outcome_coverage = _mapping(value_report.get("value_outcome_coverage"))
     validation_evidence = _mapping(value_report.get("validation_evidence"))
+    validation_items: list[tuple[str, object]] = [
+        (
+            "Validation evidence",
+            validation_evidence.get("status") or "not_started",
+        ),
+    ]
+    if validation_evidence:
+        validation_items.append(
+            (
+                "Mission baselines measured",
+                _baseline_coverage_text(validation_evidence),
+            )
+        )
+    metric_items = _validation_metric_items(validation_evidence)
+    if metric_items:
+        validation_items.extend(metric_items)
+    else:
+        validation_items.append(
+            (
+                "Validation next step",
+                "No validation baseline yet. Keep value claims tentative until "
+                "shadow or paper validation records outcomes.",
+            )
+        )
     lines = [_rule("Costs", width)]
     lines.extend(
         _kv_lines(
@@ -10224,38 +10248,7 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     "Missing value outcomes",
                     outcome_coverage.get("missing_outcome_count"),
                 ),
-                (
-                    "Validation evidence",
-                    validation_evidence.get("status") or "n/a",
-                ),
-                (
-                    "Mission baselines measured",
-                    _baseline_coverage_text(validation_evidence),
-                ),
-                (
-                    "Baseline comparison",
-                    _baseline_result_counts_text(validation_evidence),
-                ),
-                (
-                    "Precision at 5 / 10",
-                    _precision_pair_text(validation_evidence),
-                ),
-                (
-                    "Backtest hit rate",
-                    _backtest_hit_rate_text(validation_evidence),
-                ),
-                (
-                    "Backtest drawdown proxy",
-                    _backtest_drawdown_text(validation_evidence),
-                ),
-                (
-                    "Backtest slippage",
-                    _backtest_slippage_text(validation_evidence),
-                ),
-                (
-                    "Backtest benchmark",
-                    _backtest_benchmark_text(validation_evidence),
-                ),
+                *validation_items,
                 ("Monthly value blocker", value_report.get("first_blocker") or "none"),
                 ("Value next action", value_report.get("canonical_next_action") or "n/a"),
                 (
@@ -10368,6 +10361,45 @@ def _value_outcome_coverage_text(coverage: Mapping[str, object]) -> str:
     entries = coverage.get("ledger_entry_count")
     pct = coverage.get("coverage_pct")
     return f"{linked or 0}/{entries or 0} ({pct if pct is not None else 'n/a'}%)"
+
+
+def _validation_metric_items(validation: Mapping[str, object]) -> list[tuple[str, object]]:
+    candidates = [
+        (
+            "Baseline comparison",
+            _baseline_result_counts_text(validation),
+        ),
+        (
+            "Precision at 5 / 10",
+            _precision_pair_text(validation),
+        ),
+        (
+            "Backtest hit rate",
+            _backtest_hit_rate_text(validation),
+        ),
+        (
+            "Backtest drawdown proxy",
+            _backtest_drawdown_text(validation),
+        ),
+        (
+            "Backtest slippage",
+            _backtest_slippage_text(validation),
+        ),
+        (
+            "Backtest benchmark",
+            _backtest_benchmark_text(validation),
+        ),
+    ]
+    return [
+        (label, value)
+        for label, value in candidates
+        if not _missing_validation_metric(value)
+    ]
+
+
+def _missing_validation_metric(value: object) -> bool:
+    text = str(value or "").strip().lower()
+    return text in {"", "n/a", "n/a / n/a"}
 
 
 def _baseline_coverage_text(validation: Mapping[str, object]) -> str:

@@ -3534,6 +3534,158 @@ def test_empty_ipo_and_cost_pages_explain_absence() -> None:
     assert "No rows." not in costs
 
 
+def test_costs_page_explains_missing_validation_baselines() -> None:
+    payload = {
+        "runtime_context": {
+            "database": {"name": "demo.db"},
+            "build": {"commit": "test"},
+        },
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "costs": {
+            "attempt_count": 2,
+            "total_actual_cost_usd": 0.0,
+            "total_estimated_cost_usd": 0.0,
+            "useful_alert_count": 0,
+            "cost_per_useful_alert": 0.0,
+            "status_counts": {},
+        },
+        "value_ledger": {
+            "entry_count": 0,
+            "confidence_weighted_value_usd": 0,
+            "cost_to_produce_usd": 0,
+            "net_confidence_weighted_value_usd": 0,
+            "target_monthly_value_usd": 40,
+            "target_coverage_pct": 0,
+            "chatgpt_pro_offset_pct": 0,
+            "useful_definition": "Useful means decision support changed a manual review.",
+            "top_entries": [],
+        },
+        "value_outcomes": {"outcome_count": 0, "status_counts": {}},
+        "value_report": {
+            "verdict": "insufficient_evidence",
+            "month": "2026-05",
+            "net_decision_support_value_usd": 0,
+            "plausibly_earned_at_least_40_usd": False,
+            "useful_insights_count": 0,
+            "noisy_insights_count": 0,
+            "false_positive_count": 0,
+            "candidate_ledger_coverage": {
+                "logged_candidate_count": 0,
+                "surfaced_candidate_count": 1,
+                "coverage_pct": 0,
+                "missing_ledger_count": 1,
+            },
+            "value_outcome_coverage": {
+                "linked_outcome_count": 0,
+                "ledger_entry_count": 0,
+                "coverage_pct": 0,
+                "missing_outcome_count": 0,
+            },
+            "validation_evidence": {
+                "status": "no_validation_runs",
+                "measured_baselines": [],
+                "required_baselines": [
+                    "manual_watchlist",
+                    "momentum_baseline",
+                    "random_baseline",
+                ],
+            },
+            "first_blocker": "validation_evidence",
+            "canonical_next_action": "Record validation outcomes before claiming value.",
+            "canonical_next_command": "catalyst-radar validation-replay --latest --json",
+        },
+    }
+
+    costs = render_dashboard_tui(payload, page="costs", width=120)
+
+    assert "Validation evidence" in costs
+    assert "no_validation_runs" in costs
+    assert "Mission baselines measured" in costs
+    assert "0/3" in costs
+    assert "No validation baseline yet" in costs
+    assert "Baseline comparison" not in costs
+    assert "Precision at 5 / 10" not in costs
+    assert "Backtest hit rate" not in costs
+    assert " : n/a" not in costs
+
+
+def test_costs_page_only_shows_available_validation_metrics() -> None:
+    payload = {
+        "runtime_context": {
+            "database": {"name": "demo.db"},
+            "build": {"commit": "test"},
+        },
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "costs": {
+            "attempt_count": 1,
+            "total_actual_cost_usd": 0.0,
+            "total_estimated_cost_usd": 0.0,
+            "useful_alert_count": 0,
+            "cost_per_useful_alert": 0.0,
+            "status_counts": {},
+        },
+        "value_ledger": {
+            "entry_count": 1,
+            "confidence_weighted_value_usd": 0,
+            "cost_to_produce_usd": 0,
+            "net_confidence_weighted_value_usd": 0,
+            "target_monthly_value_usd": 40,
+            "target_coverage_pct": 0,
+            "chatgpt_pro_offset_pct": 0,
+            "useful_definition": "Useful means decision support changed a manual review.",
+            "top_entries": [],
+        },
+        "value_outcomes": {"outcome_count": 0, "status_counts": {}},
+        "value_report": {
+            "verdict": "insufficient_evidence",
+            "month": "2026-05",
+            "net_decision_support_value_usd": 0,
+            "plausibly_earned_at_least_40_usd": False,
+            "useful_insights_count": 0,
+            "noisy_insights_count": 0,
+            "false_positive_count": 0,
+            "candidate_ledger_coverage": {
+                "logged_candidate_count": 1,
+                "surfaced_candidate_count": 1,
+                "coverage_pct": 100,
+                "missing_ledger_count": 0,
+            },
+            "value_outcome_coverage": {
+                "linked_outcome_count": 0,
+                "ledger_entry_count": 1,
+                "coverage_pct": 0,
+                "missing_outcome_count": 1,
+            },
+            "validation_evidence": {
+                "status": "needs_more_outcomes",
+                "measured_baselines": ["manual_watchlist"],
+                "required_baselines": ["manual_watchlist", "momentum_baseline"],
+                "baseline_result_counts": {"marketradar_wins": 1},
+            },
+            "first_blocker": "value_outcome_coverage",
+            "canonical_next_action": "Record the missing outcome.",
+            "canonical_next_command": "catalyst-radar value-outcome coverage --json",
+        },
+    }
+
+    costs = render_dashboard_tui(payload, page="costs", width=120)
+
+    assert "Baseline comparison" in costs
+    assert "MR wins=1" in costs
+    assert "Validation next step" not in costs
+    assert "Precision at 5 / 10" not in costs
+    assert "Backtest hit rate" not in costs
+    assert "Backtest benchmark" not in costs
+
+
 def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},
