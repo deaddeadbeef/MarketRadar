@@ -3209,6 +3209,73 @@ def test_run_page_uses_human_status_labels() -> None:
     assert "expected_gate" not in screen
 
 
+def test_run_page_humanizes_mission_brief_source_tokens() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "priced_in_answer": {
+            "question": "Has price fully matched market expectations?",
+            "status": "blocked",
+            "answer": "Blocked by market_bars, catalyst_events, and local_text.",
+            "next_action": "Fill market_bars before catalyst_events.",
+            "full_market_trust_gate": {
+                "status": "blocked",
+                "answer": "first gaps market_bars:2, catalyst_events:1, local_text:1",
+            },
+        },
+        "priced_in_operator_next_step": {
+            "action": "Clear market_bars before catalyst_events and local_text.",
+            "command": "catalyst-radar market-bars residual-review",
+            "external_calls_required": 0,
+            "db_writes_required": 0,
+            "first_blocker": "market_bars",
+            "first_gap_count": 2,
+        },
+        "priced_in_audit": {
+            "status": "blocked",
+            "answer": "market_bars still blocks the run.",
+            "scope": {"active_securities": 3, "scanned_rows": 1, "ranked_rows": 1},
+            "source_coverage": {
+                "summary": "market_bars:2, catalyst_events:1, local_text:1",
+            },
+            "sources": [
+                {
+                    "source": "market_bars",
+                    "status": "attention",
+                    "gap_count": 2,
+                    "next_action": "Fill market_bars.",
+                }
+            ],
+        },
+        "latest_run": {"status": "partial_success"},
+        "call_plan": {"status": "dry_run", "rows": [], "max_external_call_count": 0},
+        "live_activation": {"status": "ready"},
+        "radar_run_cooldown": {"status": "ready"},
+    }
+
+    screen = render_dashboard_tui(payload, page="run", width=180)
+
+    assert "Mission Brief" in screen
+    assert "market bars" in screen
+    assert "catalyst events" in screen
+    assert "local text" in screen
+    assert "blocker market bars; gap 2" in screen
+    command_text_removed = (
+        screen.replace("batch market_bars", "")
+        .replace("--source market_bars", "")
+        .replace("batch catalyst_events", "")
+        .replace("--source catalyst_events", "")
+        .replace("batch local_text", "")
+        .replace("--source local_text", "")
+    )
+    assert "market_bars" not in command_text_removed
+    assert "catalyst_events" not in command_text_removed
+    assert "local_text" not in command_text_removed
+
+
 def test_market_inbox_uses_human_summary_labels() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},
