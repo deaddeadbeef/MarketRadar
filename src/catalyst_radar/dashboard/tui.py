@@ -6145,7 +6145,7 @@ def _open_command_no_match_message(page: str, value: str) -> str:
             "open <alert-id>, or use row numbers on Inbox, Candidate Review, or Alerts."
         )
     if token.isdigit():
-        page_label = _human_label(_normalize_page(page)) or "this page"
+        page_label = _page_display_label(page) or "this page"
         return (
             f"No row {token} is openable on {page_label}. No calls made. "
             "Use row numbers on Inbox, Candidate Review, or Alerts; from any page "
@@ -6221,7 +6221,7 @@ def _header_lines(
     lines.extend(
         _wrap(
             (
-                f"Page: {page} | "
+                f"Page: {_page_display_label(page)} | "
                 f"View: {view_label} | "
                 f"Answer: {_human_label(answer_status)} ({answer_ready}) | "
                 f"Trade status: {_human_label(readiness.get('status') or 'unknown')} | "
@@ -6244,6 +6244,18 @@ def _header_lines(
     )
     lines.extend(_wrap(NAVIGATION_TEXT, width))
     return lines
+
+
+def _page_display_label(page: str) -> str:
+    normalized = _normalize_page(page)
+    if normalized.startswith("candidate:"):
+        ticker = normalized.split(":", 1)[1].strip().upper()
+        return f"Candidate {ticker}" if ticker else "Candidate"
+    if normalized.startswith("alert:"):
+        alert_id = normalized.split(":", 1)[1].strip()
+        return f"Alert {alert_id}" if alert_id else "Alert"
+    labels = {page_key: label for page_key, _, label in MODERN_PAGES}
+    return labels.get(normalized, _human_label(normalized) or "Help")
 
 
 def _priced_in_view_label(payload: Mapping[str, object]) -> str:

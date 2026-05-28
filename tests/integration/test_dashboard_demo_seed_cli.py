@@ -570,7 +570,7 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
     assert output.err == ""
     for expected in (
         "Market Radar Terminal Dashboard",
-        "Page: overview",
+        "Page: Inbox",
         "DB:",
         "Ticker: ACME",
         "Latest scan results - rows",
@@ -1439,7 +1439,7 @@ def test_dashboard_tui_once_defaults_to_latest_scan_results(
     output = capsys.readouterr()
 
     assert output.err == ""
-    assert "Page: overview" in output.out
+    assert "Page: Inbox" in output.out
     assert "Latest scan results - rows" in output.out
     assert "ACME" in output.out
     assert "Urgent" in output.out
@@ -2981,7 +2981,7 @@ def test_dashboard_sec_cik_commands_are_zero_call_operator_actions(
 def test_dashboard_start_page_alias_opens_latest_scan_results() -> None:
     screen = render_dashboard_tui({}, page="start", width=120)
 
-    assert "Page: overview" in screen
+    assert "Page: Inbox" in screen
     assert "Market Inbox" in screen
     assert "Latest scan results" in screen
 
@@ -6905,7 +6905,7 @@ def test_dashboard_tui_supports_interactive_navigation_and_filters(
 
     rendered = "\n".join(outputs)
     assert "Market Radar Terminal Dashboard" in rendered
-    assert "Page: candidates" in rendered
+    assert "Page: Candidate Review" in rendered
     assert "Candidate ACME" in rendered
     assert "Usefulness" in rendered
     assert "Source gaps" in rendered
