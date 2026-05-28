@@ -3210,6 +3210,95 @@ def test_dashboard_populated_status_pages_respect_requested_width() -> None:
     assert offenders == []
 
 
+def test_dashboard_replaces_zero_denominator_and_shortcut_placeholders() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "ops_health": {
+            "database": {"status": "connected"},
+            "degraded_mode": {"enabled": False},
+            "providers": [],
+            "jobs": [],
+        },
+        "priced_in_source_workflow": {
+            "status": "blocked",
+            "coverage_first_action": "Fill market bars first.",
+            "overview_command": "batch all",
+            "steps": [
+                {
+                    "priority": 1,
+                    "source": "market_bars",
+                    "status": "blocked",
+                    "gap_rows": 10,
+                    "depends_on": [],
+                    "action": "Review source batch.",
+                }
+            ],
+        },
+        "costs": {
+            "attempt_count": 1,
+            "total_actual_cost_usd": 0.0,
+            "total_estimated_cost_usd": 0.0,
+            "useful_alert_count": 0,
+            "cost_per_useful_alert": 0.0,
+            "status_counts": {},
+        },
+        "value_ledger": {
+            "entry_count": 0,
+            "confidence_weighted_value_usd": 0,
+            "cost_to_produce_usd": 0,
+            "net_confidence_weighted_value_usd": 0,
+            "target_monthly_value_usd": 40,
+            "target_coverage_pct": 0,
+            "chatgpt_pro_offset_pct": 0,
+            "useful_definition": "Useful means decision support changed a manual review.",
+            "top_entries": [],
+        },
+        "value_outcomes": {"outcome_count": 0, "status_counts": {}},
+        "value_report": {
+            "verdict": "insufficient_evidence",
+            "month": "2026-05",
+            "net_decision_support_value_usd": 0,
+            "plausibly_earned_at_least_40_usd": False,
+            "useful_insights_count": 0,
+            "noisy_insights_count": 0,
+            "false_positive_count": 0,
+            "candidate_ledger_coverage": {
+                "logged_candidate_count": 0,
+                "surfaced_candidate_count": 0,
+                "coverage_pct": None,
+                "missing_ledger_count": 0,
+            },
+            "value_outcome_coverage": {
+                "linked_outcome_count": 0,
+                "ledger_entry_count": 0,
+                "coverage_pct": None,
+                "missing_outcome_count": 0,
+            },
+            "validation_evidence": {},
+            "first_blocker": "candidate_ledger_coverage",
+            "canonical_next_action": "Record evidence first.",
+            "canonical_next_command": "catalyst-radar value-ledger coverage --json",
+        },
+    }
+
+    costs = render_dashboard_tui(payload, page="costs", width=120)
+    assert "Candidate ledger coverage" in costs
+    assert "0/0 (no surfaced candidates)" in costs
+    assert "Value outcome coverage" in costs
+    assert "0/0 (no ledger entries)" in costs
+    assert "n/a%" not in costs
+
+    ops = render_dashboard_tui(payload, page="ops", width=120)
+    assert "Decision shortcut" in ops
+    assert "None yet - fill required evidence first." in ops
+    assert "Decision shortcut            : n/a" not in ops
+
+
 def test_overview_audit_summary_respects_requested_width() -> None:
     width = 80
     payload = {
