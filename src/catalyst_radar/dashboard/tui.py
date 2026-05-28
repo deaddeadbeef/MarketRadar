@@ -10348,19 +10348,25 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
 def _candidate_ledger_coverage_text(coverage: Mapping[str, object]) -> str:
     if not coverage:
         return "n/a"
-    logged = coverage.get("logged_candidate_count")
-    surfaced = coverage.get("surfaced_candidate_count")
+    logged = int(_number_or_zero(coverage.get("logged_candidate_count")))
+    surfaced = int(_number_or_zero(coverage.get("surfaced_candidate_count")))
+    if surfaced <= 0:
+        return f"{logged}/0 (no surfaced candidates)"
     pct = coverage.get("coverage_pct")
-    return f"{logged or 0}/{surfaced or 0} ({pct if pct is not None else 'n/a'}%)"
+    pct_text = f"{pct}%" if pct is not None else "coverage pending"
+    return f"{logged}/{surfaced} ({pct_text})"
 
 
 def _value_outcome_coverage_text(coverage: Mapping[str, object]) -> str:
     if not coverage:
         return "n/a"
-    linked = coverage.get("linked_outcome_count")
-    entries = coverage.get("ledger_entry_count")
+    linked = int(_number_or_zero(coverage.get("linked_outcome_count")))
+    entries = int(_number_or_zero(coverage.get("ledger_entry_count")))
+    if entries <= 0:
+        return f"{linked}/0 (no ledger entries)"
     pct = coverage.get("coverage_pct")
-    return f"{linked or 0}/{entries or 0} ({pct if pct is not None else 'n/a'}%)"
+    pct_text = f"{pct}%" if pct is not None else "coverage pending"
+    return f"{linked}/{entries} ({pct_text})"
 
 
 def _validation_metric_items(validation: Mapping[str, object]) -> list[tuple[str, object]]:
@@ -11236,7 +11242,11 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
                     workflow.get("coverage_first_action")
                     or workflow.get("next_action"),
                 ),
-                ("Decision shortcut", workflow.get("decision_shortcut_action")),
+                (
+                    "Decision shortcut",
+                    workflow.get("decision_shortcut_action")
+                    or "None yet - fill required evidence first.",
+                ),
                 ("All-source plan", workflow.get("overview_command")),
             ),
             width=width,
