@@ -11763,6 +11763,15 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     goal = _mapping(workflow.get("goal_alignment"))
     if goal:
         full_scan_summary = _answer_full_scan_scope_summary(payload)
+        setup_blocker = (
+            _readiness_first_setup_blocker(payload)
+            if _real_results_empty(payload)
+            else {}
+        )
+        setup_blocker_area = _human_source_name(setup_blocker.get("area"))
+        setup_blocker_action = _humanize_dashboard_text(
+            setup_blocker.get("next_action")
+        )
         goal_items: list[tuple[str, object]] = [
             ("Goal", goal.get("goal")),
             ("Useful", goal.get("useful_definition")),
@@ -11775,8 +11784,18 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
         goal_items.extend(
             [
                 ("Now", goal.get("current_state")),
-                ("Blocker", _human_source_status_text(goal.get("current_blocker"))),
-                ("Next", goal.get("next_useful_step")),
+                (
+                    "Blocker",
+                    (
+                        f"First setup: {setup_blocker_area}"
+                        if setup_blocker
+                        else _human_source_status_text(goal.get("current_blocker"))
+                    ),
+                ),
+                (
+                    "Next",
+                    setup_blocker_action if setup_blocker else goal.get("next_useful_step"),
+                ),
                 ("Safety", goal.get("provider_boundary")),
             ]
         )
@@ -12015,6 +12034,10 @@ def _source_coverage_workbench_detail(
 
 
 def _ops_next_safe_action(payload: Mapping[str, object]) -> str:
+    if _real_results_empty(payload):
+        setup_action = _readiness_next_safe_action(payload)
+        if setup_action:
+            return setup_action
     rows = _source_coverage_workbench_rows(payload)
     if rows:
         row = rows[0]
@@ -12153,36 +12176,46 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if workflow_lines:
         lines.append("")
         lines.extend(workflow_lines)
+    provider_rows = _rows(ops.get("providers"))
     lines.append("")
-    lines.extend(
-        _table_lines(
-            _rows(ops.get("providers")),
-            [
-                ("provider", "Provider", 16),
-                ("status", "Status", 12),
-                ("checked_at", "Checked", 24),
-                ("reason", "Reason", 62),
-            ],
-            width=width,
-            limit=10,
+    lines.append(_rule("Provider Health", width))
+    if provider_rows:
+        lines.extend(
+            _table_lines(
+                provider_rows,
+                [
+                    ("provider", "Provider", 16),
+                    ("status", "Status", 12),
+                    ("checked_at", "Checked", 24),
+                    ("reason", "Reason", 62),
+                ],
+                width=width,
+                limit=10,
+            )
         )
-    )
+    else:
+        lines.append("Provider health: no local provider checks recorded.")
+    job_rows = _rows(ops.get("jobs"))
     lines.append("")
-    lines.extend(
-        _table_lines(
-            _rows(ops.get("jobs")),
-            [
-                ("job_type", "Job", 24),
-                ("provider", "Provider", 12),
-                ("status", "Status", 12),
-                ("requested_count", "Req", 6),
-                ("normalized_count", "Norm", 6),
-                ("finished_at", "Finished", 24),
-            ],
-            width=width,
-            limit=8,
+    lines.append(_rule("Recent Jobs", width))
+    if job_rows:
+        lines.extend(
+            _table_lines(
+                job_rows,
+                [
+                    ("job_type", "Job", 24),
+                    ("provider", "Provider", 12),
+                    ("status", "Status", 12),
+                    ("requested_count", "Req", 6),
+                    ("normalized_count", "Norm", 6),
+                    ("finished_at", "Finished", 24),
+                ],
+                width=width,
+                limit=8,
+            )
         )
-    )
+    else:
+        lines.append("Recent jobs: no local job rows recorded.")
     return lines
 
 
