@@ -2506,8 +2506,8 @@ class MarketRadarDashboardApp(App[int]):
                 "Source coverage workbench - Enter shows plan, not execution",
                 [
                     ("priority", "#", 4),
-                    ("source", "Source", 18),
-                    ("status", "Status", 14),
+                    ("source_label", "Source", 18),
+                    ("status_label", "Status", 14),
                     ("gap_rows", "Gaps", 8),
                     ("useful_rows", "Useful rows", 18),
                     ("examples", "Examples", 24),
@@ -11398,7 +11398,7 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
         goal_items.extend(
             [
                 ("Now", goal.get("current_state")),
-                ("Blocker", goal.get("current_blocker")),
+                ("Blocker", _human_source_status_text(goal.get("current_blocker"))),
                 ("Next", goal.get("next_useful_step")),
                 ("Safety", goal.get("provider_boundary")),
             ]
@@ -11413,16 +11413,20 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     lines.extend(
         _kv_lines(
             (
-                ("Status", workflow.get("status")),
+                ("Status", _human_status_label(workflow.get("status"))),
                 (
                     "Coverage-first",
-                    workflow.get("coverage_first_action")
-                    or workflow.get("next_action"),
+                    _human_source_status_text(
+                        workflow.get("coverage_first_action")
+                        or workflow.get("next_action")
+                    ),
                 ),
                 (
                     "Decision shortcut",
-                    workflow.get("decision_shortcut_action")
-                    or "None yet - fill required evidence first.",
+                    _human_source_status_text(
+                        workflow.get("decision_shortcut_action")
+                        or "None yet - fill required evidence first."
+                    ),
                 ),
                 ("All-source plan", workflow.get("overview_command")),
             ),
@@ -11432,10 +11436,15 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     table_rows = [
         {
             **step,
-            "depends_on": ",".join(_texts(step.get("depends_on"))) or "none",
+            "source_label": _human_source_name(step.get("source")),
+            "status_label": _human_status_label(step.get("status")),
+            "depends_on_label": _source_workflow_depends_on_label(
+                step.get("depends_on")
+            ),
             "gap_summary": _source_workflow_gap_summary(step),
             "inspect_command": _source_workflow_inspect_command(step),
             "useful_rows": _source_workflow_useful_rows(step),
+            "action": _human_source_status_text(step.get("action")),
         }
         for step in steps
     ]
@@ -11444,11 +11453,11 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
             table_rows,
             [
                 ("priority", "#", 4),
-                ("source", "Source", 14),
-                ("status", "Status", 12),
+                ("source_label", "Source", 18),
+                ("status_label", "Status", 12),
                 ("gap_summary", "Full gaps", 16),
                 ("useful_rows", "Useful rows", 18),
-                ("depends_on", "After", 18),
+                ("depends_on_label", "After", 18),
                 ("action", "Do this", 48),
                 ("inspect_command", "Inspect", 24),
             ],
@@ -11480,6 +11489,11 @@ def _source_workflow_gap_summary(step: Mapping[str, object]):
     if gap_rows <= 0:
         return "none"
     return f"{gap_rows} full-scan"
+
+
+def _source_workflow_depends_on_label(value: object) -> str:
+    sources = [_human_source_name(item) for item in _texts(value)]
+    return ", ".join(source for source in sources if source) or "none"
 
 
 def _source_workflow_inspect_command(step: Mapping[str, object]):
@@ -11532,12 +11546,18 @@ def _source_coverage_workbench_rows(
                 "_row_key": f"source-{source}",
                 "priority": step.get("priority") or index,
                 "source": source,
+                "source_label": _human_source_name(source),
                 "status": action.get("status") or step.get("status") or "unknown",
+                "status_label": _human_status_label(
+                    action.get("status") or step.get("status") or "unknown"
+                ),
                 "gap_rows": _source_action_gap_count(action) if action else "n/a",
                 "useful_rows": _source_workflow_useful_rows(step),
                 "examples": examples,
                 "plan": f"batch {source}",
-                "next_action": step.get("action") or "Inspect the source plan.",
+                "next_action": _human_source_status_text(
+                    step.get("action") or "Inspect the source plan."
+                ),
             }
         )
     if rows:
@@ -11551,14 +11571,18 @@ def _source_coverage_workbench_rows(
                 "_row_key": f"source-{source}",
                 "priority": index,
                 "source": source,
+                "source_label": _human_source_name(source),
                 "status": action.get("status") or "unknown",
+                "status_label": _human_status_label(action.get("status") or "unknown"),
                 "gap_rows": _source_action_gap_count(action),
                 "useful_rows": "n/a",
                 "examples": _source_action_sample_tickers(action),
                 "plan": f"batch {source}",
-                "next_action": action.get("next_action")
-                or action.get("action")
-                or "Inspect the source plan.",
+                "next_action": _human_source_status_text(
+                    action.get("next_action")
+                    or action.get("action")
+                    or "Inspect the source plan."
+                ),
             }
         )
     return sorted(rows, key=_source_coverage_workbench_sort_key)
@@ -11589,12 +11613,17 @@ def _source_coverage_workbench_detail(
     rows: Sequence[Mapping[str, object]],
 ) -> str:
     workflow = _mapping(payload.get("priced_in_source_workflow"))
-    coverage_first = str(
+    coverage_first = _human_source_status_text(
         workflow.get("coverage_first_action")
         or workflow.get("next_action")
         or "Review source gaps."
-    ).strip()
-    decision_shortcut = str(workflow.get("decision_shortcut_action") or "").strip()
+    )
+    raw_decision_shortcut = workflow.get("decision_shortcut_action")
+    decision_shortcut = (
+        _human_source_status_text(raw_decision_shortcut)
+        if raw_decision_shortcut not in (None, "")
+        else ""
+    )
     row_count = len(rows)
     shortcut_text = (
         f" Decision shortcut: {decision_shortcut}"
@@ -11613,18 +11642,19 @@ def _ops_next_safe_action(payload: Mapping[str, object]) -> str:
     if rows:
         row = rows[0]
         source = str(row.get("source") or "source").strip()
+        source_label = _human_source_name(source)
         action = str(row.get("next_action") or row.get("plan") or "").strip()
         action_text = f" {_clip(action, 48)}" if action else ""
         return (
-            f"Coverage-first: {source}. Plan-only; "
+            f"Coverage-first: {source_label}. Plan-only; "
             f"execute: batch {source} execute.{action_text}"
         )
     workflow = _mapping(payload.get("priced_in_source_workflow"))
-    action = str(
+    action = _human_source_status_text(
         workflow.get("coverage_first_action")
         or workflow.get("next_action")
         or "Review source gaps."
-    ).strip()
+    )
     return (
         f"Coverage-first: {_clip(action, 72)} Plan-only; "
         "execute requires an explicit batch command."
@@ -11704,6 +11734,8 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     source_actions = [
         {
             **action,
+            "source_label": _human_source_name(action.get("source")),
+            "status_label": _human_status_label(action.get("status")),
             "gap_rows": _source_action_gap_count(action),
             "examples": _source_action_sample_tickers(action),
             "batch_plan": action.get("batch_plan_command") or action.get("command"),
@@ -11718,8 +11750,8 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
             _table_lines(
                 source_actions,
                 [
-                    ("source", "Source", 18),
-                    ("status", "Status", 12),
+                    ("source_label", "Source", 18),
+                    ("status_label", "Status", 12),
                     ("coverage_pct", "Coverage", 10),
                     ("gap_rows", "Gap rows", 10),
                     ("examples", "Examples", 22),
@@ -12258,6 +12290,14 @@ def _human_source_status_text(value: object) -> str:
     )
     for raw, replacement in source_replacements:
         text = text.replace(raw, replacement)
+    command_replacements = (
+        ("batch market bars", "batch market_bars"),
+        ("batch catalyst events", "batch catalyst_events"),
+        ("batch local text", "batch local_text"),
+        ("batch broker context", "batch broker_context"),
+    )
+    for human_command, command in command_replacements:
+        text = text.replace(human_command, command)
     return text
 
 

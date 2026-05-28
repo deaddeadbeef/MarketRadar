@@ -620,10 +620,11 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert "Source Fill Workflow" in output.out
     assert "Full gaps" in output.out
     assert "Inspect" in output.out
-    assert "Start with broker_context" in output.out
+    assert "Start with broker context" in output.out
     assert "decision-ready row(s)" in output.out
     assert "options" in output.out
     assert "batch broker_context" in output.out
+    assert "batch broker context" not in output.out
     assert "priced-in-source-batches" in output.out
     assert "priced-in-source-batches --source all" in output.out
     assert "Examples are sample tickers only" in output.out
@@ -4328,9 +4329,94 @@ def test_ops_footer_uses_coverage_first_source_step() -> None:
 
     ops = render_dashboard_tui(payload, page="ops", width=150)
 
-    assert "NEXT SAFE ACTION: Coverage-first: market_bars" in ops
+    assert "NEXT SAFE ACTION: Coverage-first: market bars" in ops
     assert "Plan-only; execute: batch market_bars execute" in ops
     assert "Use the workflow navigation or open the highlighted row" not in ops
+
+
+def test_ops_page_uses_human_source_labels() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {
+            "status": "blocked",
+            "answer": "Research only.",
+            "evidence_completeness": {
+                "summary": (
+                    "1/6 priced-in evidence layer(s) complete; "
+                    "first gaps market_bars:5, catalyst_events:2, local_text:1."
+                )
+            },
+        },
+        "call_plan": {"max_external_call_count": 0},
+        "ops_health": {
+            "database": {"status": "ok"},
+            "degraded_mode": {"enabled": True},
+            "providers": [],
+            "jobs": [],
+        },
+        "priced_in_source_workflow": {
+            "status": "blocked",
+            "goal_alignment": {
+                "goal": "Find stocks where market emotion has not yet been matched.",
+                "current_blocker": "market_bars",
+                "current_state": "Showing sample rows.",
+            },
+            "coverage_first_action": "Clear market_bars before catalyst_events.",
+            "steps": [
+                {
+                    "priority": 1,
+                    "source": "market_bars",
+                    "status": "attention",
+                    "gap_rows": 5,
+                    "action": "Clear market_bars first.",
+                },
+                {
+                    "priority": 2,
+                    "source": "catalyst_events",
+                    "status": "attention",
+                    "gap_rows": 2,
+                    "depends_on": ["market_bars"],
+                    "action": "Refresh catalyst_events after bars.",
+                },
+            ],
+        },
+        "priced_in_source_coverage": {
+            "actions": [
+                {
+                    "source": "local_text",
+                    "status": "partial",
+                    "coverage_pct": 0.4,
+                    "gap_rows": 1,
+                    "sample_tickers": ["ACME"],
+                    "batch_plan_command": (
+                        "catalyst-radar priced-in-source-batches --source local_text"
+                    ),
+                }
+            ]
+        },
+    }
+
+    ops = render_dashboard_tui(payload, page="ops", width=180)
+
+    assert "market bars" in ops
+    assert "catalyst events" in ops
+    assert "local text" in ops
+    assert "Clear market bars before catalyst events" in ops
+    assert "batch market_bars execute" in ops
+    assert "--source local_text" in ops
+    command_text_removed = (
+        ops.replace("batch market_bars execute", "")
+        .replace("batch market_bars", "")
+        .replace("batch catalyst_events", "")
+        .replace("--source local_text", "")
+    )
+    assert "market_bars" not in command_text_removed
+    assert "catalyst_events" not in command_text_removed
+    assert "local_text" not in command_text_removed
 
 
 def test_telemetry_footer_uses_audit_status() -> None:
@@ -7445,6 +7531,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Enter shows plan" in frame
             assert "batch" in frame
             assert "Coverage-first" in frame
+            assert "broker context" in frame
+            assert "batch broker context" not in frame
             assert "Use the workflow navigation or open the highlighted row" not in frame
 
             app.query_one("#data-table").focus()
