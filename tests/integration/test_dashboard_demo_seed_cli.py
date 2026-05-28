@@ -3272,6 +3272,31 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "NEXT SAFE ACTION: Decision Review is not trade approval" in review
     assert "Use the workflow navigation or open the highlighted row" not in review
 
+    empty_review_payload = {
+        **payload,
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_ready": False,
+            "answer": "Full-market priced-in answer is not ready.",
+        },
+        "priced_in_queue": {
+            **payload["priced_in_queue"],
+            "rows": [
+                {
+                    **payload["priced_in_queue"]["rows"][1],
+                    "usefulness": {
+                        "status": "research_useful",
+                        "decision_ready": False,
+                    },
+                }
+            ],
+        },
+    }
+    empty_review = render_dashboard_tui(empty_review_payload, page="review", width=140)
+    assert "No decision-ready rows yet" in empty_review
+    assert "Evidence Gaps must clear" in empty_review
+    assert "No rows." not in empty_review
+
     overview = render_dashboard_tui(payload, page="overview", width=140)
     assert "Market Inbox" in overview
     assert "Latest scan results" in overview
