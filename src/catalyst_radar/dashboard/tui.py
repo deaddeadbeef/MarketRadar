@@ -8680,15 +8680,16 @@ def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
     }
     coverage_step = steps[0] if steps else {}
     coverage_source = str(coverage_step.get("source") or "").strip()
+    coverage_source_label = _human_source_name(coverage_source)
     coverage_gap_count = int(
         _number_or_zero(
             _source_action_gap_count(_mapping(action_by_source.get(coverage_source)))
         )
     )
     coverage_text = (
-        f"{coverage_source} ({coverage_gap_count} full-scan gap row(s))"
+        f"{coverage_source_label} ({coverage_gap_count} full-scan gap row(s))"
         if coverage_source and coverage_gap_count
-        else coverage_source
+        else coverage_source_label
     )
     coverage = str(
         workflow.get("coverage_first_action") or workflow.get("next_action") or ""
@@ -8702,12 +8703,13 @@ def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
         {},
     )
     decision_source = str(decision_step.get("source") or "").strip()
+    decision_source_label = _human_source_name(decision_source)
     decision_rows = int(_number_or_zero(decision_step.get("decision_useful_gap_rows")))
     if coverage_source and decision_source:
         decision_text = (
-            f"{decision_source} ({decision_rows} decision-ready row(s))"
+            f"{decision_source_label} ({decision_rows} decision-ready row(s))"
             if decision_rows
-            else decision_source
+            else decision_source_label
         )
         return (
             f"Full-scan coverage: {coverage_text}. "
@@ -8716,7 +8718,7 @@ def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
     if coverage_source:
         return f"Full-scan coverage: {coverage_text}."
     if decision_source:
-        return f"Shortlist context: {decision_source}."
+        return f"Shortlist context: {decision_source_label}."
     if coverage:
         return f"Full-scan coverage: {_clip(coverage, 140)}"
     return "Open Ops or run batch all to inspect source gaps."
@@ -9010,7 +9012,11 @@ def _is_decision_ready_filter(queue: Mapping[str, object]) -> bool:
 def _source_gap_filter_summary(queue: Mapping[str, object]) -> str:
     raw_sources = _mapping(queue.get("filters")).get("source_gap")
     sources = raw_sources if isinstance(raw_sources, list | tuple) else ()
-    normalized = [str(source) for source in sources if str(source).strip()]
+    normalized = [
+        _human_source_name(source)
+        for source in sources
+        if str(source).strip()
+    ]
     if not normalized:
         return ""
     return f"source gaps {', '.join(normalized)}"

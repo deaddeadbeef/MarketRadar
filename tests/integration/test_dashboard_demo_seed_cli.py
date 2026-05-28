@@ -1695,6 +1695,41 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "priced-in-source-batches --source all --stocks-only" in output.out
 
 
+def test_market_inbox_caption_humanizes_source_names() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {"status": "blocked", "decision_ready": False},
+        "priced_in_queue": {
+            "filters": {"status": "all", "source_gap": ["market_bars", "local_text"]},
+            "count": 0,
+            "rows": [],
+            "total_count": 0,
+        },
+        "priced_in_source_coverage": {
+            "actions": [{"source": "market_bars", "gap_count": 7}]
+        },
+        "priced_in_source_workflow": {
+            "steps": [
+                {"source": "market_bars", "decision_useful_gap_rows": 0},
+                {"source": "catalyst_events", "decision_useful_gap_rows": 2},
+            ],
+        },
+    }
+
+    screen = render_dashboard_tui(payload, page="overview", width=160)
+    normalized = " ".join(screen.split())
+
+    assert "Active source gap filter: source gaps market bars, local text." in normalized
+    assert "Next data step: Full-scan coverage: market bars" in normalized
+    assert "Shortlist context: catalyst events" in normalized
+    caption = screen.split("Next Safe Action", 1)[0]
+    assert "market_bars" not in caption
+    assert "local_text" not in caption
+    assert "catalyst_events" not in caption
+
+
 def test_dashboard_tui_once_defaults_to_latest_scan_results(
     tmp_path: Path,
     monkeypatch,
