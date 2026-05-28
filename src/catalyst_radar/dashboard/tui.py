@@ -1918,6 +1918,15 @@ class MarketRadarDashboardApp(App[int]):
             rows_card = _mapping(card_by_label.get("Rows"))
             inbox_rows = _market_inbox_rows(self.payload)
             inbox_counts = _market_inbox_counts(inbox_rows)
+            inbox_intro = (
+                "Setup checklist shows how to create the first real scan; "
+                "there are no stock result rows yet."
+                if _real_results_empty(self.payload)
+                else (
+                    "Every message is a scan result asking whether market emotion "
+                    "has outrun price reaction."
+                )
+            )
             next_value = _clip(
                 next_card.get("value") or next_action or "No operator action.",
                 118,
@@ -1929,10 +1938,7 @@ class MarketRadarDashboardApp(App[int]):
                 "\n".join(
                     [
                         "[bold #7ee787]MARKET INBOX[/] // [b]ATTENTION QUEUE[/b]",
-                        (
-                            "Every message is a scan result asking whether market emotion "
-                            "has outrun price reaction."
-                        ),
+                        inbox_intro,
                         (
                             f"[bold]Can I act?[/] {can_act_card.get('value') or can_act}; "
                             f"[bold]Inbox[/] {inbox_value}; "
@@ -6503,7 +6509,10 @@ def _priced_in_gap_summary(row: Mapping[str, object]) -> str:
 
 def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     messages: list[Mapping[str, object]] = []
-    for row in _priced_in_overview_rows(payload):
+    overview_rows = _priced_in_overview_rows(payload)
+    if not overview_rows and _real_results_empty(payload):
+        return _first_scan_setup_rows(payload)
+    for row in overview_rows:
         ticker = str(row.get("ticker") or "").strip().upper()
         signal = str(row.get("signal") or "Market signal").strip()
         gap = row.get("emotion_reaction_gap")
@@ -6542,6 +6551,123 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
         )
         messages.append(message)
     return messages
+
+
+def _first_scan_setup_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    answer = _mapping(payload.get("priced_in_answer"))
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    ladder_rows = _rows(_mapping(trust_gate.get("blocker_ladder")).get("rows"))
+    if not ladder_rows:
+        ladder_rows = [
+            {
+                "source": "universe",
+                "next_action": "Create the scan universe before expecting results.",
+                "plan_command": answer.get("canonical_next_command"),
+                "status": "blocked",
+            },
+            {
+                "source": "market_bars",
+                "next_action": "Fill fresh prices for the scan universe.",
+                "status": "blocked",
+            },
+            {
+                "source": "scan",
+                "next_action": "Run one capped scan after the data blockers clear.",
+                "status": "blocked",
+            },
+        ]
+    else:
+        ladder_rows = list(ladder_rows)
+    if not any(str(row.get("source") or "") == "scan" for row in ladder_rows):
+        scan_row = {
+            "source": "scan",
+            "next_action": "Run one capped scan after the data blockers clear.",
+            "status": "blocked",
+        }
+        insert_at = len(ladder_rows)
+        for index, row in enumerate(ladder_rows):
+            if str(row.get("source") or "") == "agent_review":
+                insert_at = index
+                break
+        ladder_rows.insert(insert_at, scan_row)
+    rows: list[Mapping[str, object]] = []
+    for index, row in enumerate(ladder_rows[:4], start=1):
+        source = str(row.get("source") or f"setup_step_{index}").strip()
+        command = str(
+            _first_nonblank(
+                row.get("plan_command"),
+                row.get("command"),
+                row.get("execute_next_command"),
+                answer.get("canonical_next_command") if index == 1 else None,
+            )
+            or ""
+        ).strip()
+        next_action = str(row.get("next_action") or "").strip()
+        source_label = _human_label(source)
+        rows.append(
+            {
+                "_row_key": f"first-scan-{index}-{source}",
+                "mailbox": "Setup",
+                "ticker": "-",
+                "subject": _first_scan_setup_subject(source, index),
+                "why": _first_scan_setup_why(source, next_action),
+                "missing": source_label,
+                "next": _first_scan_setup_next(source, command, next_action),
+                "target_page": _first_scan_setup_target(source),
+                "status_message": (
+                    f"Setup step {index}: {source_label}. No calls were made. "
+                    f"{_first_scan_setup_next(source, command, next_action)}"
+                ),
+                "status": row.get("status") or "blocked",
+                "source": source,
+                "command": command,
+            }
+        )
+    return rows
+
+
+def _first_scan_setup_subject(source: str, index: int) -> str:
+    subjects = {
+        "universe": "1. Build the stock universe",
+        "market_bars": "2. Fill latest prices",
+        "catalyst_events": "3. Add catalyst evidence",
+        "local_text": "3. Add narrative evidence",
+        "agent_review": "4. Add the AI review",
+        "scan": "3. Run one capped scan",
+    }
+    return subjects.get(source, f"{index}. Clear {(_human_label(source) or 'setup')}")
+
+
+def _first_scan_setup_why(source: str, next_action: str) -> str:
+    why_by_source = {
+        "universe": "MarketRadar has no active stock list to scan yet.",
+        "market_bars": "It cannot compare mood with price reaction until prices are fresh.",
+        "catalyst_events": "It needs real events before judging market emotion.",
+        "local_text": "Narrative evidence is not ready for the scan date.",
+        "agent_review": "AI review is optional and must stay explicitly budget-gated.",
+        "scan": "No priced-in scan rows exist yet.",
+    }
+    return why_by_source.get(source, next_action or "This setup blocker is still open.")
+
+
+def _first_scan_setup_next(source: str, command: str, next_action: str) -> str:
+    if source == "universe" and command:
+        return f"Run intentionally: {command}"
+    if source == "market_bars":
+        return "Open Evidence Gaps, then use Bars or Safe Run when ready."
+    if source == "agent_review":
+        return "Preview Agent Coach first; execute only with OpenAI budget approval."
+    if source == "scan":
+        return "Open Safe Run; execute only after the call budget looks right."
+    return next_action or "Open Evidence Gaps and clear this blocker first."
+
+
+def _first_scan_setup_target(source: str) -> str:
+    if source == "agent_review":
+        return "agent"
+    if source in {"scan", "catalyst_events", "local_text"}:
+        return "run"
+    return "readiness"
 
 
 def _market_inbox_mailbox(row: Mapping[str, object]) -> str:
@@ -6595,13 +6721,14 @@ def _market_inbox_count_summary(counts: Mapping[str, int]) -> str:
         for label in ("Urgent", "Worth Reading", "Waiting Evidence")
         if counts.get(label)
     ]
+    has_priority_parts = bool(parts)
     if not parts:
         parts.append(f"{total} message(s)")
     priority_total = sum(
         counts.get(label, 0)
         for label in ("Urgent", "Worth Reading", "Waiting Evidence")
     )
-    if parts and total > priority_total:
+    if has_priority_parts and total > priority_total:
         parts.append(f"{total} total")
     return ", ".join(parts)
 
@@ -6609,6 +6736,11 @@ def _market_inbox_count_summary(counts: Mapping[str, int]) -> str:
 def _market_inbox_metric_summary(payload: Mapping[str, object]) -> tuple[str, str]:
     queue = _mapping(payload.get("priced_in_queue"))
     rows = _market_inbox_rows(payload)
+    if _real_results_empty(payload) and rows:
+        return (
+            "setup checklist",
+            f"{len(rows)} setup row(s); 0 stock results",
+        )
     visible = len(rows)
     returned = int(
         _number_or_zero(queue.get("returned_count") or queue.get("count") or visible)
@@ -6638,6 +6770,8 @@ def _market_inbox_metric_summary(payload: Mapping[str, object]) -> tuple[str, st
 def _market_inbox_scope_summary(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
     rows = _market_inbox_rows(payload)
+    if _real_results_empty(payload) and rows:
+        return f"Setup checklist: {len(rows)} instruction row(s), 0 stock result rows"
     parts: list[str] = []
     visible_summary = _market_inbox_count_summary(_market_inbox_counts(rows))
     if visible_summary:
@@ -6660,6 +6794,11 @@ def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
         return (
             "No scan messages yet. Import/fetch market data, then run a capped scan "
             "before treating this as insight."
+        )
+    if _real_results_empty(payload):
+        return (
+            "Start with Setup row 1. Open Evidence Gaps for blockers; only run "
+            "provider commands intentionally."
         )
     counts = _market_inbox_counts(rows)
     urgent = counts.get("Urgent", 0)
@@ -7527,6 +7666,24 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if _real_results_empty(payload):
         lines.extend(_no_real_result_lines(payload, width))
         lines.append("")
+        setup_rows = _market_inbox_rows(payload)
+        if setup_rows:
+            lines.append("First real scan setup - these are instructions, not stock results.")
+            lines.extend(
+                _table_lines(
+                    setup_rows,
+                    [
+                        ("mailbox", "Mailbox", 12),
+                        ("subject", "Step", 28),
+                        ("why", "Why this matters", 42),
+                        ("missing", "Missing", 18),
+                        ("next", "Next safe action", 42),
+                    ],
+                    width=width,
+                    limit=10,
+                )
+            )
+            lines.append("")
         lines.extend(_novice_empty_scan_lines(width))
         lines.append("")
         lines.extend(_wrap(_market_inbox_caption(payload), width))
