@@ -1972,6 +1972,30 @@ def test_run_mission_brief_useful_next_prefers_operator_step() -> None:
     assert "Fill missing" not in items["Useful next"]
 
 
+def test_run_mission_brief_do_now_does_not_join_period_then_semicolon() -> None:
+    payload = {
+        "priced_in_answer": {
+            "operator_next_step": {
+                "action": "Seed the ticker universe before calling this a full-market scan.",
+                "command": (
+                    "catalyst-radar ingest-polygon tickers --max-pages 1 "
+                    "--confirm-external-call"
+                ),
+                "external_calls_required": 1,
+                "approval_required": True,
+                "db_writes_required": 1,
+                "first_blocker": "universe",
+                "first_gap_count": 0,
+            },
+        },
+    }
+
+    items = dict(_run_mission_brief_items(payload))
+
+    assert "scan.; run" not in items["Do now"]
+    assert "scan; run catalyst-radar ingest-polygon" in items["Do now"]
+
+
 def test_dashboard_market_bar_missing_type_summary_is_human_readable() -> None:
     payload = {
         "priced_in_audit": {
