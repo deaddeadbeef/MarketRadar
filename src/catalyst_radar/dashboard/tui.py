@@ -2437,11 +2437,11 @@ class MarketRadarDashboardApp(App[int]):
                 [
                     ("ticker", "Ticker", 8),
                     ("priced_in_status", "Priced-in", 20),
-                    ("emotion_reaction_gap", "Gap", 8),
-                    ("score", "Score", 8),
-                    ("data_coverage", "Data", 32),
-                    ("why_now", "Why now", 50),
-                    ("next_step", "Next step", 36),
+                    ("emotion_reaction_gap", "Gap", 7),
+                    ("score", "Score", 7),
+                    ("data_coverage", "Evidence", 36),
+                    ("why_now", "Why now", 30),
+                    ("next_step", "Next step", 31),
                 ],
                 rows,
                 (
@@ -6465,21 +6465,22 @@ def _priced_in_gap_summary(row: Mapping[str, object]) -> str:
     usefulness = row.get("usefulness")
     if not isinstance(usefulness, Mapping):
         usefulness = {}
-    routed = {
+    routed_raw = {
         str(item)
         for item in _rows_or_values(usefulness.get("routed_optional_sources"))
         if str(item).strip()
     }
     missing = [
-        str(item)
+        _human_source_name(item)
         for item in _rows_or_values(data_sources.get("missing"))
-        if str(item).strip() and str(item) not in routed
+        if str(item).strip() and str(item) not in routed_raw
     ]
     stale = [
-        str(item)
+        _human_source_name(item)
         for item in _rows_or_values(data_sources.get("stale"))
-        if str(item).strip() and str(item) not in routed
+        if str(item).strip() and str(item) not in routed_raw
     ]
+    routed = [_human_source_name(item) for item in sorted(routed_raw)]
     parts: list[str] = []
     if missing:
         parts.append(f"missing {', '.join(missing[:3])}")
@@ -9831,13 +9832,13 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
             _indexed(rows),
             [
                 ("index", "#", 4),
-                ("ticker", "Ticker", 8),
+                ("ticker", "Ticker", 7),
                 ("priced_in_status", "Priced-in", 20),
-                ("emotion_reaction_gap", "Gap", 8),
-                ("score", "Score", 8),
-                ("data_coverage", "Data", 32),
-                ("why_now", "Why Now", 42),
-                ("next_step", "Next Step", 34),
+                ("emotion_reaction_gap", "Gap", 7),
+                ("score", "Score", 7),
+                ("data_coverage", "Evidence", 36),
+                ("why_now", "Why Now", 30),
+                ("next_step", "Next Step", 28),
             ],
             width=width,
             limit=30,
@@ -9877,29 +9878,78 @@ def _candidate_table_row(
         if decision_safe
         else "Fix Evidence Gaps first."
     )
+    priced_in_status = str(row.get("priced_in_status") or "").strip()
+    why_now = (
+        _priced_in_reason(row)
+        or brief.get("why_now")
+        or row.get("top_event_title")
+        or row.get("risk_or_gap")
+    )
     return {
         **dict(row),
         "_row_key": row_key,
         "score": row.get("score") or row.get("final_score"),
         "data_coverage": _data_coverage_summary(row),
-        "why_now": (
-            _priced_in_reason(row)
-            or brief.get("why_now")
-            or row.get("top_event_title")
-            or row.get("risk_or_gap")
+        "why_now": _humanize_dashboard_text(why_now),
+        "next_step": _humanize_dashboard_text(
+            next_step or "Open candidate detail and review the evidence."
         ),
-        "next_step": next_step or "Open candidate detail and review the evidence.",
-        "priced_in_status": row.get("priced_in_status") or "n/a",
+        "priced_in_status": _priced_in_signal(
+            priced_in_status,
+            fallback=_human_status_label(priced_in_status or "n/a"),
+        ),
     }
 
 
 def _data_coverage_summary(row: Mapping[str, object]) -> str:
     data_sources = row.get("priced_in_data_sources") or row.get("data_sources")
     if isinstance(data_sources, Mapping):
+        available = _human_source_names(data_sources.get("available"))
+        missing = _human_source_names(data_sources.get("missing"))
+        stale = _human_source_names(data_sources.get("stale"))
+        parts: list[str] = []
+        if available:
+            parts.append(f"have {_compact_source_names(available)}")
+        if missing:
+            parts.append(f"need {_compact_source_names(missing)}")
+        if stale:
+            parts.append(f"stale {_compact_source_names(stale)}")
+        if parts:
+            return "; ".join(parts)
         summary = str(data_sources.get("summary") or "").strip()
         if summary:
-            return summary
+            return _human_source_status_text(summary)
     return "n/a"
+
+
+def _human_source_names(value: object) -> list[str]:
+    return [
+        _human_source_name(item)
+        for item in _rows_or_values(value)
+        if str(item).strip()
+    ]
+
+
+def _compact_source_names(names: Sequence[str]) -> str:
+    clean = [name for name in names if name]
+    if not clean:
+        return ""
+    first = _short_source_name(clean[0])
+    if len(clean) == 1:
+        return first
+    return f"{first} +{len(clean) - 1}"
+
+
+def _short_source_name(name: str) -> str:
+    labels = {
+        "broker context": "broker",
+        "candidate packet": "packet",
+        "catalyst events": "events",
+        "decision card": "card",
+        "local text": "text",
+        "theme/peer/sector": "theme/peers",
+    }
+    return labels.get(name, name)
 
 
 def _candidate_detail_row(payload: Mapping[str, object], ticker: str) -> Mapping[str, object]:
@@ -12119,7 +12169,9 @@ _STATUS_LABELS: Mapping[str, str] = {
     "approval_required": "approval required",
     "blocked_run_steps": "blocked run steps",
     "candidate_ledger_coverage": "Candidate ledger coverage",
+    "candidate_packet": "candidate packet",
     "catalyst_events": "catalyst events",
+    "decision_card": "decision card",
     "decision_ready": "decision ready",
     "dry_run": "dry run",
     "expected_gate": "expected gate",
@@ -12130,6 +12182,7 @@ _STATUS_LABELS: Mapping[str, str] = {
     "local_text": "local text",
     "manual_review_ready": "manual review ready",
     "market_bars": "market bars",
+    "market_momentum": "market momentum",
     "no_candidate_packets": "no candidate packets",
     "no_validation_runs": "No validation runs yet",
     "not_started": "not started",
@@ -12140,6 +12193,7 @@ _STATUS_LABELS: Mapping[str, str] = {
     "research_only": "research only",
     "safe_read_only": "safe read-only",
     "setup_blocked": "setup blocked",
+    "theme_peer_sector": "theme/peer/sector",
 }
 
 _DASHBOARD_TEXT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
@@ -12161,6 +12215,7 @@ _DASHBOARD_TEXT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("source_live=yes", "source live: yes"),
     ("setup_blocked", "setup blocked"),
     ("manual_review_ready", "manual review ready"),
+    ("market_momentum", "market momentum"),
     ("research_only", "research only"),
 )
 
