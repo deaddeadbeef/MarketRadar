@@ -6301,6 +6301,13 @@ def _page_display_label(
             return _alert_display_title(row, alert_id)
         return f"Alert {alert_id}" if alert_id else "Alert"
     labels = {page_key: label for page_key, _, label in MODERN_PAGES}
+    labels.update(
+        {
+            "themes": "Themes",
+            "validation": "Validation",
+            "costs": "Costs",
+        }
+    )
     return labels.get(normalized, _human_label(normalized) or "Help")
 
 
@@ -10774,6 +10781,25 @@ def _ipo_lines(payload: Mapping[str, object], width: int) -> list[str]:
 def _themes_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = _rows(_mapping(payload.get("themes")).get("rows"))
     lines = [_rule("Themes", width)]
+    if not rows:
+        if _real_results_empty(payload):
+            lines.extend(_no_real_result_lines(payload, width))
+            lines.extend(
+                _wrap(
+                    "Theme clusters appear only after real scan rows exist. "
+                    "There is no cluster to inspect or act on yet.",
+                    width,
+                )
+            )
+        else:
+            lines.extend(
+                _wrap(
+                    "No theme clusters in this snapshot. Continue with Inbox or "
+                    "Candidates until repeated catalyst patterns appear.",
+                    width,
+                )
+            )
+        return lines
     lines.extend(
         _table_lines(
             rows,
@@ -12965,6 +12991,11 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
             return _no_real_result_next_action(payload, real_results)
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     if page == "themes":
+        if _real_results_empty(payload):
+            return _no_real_result_next_action(
+                payload,
+                _mapping(payload.get("real_results")),
+            )
         themes = _mapping(payload.get("themes"))
         count = int(_number_or_zero(themes.get("count")))
         if count:

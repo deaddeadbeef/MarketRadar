@@ -1377,6 +1377,46 @@ def test_dashboard_empty_decision_review_points_to_first_setup_blocker(
     assert "External calls made: 0" in output.out
 
 
+def test_dashboard_empty_themes_points_to_first_setup_blocker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-themes.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "themes"]) == 0
+    output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
+
+    assert output.err == ""
+    assert "Page: Themes" in output.out
+    assert "No real result yet" in output.out
+    assert "Clear Active universe first" in output.out
+    assert "Seed or refresh the stock universe" in output.out
+    assert "execute only if you accept the provider call" in normalized
+    assert "Theme clusters appear only after real scan rows exist" in output.out
+    assert "NEXT SAFE ACTION: Clear Active universe first" in output.out
+    assert "No rows." not in output.out
+    assert "External calls made: 0" in output.out
+
+
+def test_alias_analysis_page_headers_are_human_labels() -> None:
+    payload = _minimal_missing_real_results_payload()
+    payload["themes"] = {"count": 0, "rows": []}
+    payload["validation"] = {"report": {}, "latest_run": {}}
+    payload["costs"] = {}
+    payload["value_report"] = {}
+
+    assert "Page: Themes" in render_dashboard_tui(payload, page="themes", width=120)
+    assert "Page: Validation" in render_dashboard_tui(
+        payload,
+        page="validation",
+        width=120,
+    )
+    assert "Page: Costs" in render_dashboard_tui(payload, page="costs", width=120)
+
+
 def test_modern_agent_table_model_locks_before_setup() -> None:
     engine = create_engine("sqlite:///:memory:", future=True)
     create_schema(engine)
