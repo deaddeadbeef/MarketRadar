@@ -7865,7 +7865,11 @@ def _first_scan_setup_command(payload: Mapping[str, object]) -> str:
 
 
 def _setup_command_footer_action(payload: Mapping[str, object]) -> str:
-    if not _real_results_empty(payload) or not _first_scan_setup_command(payload):
+    operator_step = _priced_in_operator_step(payload)
+    command = _first_scan_setup_command(payload) or str(
+        operator_step.get("tui_command") or operator_step.get("command") or ""
+    ).strip()
+    if not _real_results_empty(payload) or not command:
         return ""
     blocker = _readiness_first_setup_blocker(payload)
     area = _human_source_name(
@@ -13196,6 +13200,8 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         "ops",
         "agent",
         "themes",
+        "tutorial",
+        "start",
     }:
         return setup_footer
     if page == "tutorial":

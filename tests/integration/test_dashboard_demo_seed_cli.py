@@ -3703,7 +3703,11 @@ def test_dashboard_start_page_empty_scan_points_to_setup_blocker() -> None:
     assert "Read Mission setup command" in screen
     assert "If you accept the call/write, run it in PowerShell." in screen
     assert "After setup, review one capped scan before executing" in screen
-    assert "NEXT SAFE ACTION: Clear Active universe first" in screen
+    assert (
+        "NEXT SAFE ACTION: Clear Active universe first: run PowerShell command"
+        in screen
+    )
+    assert "above after accepting call/write" in screen
     assert "Start with Inbox: press 1 or click Inbox" not in screen
 
 
