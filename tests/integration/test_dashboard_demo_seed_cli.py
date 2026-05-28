@@ -3767,6 +3767,11 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
 
     candidates = render_dashboard_tui(payload, page="candidates", width=180)
     assert "Research-only: candidates are inspection targets, not trade ideas" in candidates
+    assert "Bullish not priced" in candidates
+    assert "have market bars +2; need options +1" in candidates
+    assert "bullish_not_priced_in" not in candidates
+    assert "market_bars" not in candidates
+    assert "broker_context" not in candidates
     assert "Fix Evidence Gaps first." in candidates
     assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" in candidates
     assert "not trade approval" in candidates
@@ -3794,7 +3799,7 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     inbox_rows = _market_inbox_rows(payload)
     assert [row["mailbox"] for row in inbox_rows] == ["Urgent", "Waiting Evidence"]
     assert inbox_rows[0]["subject"].startswith("Bullish not priced")
-    assert inbox_rows[0]["missing"] == "missing options, broker_context"
+    assert inbox_rows[0]["missing"] == "missing options, broker context"
     assert "Open the case file" in inbox_rows[0]["next"]
     assert inbox_rows[1]["next"] == "Evidence Gaps first."
     assert inbox_rows[1]["status_message"] == (
