@@ -3051,6 +3051,145 @@ def test_dashboard_text_render_respects_requested_width() -> None:
     assert offenders == []
 
 
+def test_dashboard_populated_status_pages_respect_requested_width() -> None:
+    width = 100
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {
+            "status": "blocked",
+            "answer": "Research only.",
+            "full_scan": {"active_securities": 100, "scanned_rows": 50, "ranked_rows": 25},
+        },
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "latest_run": {
+            "status": "success",
+            "required_completed_count": 1,
+            "required_step_count": 4,
+            "as_of": "2026-05-15",
+        },
+        "live_activation": {"status": "dry_run", "headline": "No calls while browsing."},
+        "radar_run_cooldown": {"status": "ready", "detail": "No cooldown."},
+        "call_plan": {
+            "status": "planned",
+            "headline": "Review before execute.",
+            "next_action": "Inspect source blockers before any provider call.",
+            "max_external_call_count": 3,
+            "rows": [],
+        },
+        "priced_in_audit": {
+            "status": "blocked",
+            "answer": "The full scan still needs source coverage before decision review.",
+            "scope": {"active_securities": 100, "scanned_rows": 50, "ranked_rows": 25},
+            "source_coverage": {
+                "summary": (
+                    "market_bars 12090/12669 (579 missing); catalyst_events "
+                    "9/2429 (2420 missing); local_text 9/2429 (2420 missing);"
+                )
+            },
+            "sources": [
+                {
+                    "source": "market_bars",
+                    "status": "blocked",
+                    "available": 12090,
+                    "row_count": 12669,
+                    "gap_count": 579,
+                    "next_action": "Review the guarded chunk plan before execution.",
+                    "command": "catalyst-radar priced-in-source-batches --source market_bars",
+                }
+            ],
+        },
+        "ops_health": {
+            "database": {"status": "connected", "candidate_state_count": 25},
+            "degraded_mode": {"enabled": False, "max_action_state": "Warning"},
+            "providers": [],
+            "jobs": [],
+        },
+        "priced_in_source_coverage": {
+            "actions": [
+                {
+                    "source": "market_bars",
+                    "status": "blocked",
+                    "coverage_pct": 95.4,
+                    "gap_count": 579,
+                    "sample_tickers": ["A", "MSFT"],
+                    "batch_plan_command": (
+                        "catalyst-radar priced-in-source-batches --source market_bars"
+                    ),
+                }
+            ]
+        },
+        "priced_in_source_workflow": {
+            "goal_alignment": {
+                "goal": "Find whether market emotion has outrun price reaction.",
+                "useful_definition": (
+                    "Useful means the next action reduces uncertainty without spending "
+                    "provider or OpenAI calls while browsing."
+                ),
+                "current_state": "blocked",
+                "current_blocker": "market_bars",
+                "next_useful_step": "Review the full-scan source map first.",
+                "provider_boundary": "No provider calls without execute.",
+            },
+            "status": "blocked",
+            "coverage_first_action": "Review market bars before acting.",
+            "decision_shortcut_action": "Do not trade from this page.",
+            "overview_command": "batch all",
+            "steps": [
+                {
+                    "priority": 1,
+                    "source": "market_bars",
+                    "status": "blocked",
+                    "gap_rows": 579,
+                    "depends_on": [],
+                    "action": "Review the next guarded source-fill chunk.",
+                }
+            ],
+        },
+        "agent_brief": {
+            "mode": "dry_run",
+            "status": "dry_run",
+            "external_calls_made": {"openai": 0, "market_data": 0, "broker": 0},
+            "runtime": {
+                "orchestrator": "openai_agents_sdk",
+                "copilot_dependency": "absent",
+                "tool_surface": "read_only_snapshot_tools",
+                "real_mode_gate_status": "ready",
+                "real_results_gate_status": "blocked",
+                "credit_gate_status": "blocked",
+                "external_market_tools": False,
+                "broker_tools": False,
+                "shell_tools": False,
+                "web_tools": False,
+            },
+            "decision_boundary": "setup_blocked; research/manual triage only",
+        },
+        "costs": {"attempt_count": 2, "status_counts": {}},
+        "value_ledger": {
+            "entry_count": 0,
+            "useful_definition": (
+                "Useful means a logged MarketRadar artifact changed a manual review "
+                "decision, saved research time, avoided a bad action, or created a "
+                "forward-testable market-emotion/priced-in hypothesis."
+            ),
+            "top_entries": [],
+        },
+        "value_outcomes": {"outcome_count": 0, "status_counts": {}},
+        "value_report": {},
+    }
+
+    offenders: list[str] = []
+    for page in ("run", "ops", "agent", "costs"):
+        rendered = render_dashboard_tui(payload, page=page, width=width)
+        for line_number, line in enumerate(rendered.splitlines(), start=1):
+            if len(line) > width:
+                offenders.append(f"{page}:{line_number}:{len(line)}:{line[:60]}")
+
+    assert offenders == []
+
+
 def test_overview_audit_summary_respects_requested_width() -> None:
     width = 80
     payload = {
