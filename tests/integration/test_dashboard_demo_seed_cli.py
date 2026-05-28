@@ -1377,7 +1377,21 @@ def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
             else:
                 raise AssertionError("dashboard snapshot did not load")
 
-            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            async def wait_for_frame(*needles: str) -> str:
+                for _ in range(80):
+                    frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+                    if all(needle in frame for needle in needles):
+                        return frame
+                    await asyncio.sleep(0.05)
+                    await pilot.pause()
+                raise AssertionError(f"dashboard frame did not render: {needles}")
+
+            frame = await wait_for_frame(
+                "setup checklist",
+                "no stock result rows yet",
+                "3 setup row(s); 0 stock",
+                "Build the stock",
+            )
             assert "setup checklist" in frame
             assert "no stock result rows yet" in frame
             assert "3 setup row(s); 0 stock" in frame
