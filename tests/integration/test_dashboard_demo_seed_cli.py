@@ -2045,7 +2045,25 @@ def test_run_mission_brief_do_now_does_not_join_period_then_semicolon() -> None:
     items = dict(_run_mission_brief_items(payload))
 
     assert "scan.; run" not in items["Do now"]
-    assert "scan; run catalyst-radar ingest-polygon" in items["Do now"]
+    assert "scan; PowerShell command: catalyst-radar ingest-polygon" in items["Do now"]
+
+
+def test_run_mission_brief_labels_catalyst_tui_command_as_powershell() -> None:
+    payload = {
+        "priced_in_answer": {
+            "operator_next_step": {
+                "action": "Seed the ticker universe.",
+                "tui_command": "catalyst-radar ingest-csv --securities <securities.csv>",
+                "external_calls_required": 0,
+                "db_writes_required": 1,
+            },
+        },
+    }
+
+    items = dict(_run_mission_brief_items(payload))
+
+    assert "PowerShell command: catalyst-radar ingest-csv" in items["Do now"]
+    assert "dashboard command: catalyst-radar" not in items["Do now"]
 
 
 def test_run_mission_brief_useful_next_is_humanized() -> None:

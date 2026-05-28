@@ -2946,9 +2946,16 @@ def _operator_next_step_summary(step: Mapping[str, object]):
         step.get("action") or step.get("action_label") or "No action recorded."
     ).rstrip(".;")
     parts = [action]
-    command = step.get("tui_command") or step.get("command")
+    command = str(step.get("tui_command") or step.get("command") or "").strip()
     if command:
-        parts.append(f"run {command}")
+        command_label = (
+            "PowerShell command"
+            if command.startswith("catalyst-radar")
+            else "dashboard command"
+            if step.get("tui_command")
+            else "command"
+        )
+        parts.append(f"{command_label}: {command}")
     calls = int(_number_or_zero(step.get("external_calls_required")))
     changes = int(_number_or_zero(step.get("db_" + "writes_required")))
     approval = " after approval" if bool(step.get("approval_required")) else ""
