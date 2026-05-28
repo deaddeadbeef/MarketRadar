@@ -1287,6 +1287,7 @@ def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
 
     assert output.err == ""
     assert "No real result yet" in output.out
+    assert "no market scan has run" in output.out
     assert "Required next step:" in output.out
     assert "PowerShell setup command: catalyst-radar" in output.out
     assert "not in the dashboard command box" in output.out
@@ -1312,6 +1313,7 @@ def test_dashboard_empty_candidates_points_to_first_setup_blocker(
     assert output.err == ""
     assert "Page: Candidate Review" in output.out
     assert "No real result yet" in output.out
+    assert "no market scan has run" in output.out
     assert "Required next step:" in output.out
     assert "Clear Active universe first" in output.out
     assert "Seed or refresh the universe" in output.out
@@ -1338,6 +1340,7 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert output.err == ""
     assert "Page: Agent Coach" in output.out
     assert "Agent Coach Locked Until Setup Is Complete" in output.out
+    assert "no market scan has run" in output.out
     assert "Can the agent help now?" in output.out
     assert "Not with stock analysis yet. No real scan rows exist." in output.out
     assert "Safe preview" in output.out
@@ -1789,6 +1792,7 @@ def test_dashboard_tui_overview_is_novice_first_on_empty_database(
 
     assert output.err == ""
     assert "MarketRadar answers one question" in output.out
+    assert "No market scan yet" in output.out
     assert "Can I act?" in output.out
     assert "Best next step" in output.out
     assert "No scan rows yet" in output.out
@@ -1825,9 +1829,9 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert "Evidence Gaps And Work Queue" in output.out
     assert "First blocker" in output.out
     assert "setup: Active universe" in output.out
-    assert "Seed or refresh the stock universe intentionally" in output.out
+    assert "Seed or refresh the universe" in output.out
     assert "Next action" in output.out
-    assert "Start here: Seed or refresh the stock universe intentionally" in output.out
+    assert "Start here: Seed or refresh the universe" in output.out
     assert "Current Work Queue" in output.out
     assert "Setup is not complete yet" in output.out
     assert "Hidden until setup is complete" in output.out

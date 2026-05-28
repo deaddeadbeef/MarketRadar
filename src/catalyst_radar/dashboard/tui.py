@@ -6408,8 +6408,7 @@ def _tutorial_control_rows() -> list[Mapping[str, object]]:
             "step": "6",
             "do": "Use the bottom command box",
             "result": (
-                "Use it for dashboard commands like refresh, help, or q; "
-                "run setup commands in PowerShell."
+                "Dashboard commands only; run setup commands in PowerShell."
             ),
         },
     ]
@@ -7758,7 +7757,7 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
     missing = ", ".join(_texts(real_results.get("missing"))) or "real scan rows"
     next_action = _no_real_result_next_action(payload, real_results)
     lines = [
-        "No real result yet.",
+        "No real result yet: no market scan has run.",
     ]
     lines.extend(_wrap(f"Required next step: {next_action}", width))
     command = _first_scan_setup_command(payload)
@@ -7766,9 +7765,9 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
         lines.extend(_wrap(f"PowerShell setup command: {command}", width))
         lines.extend(
             _wrap(
-                "Run this in a normal PowerShell prompt, not in the dashboard "
-                "command box. Execute it only after you accept the data change "
-                "or provider call.",
+                "Where to run it: use a normal PowerShell prompt, not the "
+                "dashboard command box. Execute it only after you accept the "
+                "data change or provider call.",
                 width,
             )
         )
