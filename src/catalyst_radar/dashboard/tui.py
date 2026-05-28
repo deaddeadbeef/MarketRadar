@@ -9649,6 +9649,24 @@ def _run_mission_brief_items(
     operator_step_text = _operator_next_step_summary(operator_step)
     if operator_step_text:
         items.append(("Do now", operator_step_text))
+    command = ""
+    if _real_results_empty(payload):
+        command = _first_scan_setup_command(payload) or str(
+            operator_step.get("tui_command") or operator_step.get("command") or ""
+        ).strip()
+    if command:
+        items.extend(
+            [
+                ("PowerShell command", command),
+                (
+                    "Where to run",
+                    (
+                        "Run it in a normal PowerShell prompt, not in the "
+                        "dashboard command box."
+                    ),
+                ),
+            ]
+        )
     if trust_gate:
         gate_text = (
             f"{_human_status_label(trust_gate.get('status'))}; "
