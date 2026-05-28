@@ -3330,6 +3330,42 @@ def test_broker_page_labels_empty_local_artifact_sections() -> None:
     assert "NEXT SAFE ACTION: Broker needs_auth; browsing makes 0 Schwab calls" in broker
 
 
+def test_ops_footer_uses_coverage_first_source_step() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+        "ops_health": {
+            "database": {"status": "ok"},
+            "degraded_mode": {"enabled": True},
+            "providers": [],
+            "jobs": [],
+        },
+        "priced_in_source_workflow": {
+            "coverage_first_action": "Validate saved grouped-daily file.",
+            "steps": [
+                {
+                    "priority": 1,
+                    "source": "market_bars",
+                    "status": "attention",
+                    "action": "Validate saved grouped-daily file.",
+                }
+            ],
+        },
+        "priced_in_source_coverage": {"actions": []},
+    }
+
+    ops = render_dashboard_tui(payload, page="ops", width=150)
+
+    assert "NEXT SAFE ACTION: Coverage-first: market_bars" in ops
+    assert "Plan-only; execute: batch market_bars execute" in ops
+    assert "Use the workflow navigation or open the highlighted row" not in ops
+
+
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
@@ -6367,6 +6403,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Enter shows plan" in frame
             assert "batch" in frame
             assert "Coverage-first" in frame
+            assert "Use the workflow navigation or open the highlighted row" not in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")
