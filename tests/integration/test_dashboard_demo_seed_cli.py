@@ -3015,6 +3015,48 @@ def test_dashboard_header_uses_human_status_labels() -> None:
     assert "Trade safe: False" not in screen
 
 
+def test_readiness_page_uses_human_gate_labels() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {
+            "status": "research_only",
+            "decision_mode": "research_only",
+            "headline": "Current rows are research only.",
+            "next_action": "Fill source evidence before acting.",
+            "evidence": "market bars missing",
+        },
+        "shadow_readiness": {
+            "status": "setup_required",
+            "ready": False,
+            "canonical_next_action": "Run shadow setup.",
+            "call_boundary": {"planned_run_external_call_count_max": 0},
+        },
+        "shadow_mode": {
+            "latest": {
+                "status": "setup_required",
+                "run_date": "2026-05-22",
+                "db_writes_made": 1,
+            }
+        },
+        "operator_work_queue": {"status": "blocked", "headline": "Evidence gaps remain."},
+        "priced_in_answer": {"status": "blocked", "decision_ready": False},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+    }
+
+    screen = render_dashboard_tui(payload, page="readiness", width=140)
+
+    assert "Status                       : research only" in screen
+    assert "Decision mode                : research only" in screen
+    assert "Shadow gate                  : setup required; not ready" in screen
+    assert "Latest shadow run" in screen
+    assert "setup required; run_date=2026-05-22; writes=1" in screen
+    assert "research_only" not in screen
+    assert "setup_required" not in screen
+    assert "ready=False" not in screen
+
+
 def test_alias_analysis_pages_have_specific_next_actions() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},
