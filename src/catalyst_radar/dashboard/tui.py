@@ -6418,18 +6418,31 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
         next_action = str(row.get("next_action") or "").strip()
         if next_action == "Open candidate detail and review the evidence.":
             next_action = "Open the case file and review evidence."
+        mailbox = _market_inbox_mailbox(row)
+        if mailbox == "Waiting Evidence":
+            next_action = "Evidence Gaps first."
+            status_message = (
+                f"Evidence Gaps first. No calls. {ticker} is waiting on evidence."
+            )
+        elif mailbox == "Blocked":
+            next_action = "Open Evidence Gaps first; clear blockers."
+            status_message = (
+                f"Blocked case: {ticker}. No calls. Press 2 Evidence Gaps first."
+            )
+        else:
+            status_message = (
+                f"Opened Market Inbox case for {ticker}. No calls. "
+                "Review evidence before any action."
+            )
         message = dict(row)
         message.update(
             {
-                "mailbox": _market_inbox_mailbox(row),
+                "mailbox": mailbox,
                 "subject": subject,
                 "why": row.get("why_now") or "No explanation recorded.",
                 "missing": "No current data gap" if missing == "none" else missing,
                 "next": next_action or "Open the case file and review evidence.",
-                "status_message": (
-                    f"Opened Market Inbox case for {ticker}. No calls. "
-                    "Review evidence before any action."
-                ),
+                "status_message": status_message,
             }
         )
         messages.append(message)

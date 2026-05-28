@@ -3100,6 +3100,10 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert inbox_rows[0]["subject"].startswith("Bullish not priced")
     assert inbox_rows[0]["missing"] == "missing options, broker_context"
     assert "Open the case file" in inbox_rows[0]["next"]
+    assert inbox_rows[1]["next"] == "Evidence Gaps first."
+    assert inbox_rows[1]["status_message"] == (
+        "Evidence Gaps first. No calls. BETA is waiting on evidence."
+    )
 
 
 def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
@@ -3180,6 +3184,8 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     ) in overview
     assert "Press 2 Evidence Gaps first" in overview
     assert "not trade ideas until blockers clear" in overview
+    assert "Evidence Gaps first" in overview
+    assert "Build a Candidate Packet" not in overview
     assert "Current queue: 2 waiting evidence" not in overview
 
 
@@ -6587,6 +6593,95 @@ def test_modern_dashboard_open_command_accepts_global_text_identifiers(
         assert "No local candidate or alert matched NOPE" in app.status_message
         assert "No calls made" in app.status_message
         assert "refresh" in app.status_message
+
+    asyncio.run(run_app())
+
+
+def test_modern_dashboard_waiting_evidence_row_points_back_to_gaps(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    payload = {
+        "schema_version": "dashboard-cli-snapshot-v1",
+        "external_calls_made": 0,
+        "controls": {"ticker": None, "available_at": None},
+        "readiness": {
+            "status": "research_only",
+            "safe_to_make_investment_decision": False,
+            "headline": "Current rows are research only.",
+        },
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_ready": False,
+            "answer": "Full answer is blocked until source gaps are filled.",
+        },
+        "priced_in_queue": {
+            "status": "ready",
+            "count": 1,
+            "returned_count": 1,
+            "total_count": 1,
+            "offset": 0,
+            "filters": {"status": "all", "usefulness": None, "limit": 1},
+            "rows": [
+                {
+                    "ticker": "WAIT",
+                    "priced_in_status": "neutral",
+                    "emotion_score": 0,
+                    "reaction_score": 0,
+                    "emotion_reaction_gap": 0,
+                    "candidate_theme": "monitoring",
+                    "data_sources": {
+                        "available": ["market_bars"],
+                        "missing": ["catalyst_events"],
+                        "stale": [],
+                    },
+                    "usefulness": {
+                        "status": "monitor_only",
+                        "decision_ready": False,
+                    },
+                },
+            ],
+        },
+        "call_plan": {},
+        "ops_health": {"database": {}},
+    }
+    monkeypatch.setattr(
+        dashboard_tui_module,
+        "dashboard_snapshot_payload",
+        lambda **kwargs: payload,
+    )
+
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="overview",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.page == "candidate:WAIT"
+            assert app.status_message == (
+                "Evidence Gaps first. No calls. WAIT is waiting on evidence."
+            )
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Evidence Gaps first" in frame
+            assert "No calls" in frame
 
     asyncio.run(run_app())
 
