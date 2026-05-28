@@ -2994,6 +2994,31 @@ def test_dashboard_tutorial_footer_points_to_first_real_step() -> None:
     assert "Use the workflow navigation or open the highlighted row" not in screen
 
 
+def test_alias_analysis_pages_have_specific_next_actions() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+        "themes": {"count": 2, "rows": []},
+        "validation": {"report": {"false_positive_count": 1}},
+        "value_report": {"verdict": "needs_evidence"},
+    }
+
+    pages = {
+        "themes": "NEXT SAFE ACTION: Themes are research clusters",
+        "validation": "NEXT SAFE ACTION: Validation is the quality gate",
+        "costs": "NEXT SAFE ACTION: Costs prove whether radar is worth using",
+    }
+    for page, expected in pages.items():
+        rendered = render_dashboard_tui(payload, page=page, width=150)
+        assert expected in rendered
+        assert "Use the workflow navigation or open the highlighted row" not in rendered
+
+
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     review_filters = dashboard_filters_for_page(DashboardFilters(), "review")
     assert review_filters.priced_in_status == "actionable"

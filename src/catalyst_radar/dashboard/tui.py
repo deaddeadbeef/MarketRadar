@@ -11758,6 +11758,32 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
         return _telemetry_next_safe_action(payload)
     if page == "agent":
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
+    if page == "themes":
+        themes = _mapping(payload.get("themes"))
+        count = int(_number_or_zero(themes.get("count")))
+        if count:
+            return (
+                "Themes are research clusters. Open Inbox or Candidates for ticker "
+                "evidence before acting."
+            )
+        return "No theme clusters in this snapshot. Continue with Inbox or fill scan data."
+    if page == "validation":
+        validation = _mapping(payload.get("validation"))
+        report = _mapping(validation.get("report"))
+        if report:
+            return (
+                "Validation is the quality gate. Review false positives before "
+                "trusting alert usefulness."
+            )
+        return "No validation report yet. Keep decisions research-only until evidence exists."
+    if page == "costs":
+        value_report = _mapping(payload.get("value_report"))
+        if value_report:
+            return (
+                "Costs prove whether radar is worth using. Review value, feedback, "
+                "and outcomes before counting wins."
+            )
+        return "No value report yet. Record feedback and outcomes before judging usefulness."
     if page == "features":
         return "Use Features as the map of what exists. Press Enter on a row to jump there."
     if page == "help":
