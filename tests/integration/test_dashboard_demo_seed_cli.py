@@ -1361,7 +1361,7 @@ def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
     create_schema(engine)
     app = MarketRadarDashboardApp(
         engine=engine,
-        config=AppConfig.from_env(),
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
         dotenv_loaded=False,
         filters=DashboardFilters(),
         initial_page="overview",
