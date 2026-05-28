@@ -2292,6 +2292,22 @@ class MarketRadarDashboardApp(App[int]):
             brief = _mapping(self.payload.get("agent_brief"))
             calls = _mapping(brief.get("external_calls_made"))
             runtime = _mapping(brief.get("runtime"))
+            if _real_results_empty(self.payload):
+                return "\n".join(
+                    [
+                        "[bold #7ee787]USE THIS PAGE[/] Agent Coach is locked until setup.",
+                        (
+                            "[bold]Why:[/] no real scan rows exist, so there is "
+                            "nothing useful for the agents to analyze."
+                        ),
+                        (
+                            f"[bold]Calls:[/] OpenAI {calls.get('openai', 0)}, "
+                            f"market {calls.get('market_data', 0)}, "
+                            f"broker {calls.get('broker', 0)}."
+                        ),
+                        "[bold]Do next:[/] open 2 Evidence Gaps and clear the first blocker.",
+                    ]
+                )
             return "\n".join(
                 [
                     "[bold #7ee787]USE THIS PAGE[/] Read the multi-agent operator brief.",
@@ -2565,6 +2581,20 @@ class MarketRadarDashboardApp(App[int]):
         if page == "agent":
             brief = _mapping(self.payload.get("agent_brief"))
             runtime = _mapping(brief.get("runtime"))
+            if _real_results_empty(self.payload):
+                return (
+                    "Agent Coach - locked until setup",
+                    [
+                        ("kind", "Kind", 12),
+                        ("item", "Item", 28),
+                        ("detail", "Detail", 98),
+                    ],
+                    _agent_setup_locked_rows(self.payload, brief),
+                    (
+                        "Agent Coach is a zero-call gate preview for now. Clear "
+                        "Evidence Gaps before using agent execute."
+                    ),
+                )
             return (
                 "Agent brief - preview by default, execute spends OpenAI budget",
                 [
@@ -7030,6 +7060,12 @@ def _agent_row_status_message(row: Mapping[str, object]) -> str:
     item = str(row.get("item") or "step").strip()
     detail = str(row.get("detail") or "").strip()
     detail_text = f" Detail: {_clip(detail, 96)}" if detail else ""
+    if bool(row.get("_setup_locked")):
+        return (
+            f"Agent setup row selected: {kind} / {item}. No calls made; "
+            "clear Evidence Gaps before using agent execute."
+            f"{detail_text}"
+        )
     return (
         f"Agent step selected: {kind} / {item}. No calls made; "
         f"agent execute is required to spend OpenAI budget.{detail_text}"
@@ -12555,14 +12591,12 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
     calls = _mapping(brief.get("external_calls_made"))
     runtime = _mapping(brief.get("runtime"))
     lines = [_rule("Agent Brief", width)]
+    if _real_results_empty(payload):
+        lines.extend(_no_real_result_lines(payload, width))
+        lines.extend(_agent_setup_locked_lines(payload, brief, width))
+        return lines
     if _real_results_missing(payload):
         lines.extend(_no_real_result_lines(payload, width))
-        lines.extend(
-            _wrap(
-                "Agent preview is still safe: it reports gates and makes 0 OpenAI calls.",
-                width,
-            )
-        )
     lines.extend(
         _wrap(
             f"Mode: {_human_status_label(brief.get('mode') or 'dry_run')} | "
@@ -12590,6 +12624,98 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     return lines
+
+
+def _agent_setup_locked_lines(
+    payload: Mapping[str, object],
+    brief: Mapping[str, object],
+    width: int,
+) -> list[str]:
+    runtime = _mapping(brief.get("runtime"))
+    lines = [_rule("Agent Coach Locked Until Setup Is Complete", width)]
+    items = [
+        (row["item"], row["detail"])
+        for row in _agent_setup_locked_rows(payload, brief)
+        if row.get("kind") != "Runtime"
+    ]
+    if runtime:
+        items.append(("Runtime", _agent_runtime_label(runtime)))
+    lines.extend(_kv_lines(items, width=width))
+    lines.append("")
+    lines.extend(
+        _wrap(
+            (
+                "Do not run agent execute while this page says locked. Clear "
+                "Evidence Gaps first, then return here for a zero-call preview."
+            ),
+            width,
+        )
+    )
+    return lines
+
+
+def _agent_setup_locked_rows(
+    payload: Mapping[str, object],
+    brief: Mapping[str, object],
+) -> list[Mapping[str, object]]:
+    calls = _mapping(brief.get("external_calls_made"))
+    runtime = _mapping(brief.get("runtime"))
+    next_action = _no_real_result_next_action(
+        payload,
+        _mapping(payload.get("real_results")),
+    )
+    rows: list[Mapping[str, object]] = [
+        {
+            "_setup_locked": True,
+            "kind": "Setup",
+            "item": "Can the agent help now?",
+            "detail": "Not with stock analysis yet. No real scan rows exist.",
+        },
+        {
+            "_setup_locked": True,
+            "kind": "Setup",
+            "item": "Do first",
+            "detail": next_action,
+        },
+        {
+            "_setup_locked": True,
+            "kind": "Safety",
+            "item": "Safe preview",
+            "detail": (
+                "This page only reports gates while setup is incomplete; browsing "
+                "makes 0 OpenAI, market, broker, or order calls."
+            ),
+        },
+        {
+            "_setup_locked": True,
+            "kind": "Cost",
+            "item": "OpenAI calls",
+            "detail": (
+                f"preview={calls.get('openai', 0)}; "
+                f"market={calls.get('market_data', 0)}; "
+                f"broker={calls.get('broker', 0)}"
+            ),
+        },
+        {
+            "_setup_locked": True,
+            "kind": "Hidden",
+            "item": "Detailed agent roles",
+            "detail": (
+                "Detailed agent roles, insights, and next-action lists appear after "
+                "real scan evidence exists."
+            ),
+        },
+    ]
+    if runtime:
+        rows.append(
+            {
+                "_setup_locked": True,
+                "kind": "Runtime",
+                "item": _agent_runtime_name(runtime.get("orchestrator")),
+                "detail": _agent_runtime_label(runtime),
+            }
+        )
+    return rows
 
 
 def _help_lines(width: int) -> list[str]:

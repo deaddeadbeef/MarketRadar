@@ -1332,18 +1332,56 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
 
     assert output.err == ""
     assert "Page: Agent Coach" in output.out
-    assert "Agent preview is still safe" in output.out
-    assert "Real results: missing" in output.out
-    assert "Safe next action" in output.out
+    assert "Agent Coach Locked Until Setup Is Complete" in output.out
+    assert "Can the agent help now?" in output.out
+    assert "Not with stock analysis yet. No real scan rows exist." in output.out
+    assert "Safe preview" in output.out
+    assert "OpenAI calls" in output.out
+    assert "Runtime" in output.out
     assert "NEXT SAFE ACTION:" in output.out
     assert "Clear Active universe first" in output.out
     assert "execute only if you accept the provider call" in normalized
     assert "Why this page is blank" in output.out
+    assert "Do not run agent execute while this page says locked" in output.out
+    assert "Detailed agent roles" in output.out
+    assert "Real results: missing" not in output.out
+    assert "Kind      | Item" not in output.out
+    assert "Insight   |" not in output.out
+    assert "Agent     |" not in output.out
     assert "Fill the missing env/budget values" not in output.out
     assert "Run/import real market data" not in output.out
     assert "Use agent for a zero-call preview" not in output.out
-    assert "OpenAI calls" in output.out
     assert "External calls made: 0" in output.out
+
+
+def test_modern_agent_table_model_locks_before_setup() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    payload = _minimal_missing_real_results_payload()
+    payload["agent_brief"] = {
+        "external_calls_made": {"openai": 0, "market_data": 0, "broker": 0},
+        "runtime": {"orchestrator": "openai_agents_sdk"},
+    }
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="agent",
+    )
+    app.payload = payload
+
+    title, _columns, rows, caption = app._table_model()
+    status = dashboard_tui_module._agent_row_status_message(rows[0])
+
+    assert title == "Agent Coach - locked until setup"
+    assert caption.startswith("Agent Coach is a zero-call gate preview")
+    assert any(row.get("item") == "Can the agent help now?" for row in rows)
+    assert any(row.get("item") == "Do first" for row in rows)
+    assert all(row.get("_setup_locked") is True for row in rows)
+    assert not any(row.get("kind") == "Insight" for row in rows)
+    assert "clear Evidence Gaps" in status
+    assert "agent execute is required to spend OpenAI budget" not in status
 
 
 def test_dashboard_broker_setup_state_defers_auth_on_empty_database(
