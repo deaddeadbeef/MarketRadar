@@ -9481,32 +9481,51 @@ def _run_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[s
     call_plan = _mapping(payload.get("call_plan"))
     real_results = _mapping(payload.get("real_results"))
     next_action = _no_real_result_next_action(payload, real_results)
+    setup_command = (
+        _first_scan_setup_command(payload) if _real_results_empty(payload) else ""
+    )
     max_calls = call_plan.get("max_external_call_count")
     if max_calls in (None, ""):
         max_calls = 0
+    first_step_items: list[tuple[str, object]] = [
+        ("Can I run now?", "No. No real scan rows exist yet."),
+        (
+            "Why locked?",
+            (
+                "MarketRadar needs an active universe and fresh price "
+                "reaction before it can compare emotion against price."
+            ),
+        ),
+        ("Do this first", next_action),
+    ]
+    if setup_command:
+        first_step_items.extend(
+            [
+                ("PowerShell command", setup_command),
+                (
+                    "Where to run",
+                    "Run it in a normal PowerShell prompt, not in the "
+                    "dashboard command box.",
+                ),
+            ]
+        )
+    first_step_items.extend(
+        [
+            (
+                "Run execute later",
+                (
+                    "After setup, this page reviews one capped radar cycle "
+                    "before you intentionally run it."
+                ),
+            ),
+            ("Browsing cost", "0 provider calls, 0 OpenAI calls, 0 orders."),
+            ("Current execute cap", f"{max_calls} provider call(s) after approval."),
+        ]
+    )
     lines = [_rule("Safe Run Locked Until Setup Is Complete", width)]
     lines.extend(
         _kv_lines(
-            (
-                ("Can I run now?", "No. No real scan rows exist yet."),
-                (
-                    "Why locked?",
-                    (
-                        "MarketRadar needs an active universe and fresh price "
-                        "reaction before it can compare emotion against price."
-                    ),
-                ),
-                ("Do this first", next_action),
-                (
-                    "Run execute later",
-                    (
-                        "After setup, this page reviews one capped radar cycle "
-                        "before you intentionally run it."
-                    ),
-                ),
-                ("Browsing cost", "0 provider calls, 0 OpenAI calls, 0 orders."),
-                ("Current execute cap", f"{max_calls} provider call(s) after approval."),
-            ),
+            first_step_items,
             width=width,
         )
     )
