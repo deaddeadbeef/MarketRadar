@@ -9094,23 +9094,42 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
         action = _humanize_dashboard_text(
             first_gap.get("next_action") or first_gap.get("action") or ""
         )
+        display_action = action
+        setup_command = _first_scan_setup_command(payload) if setup_first else ""
+        if setup_first and setup_command:
+            display_action = (
+                "Run the PowerShell setup command below after reviewing the "
+                "call/write budget."
+            )
+        top_items: list[tuple[str, object]] = [
+            ("Stoplight", "Red rows block trust; green rows are already clear."),
+            ("First blocker", f"{priority}: {area}"),
+            (
+                "Safe interaction",
+                "Open rows to inspect; 0 calls, 0 orders.",
+            ),
+            ("Do next", display_action),
+        ]
+        if setup_first and setup_command:
+            top_items.extend(
+                [
+                    ("PowerShell command", setup_command),
+                    (
+                        "Where to run",
+                        "Run it in a normal PowerShell prompt, not in the "
+                        "dashboard command box.",
+                    ),
+                ]
+            )
         lines.extend(
             _kv_lines(
-                (
-                    ("Stoplight", "Red rows block trust; green rows are already clear."),
-                    ("First blocker", f"{priority}: {area}"),
-                    (
-                        "Safe interaction",
-                        "Open rows to inspect; 0 calls, 0 orders.",
-                    ),
-                    ("Do next", action),
-                ),
+                top_items,
                 width=width,
             )
         )
         lines.append("")
         if setup_first:
-            readiness_next_action = f"Start here: {action}"
+            readiness_next_action = f"Start here: {display_action}"
             readiness_evidence = f"setup blocked: {area}; no market scan yet"
     lines.extend(
         _kv_lines(
