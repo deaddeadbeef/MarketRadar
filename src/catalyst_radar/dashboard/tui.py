@@ -13004,6 +13004,11 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
             "Review evidence, then record local feedback."
         )
     if page == "tutorial":
+        if _real_results_empty(payload):
+            return _no_real_result_next_action(
+                payload,
+                _mapping(payload.get("real_results")),
+            )
         return (
             "Start with Inbox: press 1 or click Inbox. Browsing tutorial makes "
             "0 provider calls."

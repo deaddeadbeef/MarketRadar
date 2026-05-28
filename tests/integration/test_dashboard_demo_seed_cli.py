@@ -3589,6 +3589,54 @@ def test_dashboard_start_page_alias_opens_tutorial() -> None:
     assert "NEXT SAFE ACTION: Start with Inbox: press 1 or click Inbox" in screen
 
 
+def test_dashboard_start_page_empty_scan_points_to_setup_blocker() -> None:
+    payload = _minimal_missing_real_results_payload()
+    payload["priced_in_answer"] = {
+        "question": "Has price fully matched market expectations?",
+        "answer": (
+            "No market scan yet. Build the stock universe, fill prices, "
+            "then run one capped scan before reading this as analysis."
+        ),
+        "next_action": "Seed the ticker universe before calling this a full-market scan.",
+        "operator_next_step": {
+            "action": "Seed the ticker universe before calling this a full-market scan.",
+            "command": (
+                "catalyst-radar ingest-polygon tickers --max-pages 1 "
+                "--confirm-external-call"
+            ),
+            "external_calls_required": 1,
+            "approval_required": True,
+            "db_writes_required": 1,
+            "first_blocker": "universe",
+            "first_gap_count": 0,
+        },
+    }
+    payload["shadow_readiness"] = {
+        "checks": [
+            {
+                "code": "active_universe",
+                "area": "Active universe",
+                "status": "blocked",
+                "finding": "No active scan universe is loaded.",
+                "next_action": (
+                    "Seed or refresh the universe with `catalyst-radar "
+                    "ingest-polygon tickers --max-pages 1 "
+                    "--confirm-external-call` before relying on broad discovery."
+                ),
+            }
+        ]
+    }
+
+    screen = render_dashboard_tui(payload, page="start", width=160)
+
+    assert "Page: Start" in screen
+    assert "Current answer" in screen
+    assert "No market scan yet" in screen
+    assert "Do now" in screen
+    assert "NEXT SAFE ACTION: Clear Active universe first" in screen
+    assert "Start with Inbox: press 1 or click Inbox" not in screen
+
+
 def test_dashboard_inbox_page_alias_opens_latest_scan_results() -> None:
     screen = render_dashboard_tui({}, page="inbox", width=120)
 
