@@ -1853,17 +1853,19 @@ def test_dashboard_tui_evidence_gaps_starts_with_setup_blocker_on_empty_database
     assert output.err == ""
     assert "Evidence Gaps And Work Queue" in output.out
     assert "First blocker" in output.out
-    assert "setup: Active universe" in output.out
+    assert "First blocker            : Set up Active universe first" in output.out
+    assert "setup: Active universe" not in output.out
     assert "Seed or refresh the universe" in output.out
     assert "PowerShell command" in output.out
     assert "catalyst-radar ingest-" in output.out
     assert "Where to run" in output.out
     assert "normal PowerShell prompt" in normalized
     assert "not in the dashboard command box" in normalized
-    assert "setup blocked: Active universe; no market scan yet" in output.out
+    assert "Active universe setup blocked; no market scan yet" in output.out
     assert "bars fresh; live data" not in output.out
     assert "Next action" in output.out
-    assert "Start here: Run the PowerShell setup command" in output.out
+    assert "Next action              : Set up Active universe first" in output.out
+    assert "Start here: Run the PowerShell setup command" not in output.out
     assert "Setup check" in output.out
     assert "Setup step" in output.out
     assert "Setup budget" in output.out
