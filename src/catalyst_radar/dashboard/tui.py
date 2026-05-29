@@ -1897,7 +1897,15 @@ class MarketRadarDashboardApp(App[int]):
             "run": _run_page_next_safe_action(self.payload),
             "candidates": _candidates_next_safe_action(self.payload),
             "alerts": "Click or focus a row and press Enter to open an alert.",
-            "agent": "Review the dry-run multi-agent brief; it makes zero provider calls.",
+            "agent": (
+                _no_real_result_next_action(
+                    self.payload,
+                    _mapping(self.payload.get("real_results")),
+                )
+                + " Agent preview is zero-call; execute stays blocked."
+                if _real_results_missing(self.payload)
+                else "Review the dry-run multi-agent brief; it makes zero provider calls."
+            ),
             "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
             "help": "Use the help table as the command reference.",
             "candidate": candidate_action,
@@ -3049,6 +3057,60 @@ def _operator_next_step_message(payload: Mapping[str, object]):
         "database changes."
     )
     return " ".join(lines)
+
+
+def _current_priced_in_blocker_next_action(payload: Mapping[str, object]) -> str:
+    step = _priced_in_operator_step(payload) or _mapping(
+        payload.get("operator_next_step")
+    )
+    if step:
+        action = _human_source_status_text(
+            step.get("action") or step.get("action_label") or ""
+        ).strip()
+        command = str(step.get("tui_command") or step.get("command") or "").strip()
+        if action and command:
+            return f"{action.rstrip('.;')}. Use `{command}`."
+        if command:
+            return f"Use `{command}`."
+        if action:
+            return action
+    answer = _mapping(payload.get("priced_in_answer"))
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    recommended = _mapping(trust_gate.get("recommended_action"))
+    if recommended:
+        action = _human_source_status_text(
+            recommended.get("reason")
+            or recommended.get("label")
+            or recommended.get("next_action")
+            or ""
+        ).strip()
+        command = str(
+            recommended.get("tui_command")
+            or recommended.get("command")
+            or recommended.get("cli_command")
+            or ""
+        ).strip()
+        if action and command:
+            return f"{action.rstrip('.;')}. Use `{command}`."
+        if command:
+            return f"Use `{command}`."
+        if action:
+            return action
+    return ""
+
+
+def _operator_step_cost_detail(step: Mapping[str, object]) -> str:
+    if not step:
+        return ""
+    command = str(step.get("tui_command") or step.get("command") or "").strip()
+    calls = int(_number_or_zero(step.get("external_calls_required")))
+    writes = int(_number_or_zero(step.get("db_" + "writes_required")))
+    approval = "approval required" if bool(step.get("approval_required")) else "no approval"
+    parts = []
+    if command:
+        parts.append(f"Command: {command}.")
+    parts.append(f"Budget: {calls} provider call(s), {writes} DB write(s); {approval}.")
+    return "\n".join(parts)
 
 
 def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
@@ -8070,6 +8132,9 @@ def _no_real_result_next_action(
             area = _human_source_name(blocker.get("area") or "setup blocker")
             action = _humanize_dashboard_text(blocker.get("next_action"))
             return f"{_setup_blocker_first_label(area)}: {action}"
+    current_blocker_action = _current_priced_in_blocker_next_action(payload)
+    if current_blocker_action:
+        return current_blocker_action
     return (
         str(real_results.get("next_action") or "").strip()
         or "Run/import real market data, then rerun the priced-in answer."
@@ -8289,13 +8354,17 @@ def _novice_cockpit_lines(payload: Mapping[str, object], width: int) -> list[str
     )
     lines.append("Core question: has market emotion been fully priced in?")
     for card in _novice_cockpit_cards(payload):
-        lines.append(
-            f"{card['label']}: "
-            f"{_clip(str(card['value']), max(16, width - len(str(card['label'])) - 4))}"
-        )
+        label = str(card["label"])
+        prefix = f"{label}: "
+        value_lines = _wrap(str(card["value"]), max(16, width - len(prefix)))
+        lines.append(f"{prefix}{value_lines[0]}")
+        for wrapped_value in value_lines[1:]:
+            lines.append(f"{' ' * len(prefix)}{wrapped_value}")
         detail = str(card.get("detail") or "").strip()
         if detail:
-            lines.append(f"  {_clip(detail, max(20, width - 4))}")
+            for detail_segment in detail.splitlines():
+                for wrapped_detail in _wrap(detail_segment, max(20, width - 4)):
+                    lines.append(f"  {wrapped_detail}")
     lines.append(
         f"Browsing this dashboard made {int(_number_or_zero(payload.get('external_calls_made')))} "
         "calls and 0 order submissions."
@@ -8337,7 +8406,9 @@ def _novice_cockpit_cards(payload: Mapping[str, object]) -> list[Mapping[str, ob
         )
     else:
         next_detail = (
-            next_step.get("expected_response")
+            _operator_step_cost_detail(next_step)
+            or next_step.get("expected_response")
+            or _current_priced_in_blocker_next_action(payload)
             or real_results.get("next_action")
             or "Browsing does not spend provider, OpenAI, broker, or order calls."
         )
@@ -14053,9 +14124,12 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
     if page == "telemetry":
         return _telemetry_next_safe_action(payload)
     if page == "agent":
-        if _real_results_empty(payload):
+        if _real_results_missing(payload):
             real_results = _mapping(payload.get("real_results"))
-            return _no_real_result_next_action(payload, real_results)
+            return (
+                _no_real_result_next_action(payload, real_results)
+                + " Agent preview is zero-call; execute stays blocked."
+            )
         return "Use agent for a zero-call preview; agent execute spends OpenAI budget."
     if page == "themes":
         if _real_results_empty(payload):
