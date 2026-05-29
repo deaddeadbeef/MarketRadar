@@ -11520,6 +11520,12 @@ def _candidate_case_summary_kv_pairs(
     next_command = _candidate_case_next_command(row, ticker)
     if next_command:
         pairs.append(("Next command", next_command))
+        pairs.append(
+            (
+                "Where to run",
+                "normal PowerShell prompt, not the dashboard command box.",
+            )
+        )
         pairs.append(("Command boundary", _candidate_case_command_boundary(next_command)))
     return tuple(pairs)
 

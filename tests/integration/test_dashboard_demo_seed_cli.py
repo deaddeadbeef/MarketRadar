@@ -5424,6 +5424,8 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
     assert "Next command" in case
     assert "catalyst-radar build-packets --as-of 2026-05-10" in case
     assert "--ticker ACME --min-state ResearchOnly" in case
+    assert "Where to run" in case
+    assert "normal PowerShell prompt, not the dashboard command box." in case
     assert "Command boundary" in case
     assert "Local DB write; no provider, OpenAI, broker, or order calls." in case
     assert "Evidence to verify:" not in case
