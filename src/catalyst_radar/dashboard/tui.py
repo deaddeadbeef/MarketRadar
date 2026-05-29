@@ -7496,7 +7496,7 @@ def _cost_status_rows(payload: Mapping[str, object]) -> list[Mapping[str, object
         {"key": "Useful alerts", "value": costs.get("useful_alert_count") or 0},
         {
             "key": "Cost per useful alert",
-            "value": costs.get("cost_per_useful_alert"),
+            "value": _cost_per_useful_alert_text(costs),
         },
         {
             "key": "Weighted value",
@@ -11935,7 +11935,7 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 ("Actual cost", costs.get("total_actual_cost_usd")),
                 ("Estimated cost", costs.get("total_estimated_cost_usd")),
                 ("Useful alerts", costs.get("useful_alert_count")),
-                ("Cost per useful alert", costs.get("cost_per_useful_alert")),
+                ("Cost per useful alert", _cost_per_useful_alert_text(costs)),
             ),
             width=width,
         )
@@ -12128,6 +12128,14 @@ def _costs_empty_value_rows(
             "0 OpenAI calls.",
         ),
     )
+
+
+def _cost_per_useful_alert_text(costs: Mapping[str, object]) -> object:
+    useful_count = int(_number_or_zero(costs.get("useful_alert_count")))
+    if useful_count <= 0:
+        return "not measurable (0 useful alerts)"
+    cost_per_useful = costs.get("cost_per_useful_alert")
+    return cost_per_useful if cost_per_useful not in (None, "") else "not measured yet"
 
 
 def _candidate_ledger_coverage_text(coverage: Mapping[str, object]) -> str:

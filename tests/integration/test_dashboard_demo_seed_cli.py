@@ -5125,6 +5125,8 @@ def test_costs_page_explains_missing_validation_baselines() -> None:
     costs = render_dashboard_tui(payload, page="costs", width=120)
 
     assert "Validation evidence" in costs
+    assert "Cost per useful alert" in costs
+    assert "not measurable (0 useful alerts)" in costs
     assert "No validation runs yet" in costs
     assert "no_validation_runs" not in costs
     assert "Mission baselines measured" in costs
@@ -5134,6 +5136,12 @@ def test_costs_page_explains_missing_validation_baselines() -> None:
     assert "Precision at 5 / 10" not in costs
     assert "Backtest hit rate" not in costs
     assert " : n/a" not in costs
+    cost_status_row = next(
+        row
+        for row in dashboard_tui_module._cost_status_rows(payload)
+        if row["key"] == "Cost per useful alert"
+    )
+    assert cost_status_row["value"] == "not measurable (0 useful alerts)"
 
 
 def test_dashboard_humanizes_internal_status_tokens() -> None:
