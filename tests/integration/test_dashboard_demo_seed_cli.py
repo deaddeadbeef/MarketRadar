@@ -6029,7 +6029,8 @@ def test_ops_footer_prefers_workflow_coverage_first_over_research_rows() -> None
     ops = render_dashboard_tui(payload, page="ops", width=150)
 
     assert "NEXT SAFE ACTION: Coverage-first: market bars" in ops
-    assert "catalyst-radar market-bars residual-review" in ops
+    assert "press 2 Evidence Gaps for the full PowerShell command" in ops
+    assert "run outside dashboard" in ops
     assert "batch options execute" not in ops
 
 
@@ -9458,8 +9459,12 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Enter shows plan" in frame
             assert "batch" in frame
             assert "Coverage-first" in frame
+            assert "Plan-only" in frame
+            assert "Evidence Gaps" in frame
+            assert "PowerShell command" in frame
             assert "broker context" in frame
             assert "batch broker context" not in frame
+            assert "Use the sidebar" not in frame
             assert "Use the workflow navigation or open the highlighted row" not in frame
 
             app.query_one("#data-table").focus()
