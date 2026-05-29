@@ -1438,7 +1438,8 @@ class MarketRadarDashboardApp(App[int]):
             event.stop()
             self.action_go("run")
             self.status_message = (
-                "Follow NEXT SAFE ACTION. No calls. Safe Run opened."
+                "Follow NEXT SAFE ACTION. No calls. 0 provider call(s), "
+                "0 DB write(s). Safe Run opened."
             )
             self.refresh_view()
             return
@@ -1491,7 +1492,8 @@ class MarketRadarDashboardApp(App[int]):
             event.stop()
             self.action_go("run")
             self.status_message = (
-                "Follow NEXT SAFE ACTION. No calls. Safe Run opened."
+                "Follow NEXT SAFE ACTION. No calls. 0 provider call(s), "
+                "0 DB write(s). Safe Run opened."
             )
             self.refresh_view()
             return
@@ -2220,7 +2222,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"{answer.get('answer') or 'Open Inbox for current answer.'}"
                     ),
                     (
-                        f"[bold]Trial gate:[/] "
+                        f"[bold]Setup check:[/] "
                         f"{trial.get('status') or 'unknown'}; "
                         f"read-only safe="
                         f"{str(bool(trial.get('safe_to_try_read_only'))).lower()}; "
@@ -3059,11 +3061,20 @@ def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
     calls = int(_number_or_zero(step.get("external_calls_required")))
     writes = int(_number_or_zero(step.get("db_" + "writes_required")))
     approval = "approval required" if bool(step.get("approval_required")) else "no approval"
-    parts = [f"{calls} provider call(s), {writes} DB write(s); {approval}."]
-    parts.append(_clip(action, 120))
     if command:
-        parts.append(f"Use `{_clip(command, 100)}`.")
-    return " ".join(parts)
+        return "\n".join(
+            [
+                f"Use `{command}`.",
+                f"Budget: {calls} provider call(s), {writes} DB write(s); {approval}.",
+                action,
+            ]
+        )
+    return " ".join(
+        [
+            f"Budget: {calls} provider call(s), {writes} DB write(s); {approval}.",
+            action,
+        ]
+    )
 
 
 def _candidates_next_safe_action(payload: Mapping[str, object]) -> str:
@@ -9438,21 +9449,21 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
             if setup_first
             else (
                 (
-                    "Trial gate",
+                    "Setup check",
                     f"{_human_status_label(shadow.get('status'))}; "
                     f"{_readiness_ready_label(shadow.get('ready'))}",
                 ),
                 (
-                    "Trial next",
+                    "Setup next",
                     _humanize_dashboard_text(shadow.get("canonical_next_action")),
                 ),
                 (
-                    "Trial call budget",
-                    "readiness check: 0 calls, 0 writes; trial run max="
+                    "Setup call budget",
+                    "readiness check: 0 calls, 0 writes; safe-run max="
                     f"{boundary.get('planned_run_external_call_count_max') or 0}",
                 ),
                 (
-                    "Latest trial run",
+                    "Latest setup run",
                     (
                         f"{_human_status_label(latest_shadow.get('status'))}; "
                         f"run_date={latest_shadow.get('run_date') or 'n/a'}; "
@@ -13875,12 +13886,23 @@ def _footer_lines(
     snapshot = _mapping(payload)
     action = _footer_next_action(snapshot, page)
     lines = [_rule("Next Safe Action", width)]
-    lines.extend(_wrap(f"NEXT SAFE ACTION: {action}", width))
+    lines.extend(_footer_next_action_lines(action, width))
     lines.extend(_wrap(_cost_boundary_summary(snapshot), width))
     lines.append(_rule("Last Response", width))
     lines.extend(_wrap("LAST RESPONSE: Ready. No command has run in this view.", width))
     lines.append(_rule("Commands", width))
     lines.extend(_wrap(_footer_command_hint(snapshot), width))
+    return lines
+
+
+def _footer_next_action_lines(action: str, width: int) -> list[str]:
+    segments = [segment for segment in str(action).splitlines() if segment.strip()]
+    if not segments:
+        segments = ["No next action is available. Refresh the dashboard snapshot."]
+    lines: list[str] = []
+    for index, segment in enumerate(segments):
+        prefix = "NEXT SAFE ACTION: " if index == 0 else "  "
+        lines.extend(_wrap(f"{prefix}{segment}", width))
     return lines
 
 

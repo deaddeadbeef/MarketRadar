@@ -4072,9 +4072,12 @@ def test_readiness_page_uses_human_gate_labels() -> None:
     assert "live data" in screen
     assert "provider call boundary" in screen
     assert "Run plan: live calls planned" in screen
-    assert "Trial gate                   : setup required; not ready" in screen
-    assert "Trial next                   : Run dry-run setup." in screen
-    assert "Latest trial run" in screen
+    assert "Setup check                  : setup required; not ready" in screen
+    assert "Setup next                   : Run dry-run setup." in screen
+    assert "Latest setup run" in screen
+    assert "Trial gate" not in screen
+    assert "Trial next" not in screen
+    assert "Latest trial run" not in screen
     assert "setup required; run_date=2026-05-22; writes=1" in screen
     assert "Shadow gate" not in screen
     assert "Latest shadow run" not in screen
@@ -8311,8 +8314,14 @@ def test_dashboard_run_page_next_safe_action_uses_operator_step():
     payload = {
         "priced_in_answer": {
             "operator_next_step": {
-                "action": "Validate the saved market-bar file before rerunning.",
-                "tui_command": "bars saved validate",
+                "action": (
+                    "Review residual market-bar rows before filling bars, "
+                    "capturing provider data, or changing scan scope."
+                ),
+                "tui_command": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-15"
+                ),
                 "external_calls_required": 0,
                 "db_writes_required": 0,
                 "approval_required": False,
@@ -8321,14 +8330,20 @@ def test_dashboard_run_page_next_safe_action_uses_operator_step():
     }
     action = _run_page_next_safe_action(payload)
 
-    assert "Validate the saved market-bar file" in action
-    assert "bars saved validate" in action
+    assert "Review residual market-bar rows before filling bars" in action
+    assert "catalyst-radar market-bars residual-review" in action
+    assert "--expected-as-of 2026-05-15" in action
+    assert "--expected-as-..." not in action
     assert "0 provider call(s), 0 DB write(s); no approval." in action
     assert "run execute only if intended" not in action
 
-    run = render_dashboard_tui(payload, page="run", width=180)
-    assert "bars saved validate" in run
-    assert "0 provider call(s), 0 DB write(s); no approval." in run
+    run = render_dashboard_tui(payload, page="run", width=120)
+    normalized_run = " ".join(run.split())
+    assert "Review residual market-bar rows before filling bars" in run
+    assert "catalyst-radar market-bars residual-review" in run
+    assert "--expected-as-of 2026-05-15" in run
+    assert "--expected-as-..." not in run
+    assert "0 provider call(s), 0 DB write(s); no approval." in normalized_run
     assert "Review the call budget; type run execute" not in run
 
 
@@ -8563,7 +8578,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "run"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert app.status_message == (
-                "Follow NEXT SAFE ACTION. No calls. Safe Run opened."
+                "Follow NEXT SAFE ACTION. No calls. 0 provider call(s), "
+                "0 DB write(s). Safe Run opened."
             )
             assert "Safe Run opened" in frame
             assert "No calls" in frame
