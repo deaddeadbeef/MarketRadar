@@ -355,7 +355,7 @@ def test_overview_renders_minimum_product_approval_stop_line() -> None:
     )
 
     assert "Shipped-product stop" in text
-    assert "blocked; blocker market_bars" in text
+    assert "blocked; blocker market bars" in text
     assert "Approval required: 579 DB write(s), 0 provider call(s)" in text
     assert "residual-repair --expected-as-of 2026-05-15" in text
 
@@ -568,6 +568,7 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         == 0
     )
     output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
     assert output.err == ""
     for expected in (
         "Market Radar Terminal Dashboard",
@@ -581,10 +582,10 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Bullish not price",
         "emotion",
         "reaction",
-        "review page, not the full scan universe",
         "External calls made: 0",
     ):
         assert expected in output.out
+    assert "review page, not the full scan universe" in normalized
 
 
 def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
@@ -2573,18 +2574,20 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
     dashboard_payload = {"priced_in_answer": payload}
     overview = render_dashboard_tui(dashboard_payload, page="overview", width=320)
     run = render_dashboard_tui(dashboard_payload, page="run", width=320)
+    normalized_run = " ".join(run.split())
 
     assert "Recommended unblock: bars saved capture confirm" in overview
     assert "Recommended unblock" in run
     for rendered in (overview, run):
         assert "bars saved capture confirm" in rendered
         assert "1 provider call(s) if approved; 0 DB write(s)" in rendered
-        assert "after market_bars: catalyst_events ready" in rendered
+        assert "after market bars: catalyst events ready" in rendered
         assert "source plan gaps 12075" in rendered
         assert "next calls 5" in rendered
         assert "plan 5510" in rendered
         assert "routed 6563" in rendered
-        assert "blocked 2 missing_cik" in rendered
+    assert "blocked 2 missing" in normalized_run
+    assert "missing CIK 2 FRBA, SSBI" in normalized_run
 
     assert "missing CIK 2 FRBA, SSBI" in run
     assert "CIK fix `catalyst-radar ingest-sec company-tickers`" in run
@@ -2825,7 +2828,7 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
         "Finish or clear partial OHLCV/VWAP rows"
     )
     assert _market_bar_provider_fill_summary(payload).startswith(
-        "ready_for_approval_with_health_warning; 1 external call(s)"
+        "ready for approval with health warning; 1 external call(s)"
     )
     saved_capture_summary = _market_bar_saved_capture_summary(
         {
@@ -2842,7 +2845,7 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
         }
     )
     assert saved_capture_summary.startswith(
-        "status approval_required; target scope active_universe, active 12613, "
+        "status approval required; target scope active_universe, active 12613, "
         "existing 12090, missing 523; saved file missing"
     )
     assert _stock_market_bar_next_summary(payload).startswith(
@@ -2896,7 +2899,7 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Manual CSV action" in run
     assert "bars manual import" in run
     assert "Saved file capture" in run
-    assert "approval_required" in run
+    assert "approval required" in run
     assert "bars saved capture confirm" in run
     assert "Saved file import: missing saved file" in overview
     assert "preview execute=false" in overview
@@ -3197,7 +3200,7 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
         in update.message
     )
     assert "Command: bars manual import; execute after preview" in update.message
-    assert "Saved capture: approval_required; 3 bars targeted" in update.message
+    assert "Saved capture: approval required; 3 bars targeted" in update.message
     assert "1 external call(s) if approved" in update.message
     assert "Recommended: bars saved capture confirm" in update.message
     assert "1 provider call(s) if approved; 0 DB write(s)" in update.message
@@ -3207,7 +3210,7 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
         "rerun priced-in answer"
     ) in update.message
     assert (
-        "After bars clear: after market_bars: catalyst_events ready"
+        "After bars clear: after market bars: catalyst events ready"
         in update.message
     )
     assert (
@@ -5021,7 +5024,11 @@ def test_dashboard_humanizes_internal_status_tokens() -> None:
                 "answer": "Research only.",
                 "decision_ready": False,
             },
-            "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+            "priced_in_queue": {
+                "filters": {"status": "all"},
+                "count": 1,
+                "rows": [{"ticker": "ACME", "priced_in_status": "neutral"}],
+            },
             "agent_brief": {
                 "mode": "dry_run",
                 "status": "dry_run",
@@ -5373,7 +5380,7 @@ def test_evidence_gaps_setup_blocker_preserves_exact_setup_command() -> None:
     assert "catalyst-radar ingest-polygon tickers --max-pages 1" in readiness
     assert "Run PowerShell command above." in readiness
     assert "accept the data change or provider call" in readiness
-    assert "Trial gate" in readiness
+    assert "Setup check" in readiness
     assert "Shadow gate" not in readiness
 
 
@@ -7199,7 +7206,7 @@ def test_dashboard_summary_surfaces_answer_evidence_completeness() -> None:
 
     assert _answer_evidence_completeness_summary(payload) == (
         "Evidence layers: 1/6 priced-in evidence layer(s) complete; core 0/3; "
-        "first gaps market_bars:523, catalyst_events:5512."
+        "first gaps market bars:523, catalyst events:5512."
     )
 
 
@@ -8228,8 +8235,8 @@ def test_tui_now_command_explains_priced_in_action_and_response():
     )
 
     assert update.page == "overview"
-    assert "Next priced-in action: Capture one saved provider file." in update.message
-    assert "run bars saved capture confirm" in update.message
+    assert "Next priced-in action: Capture one saved provider file" in update.message
+    assert "dashboard command: bars saved capture confirm" in update.message
     assert "1 provider call(s) after approval" in update.message
     assert "0 database change(s)" in update.message
     assert "Expected response: Validate it before import." in update.message

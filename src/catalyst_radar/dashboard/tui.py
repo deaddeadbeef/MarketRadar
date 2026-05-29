@@ -269,7 +269,7 @@ DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
         "area": "Readiness",
         "feature": "Readiness, value, next step",
         "page": "1 Inbox, 2 Gaps",
-        "use": "Know if research is usable.",
+        "use": "Show research-only vs decision use.",
     },
     {
         "area": "Market data",
@@ -7289,6 +7289,9 @@ def _feature_row_target_page(row: Mapping[str, object]) -> str:
         part = raw_part.strip()
         if not part:
             continue
+        first_token = part.split(maxsplit=1)[0].strip().lower()
+        if first_token in PAGE_ALIASES:
+            return PAGE_ALIASES[first_token]
         target = _normalize_page(part)
         if target != "help" or part.lower() in {"?", "help"}:
             return target
@@ -8036,6 +8039,7 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append(
             "No real result yet: no market scan has run, so there are no stock-analysis messages."
         )
+        lines.append("First setup task: build the active stock universe.")
         lines.extend(
             _wrap(
                 "This page becomes your Market Inbox after the first capped "
@@ -8325,6 +8329,8 @@ def _novice_empty_scan_lines(width: int) -> list[str]:
         "",
         _rule("No scan rows yet", width),
         "No scan rows yet. Start here:",
+        "First setup task: build the active stock universe.",
+        "Setup rows are instructions, not stock results.",
         "1. Import or fetch a ticker universe.",
         "2. Fill fresh market bars.",
         "3. Run a capped scan.",
@@ -8719,6 +8725,29 @@ def _market_bar_provider_saved_file_capture_summary(
         f"{calls} external call(s); explicit approval required"
         f"{boundary}; command {command}"
     )
+
+
+def _market_bar_provider_saved_capture_confirm_command(
+    payload: Mapping[str, object],
+) -> str:
+    provider_plan = _market_bar_provider_fill_plan(payload)
+    if not provider_plan:
+        return ""
+    packet = _mapping(provider_plan.get("provider_saved_file_capture_approval_packet"))
+    command = _market_bar_saved_capture_confirm_command(packet)
+    if command:
+        return command
+    provider_command = str(
+        provider_plan.get("provider_saved_file_capture_command") or ""
+    ).strip()
+    provider_calls = int(
+        _number_or_zero(
+            provider_plan.get("provider_saved_file_capture_external_call_count")
+        )
+    )
+    if provider_command and provider_calls > 0:
+        return "bars saved capture confirm"
+    return ""
 
 
 def _market_bar_provider_saved_file_validate_summary(
@@ -9725,6 +9754,13 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         manual_hint = _market_bar_manual_action_summary(payload)
         if manual_hint:
             evidence_items.append(("Manual CSV action", manual_hint))
+        saved_capture_command = _market_bar_provider_saved_capture_confirm_command(
+            payload
+        )
+        if saved_capture_command:
+            evidence_items.append(
+                ("Saved capture command", f"`{saved_capture_command}`")
+            )
         saved_capture_hint = _market_bar_provider_saved_file_capture_summary(payload)
         if saved_capture_hint:
             evidence_items.append(("Saved file capture", saved_capture_hint))
@@ -10042,6 +10078,7 @@ def _run_mission_brief_items(
         )
         blocker_detail = _mapping(trust_gate.get("blocker_detail"))
         manual_csv_text = ""
+        saved_capture: Mapping[str, object] = {}
         saved_capture_text = ""
         universe_text = ""
         if blocker_detail.get("source") == "market_bars":
@@ -10060,9 +10097,13 @@ def _run_mission_brief_items(
             manual_csv_text = _market_bar_manual_csv_summary(
                 _mapping(blocker_detail.get("manual_csv"))
             )
-            saved_capture_text = _market_bar_saved_capture_summary(
-                _mapping(blocker_detail.get("saved_provider_capture"))
+            saved_capture = _mapping(blocker_detail.get("saved_provider_capture"))
+            capture_approval = _mapping(
+                blocker_detail.get("provider_saved_file_capture_approval_packet")
             )
+            if capture_approval:
+                saved_capture = {**capture_approval, **saved_capture}
+            saved_capture_text = _market_bar_saved_capture_summary(saved_capture)
             universe_text = _market_bar_missing_universe_summary(
                 _mapping(blocker_detail.get("missing_universe"))
             )
@@ -10098,8 +10139,20 @@ def _run_mission_brief_items(
         )
         if after_current_text:
             items.append(("After current", after_current_text))
+        items.extend(
+            _after_current_manual_command_items(
+                _mapping(trust_gate.get("after_current_blocker"))
+            )
+        )
         if manual_csv_text:
             items.append(("Manual CSV", manual_csv_text))
+        saved_capture_command = _market_bar_saved_capture_confirm_command(
+            saved_capture
+        )
+        if saved_capture_command:
+            items.append(
+                ("Saved capture command", f"`{saved_capture_command}`")
+            )
         if saved_capture_text:
             items.append(("Saved capture", saved_capture_text))
         if universe_text:
@@ -10270,7 +10323,7 @@ def _after_current_blocker_summary(preview: Mapping[str, object]):
         if blocked:
             blocked_text = f"blocked {blocked}"
             if reason:
-                blocked_text = f"{blocked_text} {reason}"
+                blocked_text = f"{blocked_text} {_human_status_label(reason)}"
             plan_parts.append(blocked_text)
         if plan_parts:
             parts.append("source plan " + ", ".join(plan_parts))
@@ -10307,15 +10360,6 @@ def _after_current_blocker_summary(preview: Mapping[str, object]):
         )
         if routed_sample:
             parts.append(f"routed {routed_sample}")
-        repair = str(next_plan.get("manual_template_command") or "").strip()
-        if repair:
-            parts.append(f"repair `{repair}`")
-        validate = str(next_plan.get("manual_validate_command") or "").strip()
-        if validate:
-            parts.append(f"validate `{validate}`")
-        manual_import = str(next_plan.get("manual_fix_command") or "").strip()
-        if manual_import:
-            parts.append(f"import `{manual_import}`")
         if "external_calls_made" in next_plan:
             made = int(_number_or_zero(next_plan.get("external_calls_made")))
             parts.append(f"external calls made {made}")
@@ -10326,6 +10370,25 @@ def _after_current_blocker_summary(preview: Mapping[str, object]):
     if execute:
         parts.append(f"execute later `{execute}`")
     return "; ".join(parts)
+
+
+def _after_current_manual_command_items(
+    preview: Mapping[str, object],
+) -> list[tuple[str, object]]:
+    next_plan = _mapping(preview.get("next_source_plan"))
+    if not next_plan:
+        return []
+    command_fields = (
+        ("CIK repair", "repair", "manual_template_command"),
+        ("CIK validate", "validate", "manual_validate_command"),
+        ("CIK import", "import", "manual_fix_command"),
+    )
+    items: list[tuple[str, object]] = []
+    for label, verb, field in command_fields:
+        command = str(next_plan.get(field) or "").strip()
+        if command:
+            items.append((label, f"{verb} `{command}`"))
+    return items
 
 
 def _market_bar_manual_csv_summary(manual_csv: Mapping[str, object]):
@@ -10368,6 +10431,7 @@ def _market_bar_saved_capture_summary(saved_capture: Mapping[str, object]):
     path = str(saved_capture.get("saved_file_path") or "").strip()
     api = str(saved_capture.get("capture_api") or "").strip()
     next_action = str(saved_capture.get("next_action") or "").strip()
+    confirm_command = _market_bar_saved_capture_confirm_command(saved_capture)
     scope = str(saved_capture.get("coverage_scope") or "").strip()
     active_value = saved_capture.get("active_security_count")
     existing_value = saved_capture.get("existing_as_of_bar_count")
@@ -10397,9 +10461,28 @@ def _market_bar_saved_capture_summary(saved_capture: Mapping[str, object]):
         parts.append(path)
     if api:
         parts.append(api)
+    if confirm_command:
+        parts.append(f"type `{confirm_command}`")
     if next_action:
         parts.append(next_action)
     return "; ".join(parts)
+
+
+def _market_bar_saved_capture_confirm_command(
+    saved_capture: Mapping[str, object],
+) -> str:
+    if not saved_capture:
+        return ""
+    confirm_command = str(
+        saved_capture.get("tui_confirm_command")
+        or saved_capture.get("dashboard_saved_capture_confirm_command")
+        or saved_capture.get("capture_command")
+        or saved_capture.get("tui_command")
+        or ""
+    ).strip()
+    if not confirm_command and saved_capture.get("approval_required"):
+        return "bars saved capture confirm"
+    return confirm_command
 
 
 def _market_bar_missing_universe_summary(
@@ -10506,6 +10589,11 @@ def _run_saved_file_action_items(
     if manual_hint:
         items.append(("Manual CSV action", manual_hint))
     saved_capture_hint = _market_bar_provider_saved_file_capture_summary(payload)
+    saved_capture_command = _market_bar_provider_saved_capture_confirm_command(
+        payload
+    )
+    if saved_capture_command:
+        items.append(("Saved capture command", f"`{saved_capture_command}`"))
     if saved_capture_hint:
         items.append(("Saved file capture", saved_capture_hint))
     saved_validate_hint = _market_bar_provider_saved_file_validate_summary(payload)
@@ -14092,6 +14180,7 @@ def _human_source_status_text(value: object) -> str:
         ("theme_peer_sector", "theme/peer/sector"),
         ("broker_context", "broker context"),
         ("agent_review", "agent review"),
+        ("missing_cik", "missing CIK"),
     )
     for raw, replacement in source_replacements:
         text = text.replace(raw, replacement)
@@ -14205,6 +14294,13 @@ def _table_lines(
     requested = sum(column[2] for column in columns)
     scale = min(1.0, available / requested) if requested else 1.0
     widths = [max(4, int(column[2] * scale)) for column in columns]
+    overflow = sum(widths) + (3 * (len(columns) - 1)) - width
+    while overflow > 0:
+        shrink_index = max(range(len(widths)), key=widths.__getitem__)
+        if widths[shrink_index] <= 4:
+            break
+        widths[shrink_index] -= 1
+        overflow -= 1
     header = " | ".join(
         _clip(label, column_width).ljust(column_width)
         for (_, label, _), column_width in zip(columns, widths, strict=True)
