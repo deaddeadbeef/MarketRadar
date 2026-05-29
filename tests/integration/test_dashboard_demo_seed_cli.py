@@ -1271,7 +1271,8 @@ def test_modern_agent_page_prioritizes_trusted_evidence_gate(
             assert "Agent brief - preview by default" in frame
             assert "Trusted scan evidence" in frame
             assert "scan rows 1 visible" in frame
-            assert "Run/import real market data" in frame
+            assert "Seed the ticker universe" in frame
+            assert "Run/import real market data" not in frame
             assert "Fill the missing env/budget values" not in frame
 
     asyncio.run(run_app())
@@ -1594,6 +1595,100 @@ def _minimal_missing_real_results_payload() -> dict[str, object]:
         "telemetry": {},
         "external_calls_made": 0,
     }
+
+
+def _blocked_market_bar_payload_with_stale_real_results_action() -> dict[str, object]:
+    payload = _minimal_missing_real_results_payload()
+    payload["real_results"] = {
+        **dict(payload["real_results"]),
+        "row_count": 200,
+        "missing": ["successful latest radar run"],
+    }
+    payload["priced_in_queue"] = {
+        "filters": {"status": "all"},
+        "rows": [
+            {
+                "ticker": "A",
+                "priced_in_status": "bullish_not_priced_in",
+                "priced_in_reason": "emotion 65.9 / reaction 0.0 / gap 65.9",
+                "priced_in_next_step": "Evidence Gaps first.",
+            }
+        ],
+        "total_count": 200,
+        "count": 1,
+    }
+    payload["priced_in_answer"] = {
+        "status": "blocked",
+        "answer": "Full-market priced-in answer is not ready.",
+        "full_market_trust_gate": {
+            "status": "blocked",
+            "first_blocker": "market_bars",
+            "first_gap_count": 579,
+        },
+    }
+    payload["priced_in_operator_next_step"] = {
+        "action": (
+            "Review residual market-bar rows before filling bars, capturing "
+            "provider data, or changing scan scope."
+        ),
+        "command": (
+            "catalyst-radar market-bars residual-review "
+            "--expected-as-of 2026-05-15"
+        ),
+        "tui_command": (
+            "catalyst-radar market-bars residual-review "
+            "--expected-as-of 2026-05-15"
+        ),
+        "external_calls_required": 0,
+        "db_writes_required": 0,
+        "approval_required": False,
+        "first_blocker": "market_bars",
+        "first_gap_count": 579,
+    }
+    payload["agent_brief"] = {
+        "mode": "dry_run",
+        "status": "dry_run",
+        "real_results": payload["real_results"],
+        "external_calls_made": {"openai": 0, "market_data": 0, "broker": 0},
+        "runtime": {
+            "orchestrator": "openai_agents_sdk",
+            "copilot_dependency": "absent",
+            "tool_surface": "read_only_snapshot_tools",
+            "real_mode_gate_status": "ready",
+            "real_results_gate_status": "blocked",
+            "credit_gate_status": "blocked",
+            "external_market_tools": False,
+            "broker_tools": False,
+            "shell_tools": False,
+            "web_tools": False,
+        },
+        "credit_gate": {"status": "blocked"},
+        "agents": [],
+        "insights": [],
+        "next_actions": [],
+        "security_checks": [],
+    }
+    return payload
+
+
+def test_dashboard_missing_evidence_uses_current_blocker_not_stale_real_results_action() -> None:
+    payload = _blocked_market_bar_payload_with_stale_real_results_action()
+
+    overview = render_dashboard_tui(payload, page="overview", width=160)
+    narrow_overview = render_dashboard_tui(payload, page="overview", width=120)
+    agent = render_dashboard_tui(payload, page="agent", width=160)
+    combined = "\n".join([overview, narrow_overview, agent])
+
+    assert "Review residual market-bar rows before filling bars" in combined
+    assert "changing scan scope." in narrow_overview
+    assert (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+        in combined
+    )
+    assert "Budget: 0 provider call(s), 0 DB write(s); no approval." in overview
+    assert "Budget: 0 provider call(s), 0 DB write(s); no approval." in narrow_overview
+    assert "Run/import real market data" not in combined
+    assert "priced-in-answer --limit 50" not in combined
 
 
 def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
