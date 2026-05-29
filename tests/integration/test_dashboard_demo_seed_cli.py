@@ -5024,16 +5024,19 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "first blocker" in case
     assert "still needs options/broker" in case
     assert "No packet yet" in case
+    assert "Next command" not in case
+    assert "build-packets" not in case
+    assert "Command boundary" not in case
     assert "Use the workflow navigation or open the highlighted row" not in case
 
     inbox_rows = _market_inbox_rows(payload)
     assert [row["mailbox"] for row in inbox_rows] == ["Urgent", "Worth Reading"]
     assert inbox_rows[0]["subject"].startswith("Bullish not priced")
     assert " | " not in inbox_rows[0]["subject"]
-    assert " - gap 55" in inbox_rows[0]["subject"]
+    assert " - gap 55" not in inbox_rows[0]["subject"]
     assert inbox_rows[0]["missing"] == "missing options, broker context"
     assert "Open the case file" in inbox_rows[0]["next"]
-    assert inbox_rows[1]["next"] == "Open the case file and review evidence."
+    assert inbox_rows[1]["next"] == "Open case; verify gaps."
     assert inbox_rows[1]["status_message"] == (
         "Worth reading: BETA. No calls. Open the case file, then verify "
         "missing evidence before action."
@@ -5429,13 +5432,15 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
     assert "Press 2 Evidence Gaps for first blocker" in case
     assert "still needs options/broker" in case
     assert "No packet yet" in case
-    assert "Next command" in case
-    assert "catalyst-radar build-packets --as-of 2026-05-10" in case
-    assert "--ticker ACME --min-state ResearchOnly" in case
-    assert "Where to run" in case
-    assert "normal PowerShell prompt, not the dashboard command box." in case
-    assert "Command boundary" in case
-    assert "Local DB write; no provider, OpenAI, broker, or order calls." in case
+    assert "Next command" not in case
+    assert "catalyst-radar build-packets --as-of 2026-05-10" not in case
+    assert "--ticker ACME --min-state ResearchOnly" not in case
+    assert "Where to run" not in case
+    assert "normal PowerShell prompt, not the dashboard command box." not in case
+    assert "Command boundary" not in case
+    assert "Local DB write; no provider, OpenAI, broker, or order calls." not in case
+    assert "blocked until Evidence Gaps clear" in case
+    assert "Press 2 Evidence Gaps before building packets." in case
     assert "Evidence to verify:" not in case
     assert "Gaps:" not in case
     assert "Hard blocker" in case
