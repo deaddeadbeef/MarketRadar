@@ -1853,6 +1853,7 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
         "ops": ("Source workbench.", "batch <source> execute"),
         "agent": ("Agent Coach.", "agent execute only with budget"),
         "alerts": ("Alerts.", "feedback <alert-id>"),
+        "alert:demo-alert-acme": ("Alert ACME.", "feedback 1"),
     }
 
     for page, needles in expected.items():

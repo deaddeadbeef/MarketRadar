@@ -1779,8 +1779,10 @@ class MarketRadarDashboardApp(App[int]):
                 "No scan yet. Try: setup, 2 Evidence Gaps, 3 Safe Run, "
                 "refresh, help, q"
             )
-        page = self.page.split(":", 1)[0]
-        ticker = self.page.split(":", 1)[1].upper() if ":" in self.page else "<ticker>"
+        page_parts = self.page.split(":", 1)
+        page = page_parts[0]
+        page_ref = page_parts[1] if len(page_parts) > 1 else ""
+        ticker = page_ref.upper() if page_ref else "<ticker>"
         if page == "overview":
             return "Inbox. Try: open 1, ready, full, mismatches, next, prev, 2, 3, help, q"
         if page == "readiness":
@@ -1807,7 +1809,21 @@ class MarketRadarDashboardApp(App[int]):
         if page == "alerts":
             return "Alerts. Try: open 1, feedback <alert-id> useful/noisy/acted, inbox, help, q"
         if page == "alert":
-            return "Alert. Try: feedback <alert-id> useful/noisy/acted, alerts, inbox, help, q"
+            alert_ref = page_ref or "<alert-id>"
+            feedback_ref = alert_ref
+            alert_label = alert_ref
+            for index, row in enumerate(
+                _rows(_mapping(self.payload.get("alerts")).get("rows")),
+                start=1,
+            ):
+                if str(row.get("id") or "").strip() == alert_ref:
+                    feedback_ref = str(index)
+                    alert_label = str(row.get("ticker") or alert_ref)
+                    break
+            return (
+                f"Alert {alert_label}. Try: feedback {feedback_ref} "
+                "useful/noisy/acted, alerts, inbox, help, q"
+            )
         if page == "broker":
             return (
                 "Broker. Try: action <ticker> watch, trigger <ticker> ..., "
