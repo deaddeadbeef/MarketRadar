@@ -5012,6 +5012,40 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "Evidence Gaps must clear" in empty_review
     assert "No rows." not in empty_review
 
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="review",
+    )
+    app.payload = empty_review_payload
+    title, _columns, modern_rows, detail = app._review_model()
+    assert title.startswith("Decision Review")
+    assert detail.startswith("0 decision-ready rows from 2 ranked rows")
+    assert modern_rows == [
+        {
+            "_row_key": "review-empty",
+            "rank": "-",
+            "ticker": "-",
+            "signal": "No ready rows",
+            "emotion_reaction_gap": "",
+            "optional_gaps": "Evidence Gaps first",
+            "top_evidence": "Evidence not ready",
+            "next_action": "Return to Inbox or Evidence Gaps.",
+            "target_page": "overview",
+            "status_message": (
+                "No decision-ready rows yet. Returned to Inbox; use Evidence Gaps "
+                "or Full Scan for research-only rows."
+            ),
+        }
+    ]
+    assert "No rows yet" in app._command_placeholder()
+    assert "nothing opens here" in app._action_text()
+    assert "open 1" not in app._command_placeholder()
+
     overview = render_dashboard_tui(payload, page="overview", width=140)
     assert "Market Inbox" in overview
     assert "Latest scan results" in overview

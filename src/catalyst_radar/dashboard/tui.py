@@ -1798,6 +1798,11 @@ class MarketRadarDashboardApp(App[int]):
         if page == "candidates":
             return "Candidate Review. Try: open 1, ticker AAPL, inbox, ready, full, help, q"
         if page == "review":
+            if not _priced_in_review_rows(self.payload):
+                return (
+                    "Decision Review. No rows yet. Try: inbox, 2 Evidence Gaps, "
+                    "full, mismatches, help, q"
+                )
             return "Decision Review. Try: open 1, inbox, full, mismatches, broker, help, q"
         if page == "alerts":
             return "Alerts. Try: open 1, feedback <alert-id> useful/noisy/acted, inbox, help, q"
@@ -1927,8 +1932,15 @@ class MarketRadarDashboardApp(App[int]):
                 command_first=False,
             ),
             "review": (
-                "Review decision-ready priced-in rows. Press Enter to open the "
-                f"candidate and Decision Card context.{page_text}"
+                (
+                    "No decision-ready rows yet. Press 2 for Evidence Gaps or "
+                    "1 for Inbox; nothing opens here."
+                )
+                if not _priced_in_review_rows(self.payload)
+                else (
+                    "Review decision-ready priced-in rows. Press Enter to open the "
+                    f"candidate and Decision Card context.{page_text}"
+                )
             ),
             "run": _run_page_next_safe_action(self.payload),
             "candidates": _candidates_next_safe_action(self.payload),
@@ -2818,7 +2830,8 @@ class MarketRadarDashboardApp(App[int]):
     def _review_model(
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
-        rows = _priced_in_review_rows(self.payload)
+        review_rows = _priced_in_review_rows(self.payload)
+        table_rows = review_rows or [_decision_review_empty_modern_row()]
         return (
             "Decision Review - priced-in answer, not trade approval",
             [
@@ -2830,8 +2843,8 @@ class MarketRadarDashboardApp(App[int]):
                 ("top_evidence", "Top evidence", 30),
                 ("next_action", "Next action", 34),
             ],
-            rows,
-            _decision_review_caption(self.payload, rows),
+            table_rows,
+            _decision_review_caption(self.payload, review_rows),
         )
 
     def _candidate_detail_model(
@@ -8914,6 +8927,24 @@ def _priced_in_review_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
     return rows
 
 
+def _decision_review_empty_modern_row() -> Mapping[str, object]:
+    return {
+        "_row_key": "review-empty",
+        "rank": "-",
+        "ticker": "-",
+        "signal": "No ready rows",
+        "emotion_reaction_gap": "",
+        "optional_gaps": "Evidence Gaps first",
+        "top_evidence": "Evidence not ready",
+        "next_action": "Return to Inbox or Evidence Gaps.",
+        "target_page": "overview",
+        "status_message": (
+            "No decision-ready rows yet. Returned to Inbox; use Evidence Gaps "
+            "or Full Scan for research-only rows."
+        ),
+    }
+
+
 def _decision_review_row_is_ready(row: Mapping[str, object]) -> bool:
     usefulness = _mapping(row.get("usefulness"))
     return bool(usefulness.get("decision_ready")) or (
@@ -8984,6 +9015,12 @@ def _decision_review_caption(
     answer = _mapping(payload.get("priced_in_answer"))
     queue = _mapping(payload.get("priced_in_queue"))
     scan_total = _priced_in_scan_total(queue)
+    if not rows:
+        scan_scope = f"{scan_total} ranked rows" if scan_total else "the latest scan"
+        return (
+            f"0 decision-ready rows from {scan_scope}. "
+            "Required evidence must clear first. Press 2 Evidence Gaps or 1 Inbox."
+        )
     return (
         f"This page shows {len(rows)} decision-ready priced-in row(s) from "
         f"{scan_total or 'the'} latest scan. Decision-ready means the price/emotion "
