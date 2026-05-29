@@ -1393,12 +1393,13 @@ def test_dashboard_empty_decision_review_points_to_first_setup_blocker(
 
     assert output.err == ""
     assert "Page: Decision Review" in output.out
-    assert "No real result yet" in output.out
+    assert "No decision review yet" in output.out
+    assert "No market scan has run yet" in output.out
     assert "Set up Active universe first" in output.out
-    assert "Seed or refresh the universe" in output.out
-    assert "Run setup commands in PowerShell" in output.out
-    assert "not in the dashboard command box" in normalized
+    assert "PowerShell command" in output.out
+    assert "not the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
+    assert "review candidate packets first" in normalized
     assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "No decision-ready review rows. Fix Evidence Gaps" not in output.out
     assert "External calls made: 0" in output.out
@@ -1418,13 +1419,14 @@ def test_dashboard_empty_themes_points_to_first_setup_blocker(
 
     assert output.err == ""
     assert "Page: Themes" in output.out
-    assert "No real result yet" in output.out
+    assert "No theme clusters yet" in output.out
+    assert "No market scan has run yet" in output.out
     assert "Set up Active universe first" in output.out
-    assert "Seed or refresh the universe" in output.out
-    assert "Run setup commands in PowerShell" in output.out
-    assert "not in the dashboard command box" in normalized
+    assert "PowerShell command" in output.out
+    assert "not the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
-    assert "Theme clusters appear only after real scan rows exist" in output.out
+    assert "repeated catalyst patterns across stocks" in output.out
+    assert "secondary context, not trade signals" in output.out
     assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "No rows." not in output.out
     assert "External calls made: 0" in output.out
