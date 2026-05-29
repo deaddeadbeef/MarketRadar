@@ -1629,6 +1629,9 @@ def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
             assert "3 setup row(s); 0 stock" in frame
             assert "Build the stock" in frame
             assert "Setup" in frame
+            assert "SETUP First setup step" in frame
+            command_input = app.query_one("#command")
+            assert "setup" in str(command_input.placeholder)
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")
@@ -1642,6 +1645,19 @@ def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
             assert "EVIDENCE GAPS" in frame
             assert "First blocker" in frame
             assert "Active universe" in frame
+
+            command_input.focus()
+            command_input.value = "setup"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.page == "readiness"
+            assert "Run this in a normal PowerShell prompt" in app.status_message
+            assert "No API calls/orders/writes." in app.status_message
+
+            assert await pilot.click("#action-setup")
+            await pilot.pause()
+            assert app.page == "readiness"
+            assert "Run this in a normal PowerShell prompt" in app.status_message
 
     asyncio.run(run_app())
 
@@ -3870,11 +3886,13 @@ def test_dashboard_help_starts_with_first_commands() -> None:
 
     assert "First commands: start opens the walkthrough" in screen
     assert "inbox shows scan messages" in screen
-    assert "evidence gaps shows blockers" in screen
+    assert "setup / first" in screen
+    assert "Show the first setup command" in screen
+    assert "evidence gaps shows blockers" in normalized
     assert "safe run reviews the call budget" in normalized
     assert "Commands with execute are deliberate actions" in screen
     assert "Command Reference" in screen
-    assert "candidate review" in screen
+    assert "candidate review" in normalized.lower()
     assert "Open a candidate from Candidate Review" in screen
     assert "batch <source> execute" in screen
 

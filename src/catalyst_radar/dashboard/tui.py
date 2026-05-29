@@ -1255,6 +1255,11 @@ class MarketRadarDashboardApp(App[int]):
                         classes="nav-item",
                     )
                 yield Static("OPS", classes="side-section")
+                yield FocusRow(
+                    "SETUP First setup step",
+                    id="action-setup",
+                    classes="side-action",
+                )
                 yield FocusRow("R  Refresh snapshot", id="action-refresh", classes="side-action")
                 yield FocusRow("PLAN Safe run review", id="action-run-page", classes="side-action")
                 yield Static("SCAN", classes="side-section")
@@ -1286,8 +1291,8 @@ class MarketRadarDashboardApp(App[int]):
                     yield Static(id="operator-response")
                 yield Input(
                     placeholder=(
-                        "Type a command or click a message. Try: inbox, ready, full, mismatches, "
-                        "2, 4, run, refresh, help, q"
+                        "Type a command or click a message. Try: setup, inbox, ready, full, "
+                        "mismatches, 2, 4, run, refresh, help, q"
                     ),
                     id="command",
                 )
@@ -1383,6 +1388,7 @@ class MarketRadarDashboardApp(App[int]):
 
     def refresh_view(self) -> None:
         self._refresh_nav()
+        self._refresh_setup_action()
         self._refresh_scan_actions()
         self._refresh_header()
         self._refresh_table()
@@ -1390,6 +1396,7 @@ class MarketRadarDashboardApp(App[int]):
         self.query_one("#guide", Static).update(self._guide_text())
         self.query_one("#operator-action", Static).update(self._action_text())
         self.query_one("#operator-response", Static).update(self._response_text())
+        self.query_one("#command", Input).placeholder = self._command_placeholder()
 
     def action_refresh(self) -> None:
         self._start_snapshot_reload(
@@ -1418,6 +1425,10 @@ class MarketRadarDashboardApp(App[int]):
         if widget_id.startswith("nav-"):
             event.stop()
             self.action_go(widget_id.removeprefix("nav-"))
+            return
+        if widget_id == "action-setup":
+            event.stop()
+            self.action_show_setup()
             return
         if widget_id == "action-refresh":
             event.stop()
@@ -1468,6 +1479,10 @@ class MarketRadarDashboardApp(App[int]):
             event.stop()
             self.action_go(focused_id.removeprefix("nav-"))
             return
+        if focused_id == "action-setup":
+            event.stop()
+            self.action_show_setup()
+            return
         if focused_id == "action-refresh":
             event.stop()
             self.action_refresh()
@@ -1509,6 +1524,20 @@ class MarketRadarDashboardApp(App[int]):
             success_message=self.status_message,
             clear_payload=True,
         )
+
+    def action_show_setup(self) -> None:
+        old_filters = self.filters
+        self.page = "readiness"
+        self.filters = dashboard_filters_for_page(self.filters, self.page)
+        self.status_message = _setup_command_status_message(self.payload)
+        if self.filters != old_filters:
+            self._start_snapshot_reload(
+                loading_message=self.status_message,
+                success_message=self.status_message,
+                clear_payload=True,
+            )
+            return
+        self.refresh_view()
 
     def _set_scan_mode(self, status: str) -> None:
         resolved = _normalize_priced_in_status(status)
@@ -1735,6 +1764,24 @@ class MarketRadarDashboardApp(App[int]):
         counts = self._nav_count_suffix(page_key)
         return f"{marker} {shortcut:<2} {label}{counts}"
 
+    def _refresh_setup_action(self) -> None:
+        setup = self.query_one("#action-setup", FocusRow)
+        active = _real_results_empty(self.payload)
+        setup.set_class(active, "active")
+        label = "SETUP First setup step" if active else "SETUP Setup status"
+        setup.update((">> " if active else "   ") + label)
+
+    def _command_placeholder(self) -> str:
+        if _real_results_empty(self.payload):
+            return (
+                "No scan yet. Try: setup, 2 Evidence Gaps, 3 Safe Run, "
+                "refresh, help, q"
+            )
+        return (
+            "Type a command or click a message. Try: inbox, ready, full, "
+            "mismatches, 2, 4, run, refresh, help, q"
+        )
+
     def _active_nav_page(self) -> str:
         active = self.page.split(":", 1)[0]
         if active == "candidate":
@@ -1787,6 +1834,7 @@ class MarketRadarDashboardApp(App[int]):
         focus_ids = [f"nav-{page_key}" for page_key, _, _ in MODERN_PAGES]
         focus_ids.extend(
             [
+                "action-setup",
                 "action-refresh",
                 "action-run-page",
                 "action-scan-ready",
@@ -2722,6 +2770,10 @@ class MarketRadarDashboardApp(App[int]):
             {"command": "Click candidate/alert row", "meaning": "Open the selected detail view."},
             {"command": "0, 1..9, Ctrl+A, f, ?", "meaning": "Keyboard page shortcuts."},
             {
+                "command": "setup / first",
+                "meaning": "Show the first setup command and where to run it.",
+            },
+            {
                 "command": "start / tutorial / inbox",
                 "meaning": "Use start/tutorial for the walkthrough; inbox for scan messages.",
             },
@@ -3167,6 +3219,12 @@ def _apply_command(
         return _CommandUpdate(page=page, filters=filters, exit_requested=True)
     if command in {"r", "refresh"}:
         return _CommandUpdate(page=page, filters=filters, message="Refreshed.")
+    if command in {"setup", "first", "first-step", "first_step"}:
+        return _CommandUpdate(
+            page="readiness",
+            filters=dashboard_filters_for_page(filters, "readiness"),
+            message=_setup_command_status_message(payload),
+        )
     if command in {"now", "what-now", "whatnow", "todo", "do"}:
         return _CommandUpdate(
             page="overview",
@@ -7880,6 +7938,28 @@ def _setup_command_footer_action(payload: Mapping[str, object]) -> str:
     return (
         f"{_setup_blocker_first_label(area)}: run PowerShell command above after accepting "
         "call/write."
+    )
+
+
+def _setup_command_status_message(payload: Mapping[str, object]) -> str:
+    command = _first_scan_setup_command(payload)
+    blocker = _readiness_first_setup_blocker(payload)
+    area = _human_source_name(blocker.get("area") if blocker else "setup")
+    if command:
+        return _command_no_side_effects(
+            f"{_setup_blocker_first_label(area)}. Run this in a normal PowerShell "
+            f"prompt, not in the dashboard command box: {command}. Continue only "
+            "if you approve the provider call or database write; then return here "
+            "and press r to refresh."
+        )
+    if _real_results_empty(payload):
+        return _command_no_side_effects(
+            "Setup is still blocked, but no setup command is available in the "
+            "snapshot. Open Evidence Gaps and review the first blocked row."
+        )
+    return _command_no_side_effects(
+        "Setup is not the first blocker anymore. Open Inbox for scan messages or "
+        "Evidence Gaps for the current blocker."
     )
 
 
@@ -13467,8 +13547,8 @@ def _help_lines(width: int) -> list[str]:
         _wrap(
             (
                 "First commands: start opens the walkthrough; inbox shows scan "
-                "messages; evidence gaps shows blockers; safe run reviews the "
-                "call budget; q exits."
+                "messages; setup shows the first setup command; evidence gaps "
+                "shows blockers; safe run reviews the call budget; q exits."
             ),
             width,
         )
@@ -13490,6 +13570,7 @@ def _help_lines(width: int) -> list[str]:
             "Switch page; Ctrl+A opens Agent Coach.",
         ),
         ("features", "List current Market Radar features and where they live in the TUI."),
+        ("setup / first", "Show the first setup command and where to run it."),
         ("open <#|ticker>", "Open a candidate from Candidate Review."),
         ("open <#|alert-id>", "Open an alert from the alerts page."),
         ("ticker <SYMBOL|all>", "Filter candidate-adjacent pages by ticker where supported."),
