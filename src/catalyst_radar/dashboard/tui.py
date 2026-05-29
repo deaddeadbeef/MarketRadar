@@ -7189,9 +7189,11 @@ def _candidate_case_source_gap_summary(
     stale = _texts(data_sources.get("stale"))
     parts: list[str] = []
     if missing:
-        parts.append(f"missing {', '.join(missing[:3])}")
+        missing_labels = [_human_source_name(value).lower() for value in missing[:3]]
+        parts.append(f"missing {', '.join(missing_labels)}")
     if stale:
-        parts.append(f"stale {', '.join(stale[:3])}")
+        stale_labels = [_human_source_name(value).lower() for value in stale[:3]]
+        parts.append(f"stale {', '.join(stale_labels)}")
     return "; ".join(parts) if parts else "none"
 
 
@@ -11562,7 +11564,7 @@ def _candidate_source_action_summary(brief: Mapping[str, object]) -> str:
         return "none"
     return "; ".join(
         _join_nonempty(
-            (action.get("source"), action.get("next_action")),
+            (_human_source_name(action.get("source")).lower(), action.get("next_action")),
             separator=": ",
         )
         for action in gaps[:3]
