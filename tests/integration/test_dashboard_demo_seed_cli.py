@@ -5597,6 +5597,53 @@ def test_ops_footer_uses_coverage_first_source_step() -> None:
     assert "Use the workflow navigation or open the highlighted row" not in ops
 
 
+def test_ops_footer_prefers_workflow_coverage_first_over_research_rows() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+        "ops_health": {
+            "database": {"status": "ok"},
+            "degraded_mode": {"enabled": True},
+            "providers": [],
+            "jobs": [],
+        },
+        "priced_in_source_workflow": {
+            "coverage_first_action": "Review residual market-bar rows first.",
+            "coverage_first_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-15"
+            ),
+            "steps": [
+                {
+                    "priority": 1,
+                    "source": "market_bars",
+                    "status": "attention",
+                    "action": "Review residual market-bar rows first.",
+                },
+                {
+                    "priority": 2,
+                    "source": "options",
+                    "status": "attention",
+                    "research_useful_gap_rows": 9,
+                    "action": "Fill point-in-time option fields next.",
+                },
+            ],
+        },
+        "priced_in_source_coverage": {"actions": []},
+    }
+
+    ops = render_dashboard_tui(payload, page="ops", width=150)
+
+    assert "NEXT SAFE ACTION: Coverage-first: market bars" in ops
+    assert "catalyst-radar market-bars residual-review" in ops
+    assert "batch options execute" not in ops
+
+
 def test_ops_page_uses_human_source_labels() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},

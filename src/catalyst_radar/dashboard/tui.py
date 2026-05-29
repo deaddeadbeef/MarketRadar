@@ -13357,6 +13357,29 @@ def _ops_next_safe_action(payload: Mapping[str, object]) -> str:
         setup_action = _readiness_next_safe_action(payload)
         if setup_action:
             return setup_action
+    workflow = _mapping(payload.get("priced_in_source_workflow"))
+    workflow_source = _coverage_first_workflow_source(workflow)
+    if workflow_source:
+        command = str(
+            workflow.get("coverage_first_command") or workflow.get("next_command") or ""
+        ).strip()
+        action = _human_source_status_text(
+            workflow.get("coverage_first_action")
+            or workflow.get("next_action")
+            or "Review source gaps."
+        )
+        command_text = (
+            f" use `{_clip(command, 84)}`."
+            if command
+            else f" execute: batch {workflow_source} execute."
+        )
+        action_text = ""
+        if not command and action:
+            action_text = f" {_clip(action, 72)}"
+        return (
+            f"Coverage-first: {_human_source_name(workflow_source)}. "
+            f"Plan-only;{command_text}{action_text}"
+        )
     rows = _source_coverage_workbench_rows(payload)
     if rows:
         row = rows[0]
@@ -13368,7 +13391,6 @@ def _ops_next_safe_action(payload: Mapping[str, object]) -> str:
             f"Coverage-first: {source_label}. Plan-only; "
             f"execute: batch {source} execute.{action_text}"
         )
-    workflow = _mapping(payload.get("priced_in_source_workflow"))
     action = _human_source_status_text(
         workflow.get("coverage_first_action")
         or workflow.get("next_action")
@@ -13378,6 +13400,46 @@ def _ops_next_safe_action(payload: Mapping[str, object]) -> str:
         f"Coverage-first: {_clip(action, 72)} Plan-only; "
         "execute requires an explicit batch command."
     )
+
+
+def _coverage_first_workflow_source(workflow: Mapping[str, object]) -> str:
+    source = str(workflow.get("coverage_first_source") or "").strip()
+    if source:
+        return source
+    command = str(
+        workflow.get("coverage_first_command") or workflow.get("next_command") or ""
+    ).strip()
+    if command:
+        try:
+            command_parts = shlex.split(command)
+        except ValueError:
+            command_parts = command.split()
+        for index, part in enumerate(command_parts):
+            if part == "--source" and index + 1 < len(command_parts):
+                return command_parts[index + 1]
+            if part.startswith("--source="):
+                return part.split("=", 1)[1]
+        lowered = command.lower()
+        if "market-bars" in lowered or "market_bars" in lowered:
+            return "market_bars"
+        for source_name in dashboard_data.PRICED_IN_SOURCE_CLASSES:
+            source_token = source_name.replace("_", "-")
+            if source_name in lowered or source_token in lowered:
+                return source_name
+    target_action = str(
+        workflow.get("coverage_first_action") or workflow.get("next_action") or ""
+    ).strip()
+    if target_action:
+        for step in _rows(workflow.get("steps")):
+            step_source = str(step.get("source") or "").strip()
+            step_action = str(step.get("action") or "").strip()
+            if step_source and step_action == target_action:
+                return step_source
+    for step in _rows(workflow.get("steps")):
+        step_source = str(step.get("source") or "").strip()
+        if step_source:
+            return step_source
+    return ""
 
 
 def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
