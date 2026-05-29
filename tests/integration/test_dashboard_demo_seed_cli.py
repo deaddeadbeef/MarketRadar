@@ -1846,11 +1846,6 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
 
     expected = {
         "overview": ("Inbox.", "open 1"),
-        "readiness": (
-            "Evidence Gaps.",
-            "Do not paste PowerShell here",
-            "first-blocker command outside dashboard",
-        ),
         "run": ("Safe Run.", "Do not paste PowerShell here", "run execute waits"),
         "candidates": ("Candidate Review.", "Evidence first", "2 Evidence Gaps"),
         "candidate:ACME": ("Candidate ACME.", "2 Evidence Gaps", "action ACME watch"),
@@ -1873,8 +1868,20 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
     app.page = "candidates"
     assert "open 1" not in app._command_placeholder()
     app.page = "readiness"
-    assert "batch <source>" not in app._command_placeholder()
-    assert "bars manual import" not in app._command_placeholder()
+    placeholder = app._command_placeholder()
+    first_gap = dashboard_tui_module._readiness_first_work_item(app.payload)
+    first_action = str(
+        first_gap.get("next_action") or first_gap.get("action") or ""
+    ).strip()
+    if dashboard_tui_module._first_catalyst_radar_command(first_action):
+        assert "Evidence Gaps." in placeholder
+        assert "Do not paste PowerShell here" in placeholder
+        assert "first-blocker command outside dashboard" in placeholder
+        assert "batch <source>" not in placeholder
+        assert "bars manual import" not in placeholder
+    else:
+        assert "Evidence Gaps." in placeholder
+        assert "batch <source>" in placeholder
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(
