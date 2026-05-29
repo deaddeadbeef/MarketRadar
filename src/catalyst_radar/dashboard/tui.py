@@ -1788,6 +1788,18 @@ class MarketRadarDashboardApp(App[int]):
         if page == "readiness":
             return "Evidence Gaps. Try: batch <source>, bars manual import, 3, refresh, help, q"
         if page == "run":
+            step = _priced_in_operator_step(self.payload)
+            command = (
+                str(step.get("tui_command") or step.get("command") or "").strip()
+                if step
+                else ""
+            )
+            status = str(step.get("status") or "").strip().lower() if step else ""
+            if status == "blocked" or (command and "run execute" not in command):
+                return (
+                    "Safe Run. Do NEXT SAFE ACTION first; run execute waits "
+                    "until blockers clear. 2, inbox, refresh, help, q"
+                )
             return (
                 "Safe Run. Try: run execute only after reviewing calls; "
                 "2, inbox, refresh, help, q"
@@ -2404,6 +2416,12 @@ class MarketRadarDashboardApp(App[int]):
                         f"{_powershell_command_boundary(command)}"
                     ),
                 ]
+            run_next = (
+                "[bold]Do next:[/] run the PowerShell command below first; "
+                "run execute waits."
+                if command and "run execute" not in command
+                else "[bold]Do next:[/] inspect rows first; type run execute only when you mean it."
+            )
             return "\n".join(
                 [
                     "[bold #7ee787]USE THIS PAGE[/] A run may call external providers.",
@@ -2411,7 +2429,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"[bold]Budget:[/] max {call_plan.get('max_external_call_count')} calls. "
                         f"[bold]Status:[/] {call_plan.get('status') or 'unknown'}."
                     ),
-                    "[bold]Do next:[/] inspect rows first; type run execute only when you mean it.",
+                    run_next,
                     *command_lines,
                 ]
             )

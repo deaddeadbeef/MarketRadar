@@ -1847,7 +1847,7 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
     expected = {
         "overview": ("Inbox.", "open 1"),
         "readiness": ("Evidence Gaps.", "batch <source>"),
-        "run": ("Safe Run.", "run execute only after reviewing calls"),
+        "run": ("Safe Run.", "Do NEXT SAFE ACTION first", "run execute waits"),
         "candidate:ACME": ("Candidate ACME.", "2 Evidence Gaps", "action ACME watch"),
         "broker": ("Broker.", "ticket <ticker>"),
         "ops": ("Source workbench.", "batch <source> execute"),
@@ -1863,6 +1863,8 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
         assert "Type a command or click a message. Try:" not in placeholder
     app.page = "candidate:ACME"
     assert "ticket ACME" not in app._command_placeholder()
+    app.page = "run"
+    assert "run execute only after reviewing calls" not in app._command_placeholder()
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(
@@ -9227,6 +9229,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "No calls" in frame
             assert "Follow NEXT SAFE ACTION" in frame
             assert "run execute only if intended" not in frame
+            assert "run execute waits" in frame
+            assert "type run execute only when you mean it" not in frame
             assert "provider call(s)" in frame
             assert "DB write(s)" in frame
 
