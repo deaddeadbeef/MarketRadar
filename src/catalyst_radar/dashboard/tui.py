@@ -11276,13 +11276,30 @@ def _ipo_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = _rows(_mapping(payload.get("ipo_s1")).get("rows"))
     lines = [_rule("IPO / S-1", width)]
     if not rows:
-        lines.extend(
-            _wrap(
-                "No IPO/S-1 rows in this snapshot. Continue with Inbox or Candidates, "
-                "or refresh SEC ingestion if you expected new filings.",
-                width,
+        if _real_results_empty(payload):
+            lines.extend(
+                _locked_review_setup_lines(
+                    payload,
+                    width,
+                    title="No IPO/S-1 catalyst rows yet.",
+                    unlocks=(
+                        "IPO/S-1 filings are optional catalyst evidence after the "
+                        "main market scan is set up."
+                    ),
+                    after_setup=(
+                        "review Inbox and Candidate Review first; refresh SEC "
+                        "ingestion only when you intentionally need new filing evidence."
+                    ),
+                )
             )
-        )
+        else:
+            lines.extend(
+                _wrap(
+                    "No IPO/S-1 rows in this snapshot. Continue with Inbox or "
+                    "Candidates, or refresh SEC ingestion if you expected new filings.",
+                    width,
+                )
+            )
         return lines
     lines.extend(
         _table_lines(
@@ -13679,6 +13696,11 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
             return (
                 "IPO/S-1 rows are catalyst evidence only. Open a filing row; "
                 "browsing makes 0 SEC calls."
+            )
+        if _real_results_empty(payload):
+            return setup_footer or (
+                "Set up the market scan first; IPO/S-1 is optional catalyst "
+                "evidence after that."
             )
         return "No IPO/S-1 rows in this snapshot. Continue with Inbox or Candidates."
     if page == "broker":

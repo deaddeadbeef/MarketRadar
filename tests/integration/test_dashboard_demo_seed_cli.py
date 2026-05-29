@@ -1994,6 +1994,33 @@ def test_dashboard_tui_costs_waits_for_scan_before_value_judgment(
     assert "Candidate ledger coverage" not in output.out
 
 
+def test_dashboard_tui_ipo_waits_for_scan_before_sec_refresh(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-ipo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "ipo"]) == 0
+    output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
+
+    assert output.err == ""
+    assert "Page: IPO/S-1" in output.out
+    assert "No IPO/S-1 catalyst rows yet" in output.out
+    assert "No market scan has run yet" in output.out
+    assert "optional catalyst evidence" in output.out
+    assert "Set up Active universe first" in output.out
+    assert "PowerShell command" in output.out
+    assert "not the dashboard command box" in normalized
+    assert "refresh SEC ingestion only when you intentionally" in normalized
+    assert "need new filing evidence" in normalized
+    assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
+    assert "No IPO/S-1 rows in this snapshot" not in output.out
+    assert "No rows." not in output.out
+
+
 def test_dashboard_tui_overview_explains_scan_legend_for_novices(
     tmp_path: Path,
     monkeypatch,
