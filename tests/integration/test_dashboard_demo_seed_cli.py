@@ -5530,6 +5530,8 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     assert "click works" in overview
     assert "Decision Review required before action" in overview
     assert "Evidence Gaps first" in overview
+    assert "mood 80 vs price 25" in overview
+    assert "Open case; verify gaps." in overview
     assert "Build a Candidate Packet" not in overview
     assert "Current queue: 2 waiting evidence" not in overview
     assert (
@@ -9049,6 +9051,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "ACME" in frame
             assert "Bullish not priced" in frame
             assert "Missing / waiting" in frame
+            assert "mood" in frame
             assert "Mailbox" in frame
             assert "market emotion" in frame
             assert "price reaction" in frame
