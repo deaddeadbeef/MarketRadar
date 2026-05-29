@@ -42,6 +42,7 @@ from catalyst_radar.dashboard.tui import (
     _market_bar_operator_step_summary,
     _market_bar_provider_fill_summary,
     _market_bar_saved_capture_summary,
+    _market_inbox_count_summary,
     _market_inbox_rows,
     _priced_in_overview_rows,
     _priced_in_review_rows,
@@ -5017,15 +5018,16 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "Use the workflow navigation or open the highlighted row" not in case
 
     inbox_rows = _market_inbox_rows(payload)
-    assert [row["mailbox"] for row in inbox_rows] == ["Urgent", "Waiting Evidence"]
+    assert [row["mailbox"] for row in inbox_rows] == ["Urgent", "Worth Reading"]
     assert inbox_rows[0]["subject"].startswith("Bullish not priced")
     assert " | " not in inbox_rows[0]["subject"]
     assert " - gap 55" in inbox_rows[0]["subject"]
     assert inbox_rows[0]["missing"] == "missing options, broker context"
     assert "Open the case file" in inbox_rows[0]["next"]
-    assert inbox_rows[1]["next"] == "Evidence Gaps first."
+    assert inbox_rows[1]["next"] == "Open the case file and review evidence."
     assert inbox_rows[1]["status_message"] == (
-        "Evidence Gaps first. No calls. BETA is waiting on evidence."
+        "Worth reading: BETA. No calls. Open the case file, then verify "
+        "missing evidence before action."
     )
 
 
@@ -5486,21 +5488,27 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     overview = render_dashboard_tui(payload, page="overview", width=180)
 
     assert (
-        "Inbox summary: Visible page: 2 waiting evidence. "
+        "Inbox summary: Visible page: 1 worth reading, 1 waiting evidence. "
         "Queue total: 120; research 9 / blocked 58 / monitor 53."
     ) in overview
     assert (
-        "Visible page: 2 waiting evidence. "
+        "Visible page: 1 worth reading, 1 waiting evidence. "
         "Queue total: 120; research 9 / blocked 58 / monitor 53."
     ) in overview
     assert "Worth reading now: 9 research leads." in overview
     assert "Press 4 Candidate Review to inspect them" in overview
     assert "Visible examples: ACME." in overview
-    assert "Press 2 Evidence Gaps first" in overview
-    assert "not trade ideas until blockers clear" in overview
+    assert "NEXT SAFE ACTION: Open 1 Worth Reading message(s) next" in overview
+    assert "Treat them as research until the Decision Review page says otherwise" in overview
     assert "Evidence Gaps first" in overview
     assert "Build a Candidate Packet" not in overview
     assert "Current queue: 2 waiting evidence" not in overview
+    assert (
+        _market_inbox_count_summary(
+            {"Worth Reading": 9, "Blocked": 2, "Waiting Evidence": 39}
+        )
+        == "9 worth reading, 2 blocked, 39 waiting evidence"
+    )
 
 
 def test_market_inbox_selected_universe_caption_gives_full_scan_command() -> None:

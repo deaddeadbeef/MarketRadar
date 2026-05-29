@@ -6780,6 +6780,11 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
             status_message = (
                 f"Blocked case: {ticker}. No calls. Press 2 Evidence Gaps first."
             )
+        elif mailbox == "Worth Reading":
+            status_message = (
+                f"Worth reading: {ticker}. No calls. Open the case file, then "
+                "verify missing evidence before action."
+            )
         else:
             status_message = (
                 f"Opened Market Inbox case for {ticker}. No calls. "
@@ -6937,15 +6942,17 @@ def _market_inbox_mailbox(row: Mapping[str, object]) -> str:
         coverage not in {"", "none"}
         and any(token in coverage for token in ("missing", "stale", "unknown"))
     )
-    mismatch = "not priced" in signal or "mismatch" in signal
+    mismatch = "not priced" in signal or (
+        "mismatch" in signal and not signal.startswith("no mismatch")
+    )
     if decision_ready and not blocked:
         return "Urgent"
-    if waiting_for_evidence:
-        return "Waiting Evidence"
     if blocked:
         return "Blocked"
     if usefulness_status in {"research_useful", "watch_useful"} or mismatch:
         return "Worth Reading"
+    if waiting_for_evidence:
+        return "Waiting Evidence"
     return "Monitor"
 
 
@@ -6969,9 +6976,10 @@ def _market_inbox_count_summary(counts: Mapping[str, int]) -> str:
     total = sum(counts.values())
     if total <= 0:
         return ""
+    visible_labels = ("Urgent", "Worth Reading", "Blocked", "Waiting Evidence")
     parts = [
         f"{counts[label]} {label.lower()}"
-        for label in ("Urgent", "Worth Reading", "Waiting Evidence")
+        for label in visible_labels
         if counts.get(label)
     ]
     has_priority_parts = bool(parts)
@@ -6979,7 +6987,7 @@ def _market_inbox_count_summary(counts: Mapping[str, int]) -> str:
         parts.append(f"{total} message(s)")
     priority_total = sum(
         counts.get(label, 0)
-        for label in ("Urgent", "Worth Reading", "Waiting Evidence")
+        for label in visible_labels
     )
     if has_priority_parts and total > priority_total:
         parts.append(f"{total} total")
