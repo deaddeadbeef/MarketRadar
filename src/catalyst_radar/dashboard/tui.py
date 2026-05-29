@@ -13114,7 +13114,6 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
     runtime = _mapping(brief.get("runtime"))
     lines = [_rule("Agent Brief", width)]
     if _real_results_empty(payload):
-        lines.extend(_no_real_result_lines(payload, width))
         lines.extend(_agent_setup_locked_lines(payload, brief, width))
         return lines
     if _real_results_missing(payload):
@@ -13155,6 +13154,9 @@ def _agent_setup_locked_lines(
 ) -> list[str]:
     runtime = _mapping(brief.get("runtime"))
     lines = [_rule("Agent Coach Locked Until Setup Is Complete", width)]
+    lines.append(
+        "no market scan has run yet, so the agent has no real stock evidence to analyze."
+    )
     items = [
         (row["item"], row["detail"])
         for row in _agent_setup_locked_rows(payload, brief)
@@ -13183,10 +13185,13 @@ def _agent_setup_locked_rows(
 ) -> list[Mapping[str, object]]:
     calls = _mapping(brief.get("external_calls_made"))
     runtime = _mapping(brief.get("runtime"))
-    next_action = _no_real_result_next_action(
-        payload,
-        _mapping(payload.get("real_results")),
-    )
+    command = _first_scan_setup_command(payload)
+    blocker = _readiness_first_setup_blocker(payload)
+    if blocker:
+        area = _human_source_name(blocker.get("area") or "setup blocker")
+        next_action = f"{_setup_blocker_first_label(area)}."
+    else:
+        next_action = "Start with setup row 1."
     rows: list[Mapping[str, object]] = [
         {
             "_setup_locked": True,
@@ -13199,6 +13204,24 @@ def _agent_setup_locked_rows(
             "kind": "Setup",
             "item": "Do first",
             "detail": next_action,
+        },
+        {
+            "_setup_locked": True,
+            "kind": "Setup",
+            "item": "PowerShell command",
+            "detail": command or "No setup command recorded.",
+        },
+        {
+            "_setup_locked": True,
+            "kind": "Setup",
+            "item": "Approval",
+            "detail": "Continue only if you accept the data change or provider call.",
+        },
+        {
+            "_setup_locked": True,
+            "kind": "Setup",
+            "item": "Where to run",
+            "detail": "normal PowerShell prompt, not the dashboard command box.",
         },
         {
             "_setup_locked": True,

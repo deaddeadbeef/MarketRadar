@@ -1356,8 +1356,12 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "market/broker/shell/web disabled" in normalized
     assert "NEXT SAFE ACTION:" in output.out
     assert "Set up Active universe first" in output.out
+    assert "PowerShell command" in output.out
+    assert "Approval" in output.out
     assert "Continue only if you accept the data change or provider call" in normalized
-    assert "Why this page is blank" in output.out
+    assert "Where to run" in output.out
+    assert "normal PowerShell prompt" in normalized
+    assert "Why this page is blank" not in output.out
     assert "Do not run agent execute while this page says locked" in output.out
     assert "Run the PowerShell setup command first" in output.out
     assert "after real scan evidence exists" in output.out
