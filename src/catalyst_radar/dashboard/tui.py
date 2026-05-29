@@ -6913,9 +6913,11 @@ def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
             "before treating this as insight."
         )
     if _real_results_empty(payload):
+        blocker = _readiness_first_setup_blocker(payload)
+        area = _human_source_name(blocker.get("area") if blocker else "Active universe")
         return (
-            "Start with Setup row 1. Open Evidence Gaps for blockers; only run "
-            "provider commands intentionally."
+            f"{_setup_blocker_first_label(area)}. Open Evidence Gaps for "
+            "blockers; only run provider commands intentionally."
         )
     counts = _market_inbox_counts(rows)
     urgent = counts.get("Urgent", 0)
@@ -8150,7 +8152,11 @@ def _novice_cockpit_cards(payload: Mapping[str, object]) -> list[Mapping[str, ob
         or "Open Inbox."
     )
     if _real_results_empty(payload):
-        next_action = "Start with Setup row 1, then open Evidence Gaps."
+        blocker = _readiness_first_setup_blocker(payload)
+        area = _human_source_name(blocker.get("area") if blocker else "Active universe")
+        next_action = (
+            f"{_setup_blocker_first_label(area)}, then open Evidence Gaps."
+        )
         next_detail = (
             "Only run provider commands intentionally; browsing this dashboard "
             "makes 0 calls."

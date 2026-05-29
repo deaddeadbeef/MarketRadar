@@ -1578,7 +1578,8 @@ def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
     assert "Run intentionally:" not in screen
     assert "2. Fill latest prices" in screen
     assert "3. Run one capped scan" in screen
-    assert "NEXT SAFE ACTION: Start with Setup row 1" in screen
+    assert "NEXT SAFE ACTION: Set up Active universe first" in screen
+    assert "Set up setup first" not in screen
     assert "No rows." not in screen
 
 
@@ -1816,12 +1817,12 @@ def test_dashboard_tui_overview_is_novice_first_on_empty_database(
     assert "Can I act?" in output.out
     assert "Best next step" in output.out
     assert "No scan rows yet" in output.out
-    assert "Start here:" in output.out
-    assert "First real scan setup" in output.out
+    assert "First setup task" in output.out
     assert "these are instructions, not stock results" in output.out
     assert "Build the stock" in output.out
-    assert "0 stock result rows" in output.out
-    assert "Best next step: Start with Setup row 1" in output.out
+    assert "Best next step: Set up Active universe first" in output.out
+    assert "Start with Setup row 1" not in output.out
+    assert "Set up setup first" not in output.out
     assert "Raise CATALYST_POLYGON_TICKERS_MAX_PAGES" not in output.out
     assert "Browsing this dashboard made 0 calls" in output.out
     assert "0 Start" in output.out
