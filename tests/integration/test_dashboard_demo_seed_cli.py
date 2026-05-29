@@ -5134,6 +5134,14 @@ def test_costs_page_explains_missing_validation_baselines() -> None:
 
     assert "Validation evidence" in costs
     assert "Cost per useful alert" in costs
+    assert "Actual cost" in costs
+    assert "$0.00" in costs
+    assert "Monthly target" in costs
+    assert "$40.00" in costs
+    assert "Target coverage" in costs
+    assert "0.0%" in costs
+    assert "Target coverage pct" not in costs
+    assert "ChatGPT Pro offset pct" not in costs
     assert "not measurable (0 useful alerts)" in costs
     assert "No validation runs yet" in costs
     assert "no_validation_runs" not in costs
@@ -5150,6 +5158,12 @@ def test_costs_page_explains_missing_validation_baselines() -> None:
         if row["key"] == "Cost per useful alert"
     )
     assert cost_status_row["value"] == "not measurable (0 useful alerts)"
+    actual_cost_row = next(
+        row
+        for row in dashboard_tui_module._cost_status_rows(payload)
+        if row["key"] == "Actual cost"
+    )
+    assert actual_cost_row["value"] == "$0.00"
 
 
 def test_dashboard_humanizes_internal_status_tokens() -> None:

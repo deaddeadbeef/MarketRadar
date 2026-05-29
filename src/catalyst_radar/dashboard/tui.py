@@ -7518,10 +7518,13 @@ def _cost_status_rows(payload: Mapping[str, object]) -> list[Mapping[str, object
     outcome_coverage = _mapping(value_report.get("value_outcome_coverage"))
     validation_evidence = _mapping(value_report.get("validation_evidence"))
     return [
-        {"key": "Actual cost", "value": costs.get("total_actual_cost_usd") or 0},
+        {
+            "key": "Actual cost",
+            "value": _format_usd_amount(costs.get("total_actual_cost_usd") or 0),
+        },
         {
             "key": "Estimated cost",
-            "value": costs.get("total_estimated_cost_usd") or 0,
+            "value": _format_usd_amount(costs.get("total_estimated_cost_usd") or 0),
         },
         {"key": "Useful alerts", "value": costs.get("useful_alert_count") or 0},
         {
@@ -7530,11 +7533,15 @@ def _cost_status_rows(payload: Mapping[str, object]) -> list[Mapping[str, object
         },
         {
             "key": "Weighted value",
-            "value": value_ledger.get("confidence_weighted_value_usd") or 0,
+            "value": _format_usd_amount(
+                value_ledger.get("confidence_weighted_value_usd") or 0,
+            ),
         },
         {
             "key": "Monthly value verdict",
-            "value": value_report.get("verdict") or value_report.get("status") or "n/a",
+            "value": _human_status_label(
+                value_report.get("verdict") or value_report.get("status") or "n/a",
+            ),
         },
         {
             "key": "Candidate ledger coverage",
@@ -7546,7 +7553,7 @@ def _cost_status_rows(payload: Mapping[str, object]) -> list[Mapping[str, object
         },
         {
             "key": "Validation evidence",
-            "value": validation_evidence.get("status") or "n/a",
+            "value": _human_status_label(validation_evidence.get("status") or "n/a"),
         },
         {
             "key": "Next safe action",
@@ -12001,8 +12008,11 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
         _kv_lines(
             (
                 ("Attempt count", costs.get("attempt_count")),
-                ("Actual cost", costs.get("total_actual_cost_usd")),
-                ("Estimated cost", costs.get("total_estimated_cost_usd")),
+                ("Actual cost", _format_usd_amount(costs.get("total_actual_cost_usd"))),
+                (
+                    "Estimated cost",
+                    _format_usd_amount(costs.get("total_estimated_cost_usd")),
+                ),
                 ("Useful alerts", costs.get("useful_alert_count")),
                 ("Cost per useful alert", _cost_per_useful_alert_text(costs)),
             ),
@@ -12014,12 +12024,31 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
         _kv_lines(
             (
                 ("Value ledger entries", value_ledger.get("entry_count")),
-                ("Weighted value", value_ledger.get("confidence_weighted_value_usd")),
-                ("Ledger cost", value_ledger.get("cost_to_produce_usd")),
-                ("Net weighted value", value_ledger.get("net_confidence_weighted_value_usd")),
-                ("Monthly target", value_ledger.get("target_monthly_value_usd")),
-                ("Target coverage pct", value_ledger.get("target_coverage_pct")),
-                ("ChatGPT Pro offset pct", value_ledger.get("chatgpt_pro_offset_pct")),
+                (
+                    "Weighted value",
+                    _format_usd_amount(
+                        value_ledger.get("confidence_weighted_value_usd"),
+                    ),
+                ),
+                ("Ledger cost", _format_usd_amount(value_ledger.get("cost_to_produce_usd"))),
+                (
+                    "Net weighted value",
+                    _format_usd_amount(
+                        value_ledger.get("net_confidence_weighted_value_usd"),
+                    ),
+                ),
+                (
+                    "Monthly target",
+                    _format_usd_amount(value_ledger.get("target_monthly_value_usd")),
+                ),
+                (
+                    "Target coverage",
+                    _format_percentage_amount(value_ledger.get("target_coverage_pct")),
+                ),
+                (
+                    "ChatGPT Pro offset",
+                    _format_percentage_amount(value_ledger.get("chatgpt_pro_offset_pct")),
+                ),
             ),
             width=width,
         )
@@ -12035,7 +12064,9 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 ("Report month", value_report.get("month") or "n/a"),
                 (
                     "Net decision-support value",
-                    value_report.get("net_decision_support_value_usd"),
+                    _format_usd_amount(
+                        value_report.get("net_decision_support_value_usd"),
+                    ),
                 ),
                 (
                     "$40 threshold met",
@@ -12204,7 +12235,9 @@ def _cost_per_useful_alert_text(costs: Mapping[str, object]) -> object:
     if useful_count <= 0:
         return "not measurable (0 useful alerts)"
     cost_per_useful = costs.get("cost_per_useful_alert")
-    return cost_per_useful if cost_per_useful not in (None, "") else "not measured yet"
+    if cost_per_useful in (None, ""):
+        return "not measured yet"
+    return _format_usd_amount(cost_per_useful)
 
 
 def _candidate_ledger_coverage_text(coverage: Mapping[str, object]) -> str:
@@ -14442,6 +14475,10 @@ def _execution_cost_summary(payload: Mapping[str, object]) -> str:
 
 def _format_usd_amount(value: object) -> str:
     return f"${_number_or_zero(value):,.2f}"
+
+
+def _format_percentage_amount(value: object) -> str:
+    return f"{_number_or_zero(value):,.1f}%"
 
 
 def _cost_boundary_summary(payload: Mapping[str, object]) -> str:
