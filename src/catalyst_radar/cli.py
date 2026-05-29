@@ -5941,95 +5941,117 @@ def _print_market_bars_status(payload: Mapping[str, object]):
 
 
 def _print_market_bars_residual_review(payload: Mapping[str, object]):
+    missing_count = _int_value(payload.get("missing_as_of_bar_count"))
+    stock_like_missing = _int_value(payload.get("stock_like_missing_as_of_bar_count"))
+    non_stock_missing = _int_value(payload.get("non_stock_missing_as_of_bar_count"))
+    existing_count = _int_value(payload.get("existing_as_of_bar_count"))
+    active_count = _int_value(payload.get("active_security_count"))
+    expected_as_of = payload.get("expected_as_of") or "latest"
+
+    print("Market bar residual review")
+    result_label = (
+        "market-bar gate can clear"
+        if bool(payload.get("clears_market_bar_gate"))
+        else "still blocked"
+    )
     print(
-        "market_bars_residual_review "
-        f"status={payload.get('status')} "
-        f"expected_as_of={payload.get('expected_as_of')} "
-        f"scope={payload.get('coverage_scope')} "
-        f"active={payload.get('active_security_count')} "
-        f"existing={payload.get('existing_as_of_bar_count')} "
-        f"missing={payload.get('missing_as_of_bar_count')} "
-        "stock_like_missing="
-        f"{payload.get('stock_like_missing_as_of_bar_count')} "
-        "non_stock_missing="
-        f"{payload.get('non_stock_missing_as_of_bar_count')} "
-        f"clears_gate={str(bool(payload.get('clears_market_bar_gate'))).lower()} "
-        f"external_calls={payload.get('external_calls_made')} "
-        f"db_writes={payload.get('db_writes_made')}"
+        "Review result: "
+        f"{result_label}"
+    )
+    print(
+        "Why blocked: "
+        f"{missing_count} active securities are missing bars for {expected_as_of} "
+        f"({existing_count}/{active_count} already have bars; "
+        f"stock-like {stock_like_missing}, non-stock {non_stock_missing})."
     )
     type_counts = _mapping_value(payload.get("missing_security_type_counts"))
     if type_counts:
-        print(f"missing_security_types={_count_summary(type_counts)}")
+        print(f"Missing security types: {_count_summary(type_counts)}")
+    sample_tickers = [
+        str(ticker)
+        for ticker in _sequence_value(payload.get("missing_as_of_bar_ticker_sample"))
+        if str(ticker).strip()
+    ]
+    if sample_tickers:
+        more_count = _int_value(payload.get("missing_as_of_bar_ticker_more"))
+        more_text = f"; +{more_count} more" if more_count else ""
+        print(f"Sample missing tickers: {', '.join(sample_tickers[:12])}{more_text}")
     evidence = _mapping_value(payload.get("residual_evidence"))
     if evidence:
         print(
-            "residual_evidence "
-            f"zero_avg_dollar_volume_20d="
-            f"{evidence.get('zero_avg_dollar_volume_20d_count', 'n/a')} "
-            f"zero_market_cap={evidence.get('zero_market_cap_count', 'n/a')} "
-            f"no_history={evidence.get('missing_without_local_history_count', 'n/a')} "
-            f"no_options={evidence.get('no_options_count', 'n/a')} "
-            f"external_calls={evidence.get('external_calls_made', 0)}"
+            "Evidence: "
+            f"{_int_value(evidence.get('zero_market_cap_count'))} have zero market cap; "
+            f"{_int_value(evidence.get('zero_avg_dollar_volume_20d_count'))} have zero "
+            "20d dollar volume; "
+            f"{_int_value(evidence.get('missing_without_local_history_count'))} have no "
+            "local history; "
+            f"{_int_value(evidence.get('no_options_count'))} have no options."
         )
     projection = _mapping_value(payload.get("saved_file_projection"))
     if projection:
         print(
-            "saved_file_projection "
-            f"status={projection.get('status')} "
-            f"covered={projection.get('missing_covered_by_fixture_count')} "
-            f"missing_after={projection.get('missing_after_import_count')} "
-            f"path={projection.get('path')}"
+            "Saved Polygon/Massive file: "
+            f"{projection.get('path') or 'n/a'} would cover "
+            f"{_int_value(projection.get('missing_covered_by_fixture_count'))}; "
+            f"{_int_value(projection.get('missing_after_import_count'))} would still be "
+            "missing."
         )
     manual = _mapping_value(payload.get("manual_repair"))
     if manual:
-        print(
-            "manual_repair "
-            f"status={manual.get('status')} "
-            f"template={_compact_cli_text(manual.get('template_command'))} "
-            f"preview={_compact_cli_text(manual.get('import_preview_command'))}"
-        )
+        print("Manual repair template:")
+        print(f"  {_compact_cli_text(manual.get('template_command'))}")
+        print("Manual repair import preview:")
+        print(f"  {_compact_cli_text(manual.get('import_preview_command'))}")
     approval = _mapping_value(payload.get("approval_required_unblock"))
+    approval_required = bool(approval.get("approval_required"))
+    db_writes_required = _int_value(approval.get("db_writes_required_to_execute"))
+    external_calls_required = _int_value(approval.get("external_calls_required"))
+    preview_command = _compact_cli_text(approval.get("preview_command"))
+    execute_command = _compact_cli_text(approval.get("execute_command"))
+    verify_command = _compact_cli_text(approval.get("post_execute_verification_command"))
     if approval:
-        print(
-            "approval_required_unblock "
-            f"status={approval.get('status')} "
-            f"approval_required={str(bool(approval.get('approval_required'))).lower()} "
-            f"expected_missing={approval.get('expected_missing_count')} "
-            f"expected_eligible={approval.get('expected_eligible_count')} "
-            f"external_calls={approval.get('external_calls_required')} "
-            "db_writes_if_execute="
-            f"{approval.get('db_writes_required_to_execute')}"
-        )
-        print(
-            "approval_commands "
-            f"preview={_compact_cli_text(approval.get('preview_command'))} "
-            f"execute={_compact_cli_text(approval.get('execute_command'))} "
-            "verify="
-            f"{_compact_cli_text(approval.get('post_execute_verification_command'))}"
-        )
+        print(f"Approval required: {'yes' if approval_required else 'no'}")
     options = _sequence_value(payload.get("decision_options"))
+    active_repair = {}
     if options:
-        option_kinds = ",".join(
-            str(_mapping_value(item).get("kind")) for item in options
-        )
-        print(f"decision_options={option_kinds}")
         for item in options:
             option = _mapping_value(item)
             if option.get("kind") != "active_universe_repair":
                 continue
-            print(
-                "active_universe_repair "
-                f"preview={_compact_cli_text(option.get('preview_command'))} "
-                f"execute={_compact_cli_text(option.get('execute_command'))} "
-                f"expected_missing={option.get('expected_missing_count')} "
-                f"expected_eligible={option.get('expected_eligible_count')} "
-                "db_writes_if_execute="
-                f"{option.get('db_writes_required_to_execute')} "
-                f"external_calls={option.get('external_calls_required')}"
-            )
-    print(f"safe_default={payload.get('safe_default')}")
-    print(f"next_action={payload.get('next_action')}")
-    print(f"boundary={payload.get('zero_call_boundary')}")
+            active_repair = option
+            break
+    if active_repair:
+        preview_command = preview_command or _compact_cli_text(
+            active_repair.get("preview_command")
+        )
+        execute_command = execute_command or _compact_cli_text(
+            active_repair.get("execute_command")
+        )
+        db_writes_required = db_writes_required or _int_value(
+            active_repair.get("db_writes_required_to_execute")
+        )
+        external_calls_required = external_calls_required or _int_value(
+            active_repair.get("external_calls_required")
+        )
+    print("Safe default: Keep blocked until you approve a repair path.")
+    print(f"Recommended next step: {payload.get('next_action')}")
+    if preview_command and preview_command != "n/a":
+        print("Option 1 - Preview local universe repair:")
+        print(f"  {preview_command}")
+    if execute_command and execute_command != "n/a":
+        print(
+            "Option 2 - Execute local universe repair "
+            f"({db_writes_required} local DB writes; "
+            f"{external_calls_required} provider calls):"
+        )
+        print(f"  {execute_command}")
+    if verify_command and verify_command != "n/a":
+        print("After execute, verify with:")
+        print(f"  {verify_command}")
+    print(
+        "Boundary: 0 provider calls, 0 OpenAI calls, 0 broker/order calls. "
+        f"Review itself wrote {_int_value(payload.get('db_writes_made'))} DB rows."
+    )
 
 
 def _print_market_bars_residual_repair(payload: Mapping[str, object]):
