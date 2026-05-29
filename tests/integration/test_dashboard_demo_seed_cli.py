@@ -2944,6 +2944,7 @@ def test_saved_file_capture_summary_skips_missing_confirm_command() -> None:
                         "provider_saved_file_capture_command": (
                             "catalyst-radar market-bars saved-capture"
                         ),
+                        "provider_saved_file_capture_external_call_count": 1,
                         "provider_saved_file_next_action": (
                             "Validate the saved grouped-daily JSON response, then "
                             "import it."
@@ -2968,6 +2969,8 @@ def test_saved_file_capture_summary_skips_missing_confirm_command() -> None:
     assert "no capture command needed" in ops
     assert "Validate the saved grouped-daily JSON response" in combined
     assert "Direct provider fill: ready for approval" in ops
+    assert "Saved capture command" not in combined
+    assert "bars saved capture confirm" not in combined
     assert "type `n/a`" not in combined
     assert "ready_for_approval" not in combined
     assert "saved_file_available" not in combined
