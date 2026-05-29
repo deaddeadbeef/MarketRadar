@@ -9808,16 +9808,16 @@ def _readiness_modern_table_rows(payload: Mapping[str, object]) -> list[Mapping[
         rows.extend(
             [
                 {
-                    "area": "PowerShell command",
-                    "status": "review",
+                    "area": "Run in PowerShell",
+                    "status": "manual",
                     "finding": command,
-                    "next_action": _POWERSHELL_RUN_LOCATION,
+                    "next_action": "Copy into PowerShell; do not enter below.",
                 },
                 {
-                    "area": "Command boundary",
+                    "area": "Safety boundary",
                     "status": "zero call",
                     "finding": _powershell_command_boundary(command),
-                    "next_action": "Review only; no dashboard execution.",
+                    "next_action": "Dashboard shows this only; running it is separate.",
                 },
             ]
         )

@@ -5723,6 +5723,11 @@ def test_modern_run_and_evidence_pages_show_command_run_location() -> None:
                 assert "normal PowerShell prompt" in frame
                 assert "Command boundary" in frame
                 assert "Read-only market-bar review" in frame
+                if page == "readiness":
+                    assert "Run in PowerShell" in frame
+                    assert "Copy into PowerShell; do not enter below." in frame
+                    assert "Safety boundary" in frame
+                    assert "Dashboard shows this only; running it is separate." in frame
 
     asyncio.run(run_app())
 
