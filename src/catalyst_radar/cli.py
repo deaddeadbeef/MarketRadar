@@ -6006,9 +6006,11 @@ def _print_market_bars_residual_review(payload: Mapping[str, object]):
     approval_required = bool(approval.get("approval_required"))
     db_writes_required = _int_value(approval.get("db_writes_required_to_execute"))
     external_calls_required = _int_value(approval.get("external_calls_required"))
-    preview_command = _compact_cli_text(approval.get("preview_command"))
-    execute_command = _compact_cli_text(approval.get("execute_command"))
-    verify_command = _compact_cli_text(approval.get("post_execute_verification_command"))
+    preview_command = _human_cli_command(approval.get("preview_command"))
+    execute_command = _human_cli_command(approval.get("execute_command"))
+    verify_command = _human_cli_command(
+        approval.get("post_execute_verification_command")
+    )
     if approval:
         print(f"Approval required: {'yes' if approval_required else 'no'}")
     options = _sequence_value(payload.get("decision_options"))
@@ -6021,10 +6023,10 @@ def _print_market_bars_residual_review(payload: Mapping[str, object]):
             active_repair = option
             break
     if active_repair:
-        preview_command = preview_command or _compact_cli_text(
+        preview_command = preview_command or _human_cli_command(
             active_repair.get("preview_command")
         )
-        execute_command = execute_command or _compact_cli_text(
+        execute_command = execute_command or _human_cli_command(
             active_repair.get("execute_command")
         )
         db_writes_required = db_writes_required or _int_value(
@@ -6055,63 +6057,145 @@ def _print_market_bars_residual_review(payload: Mapping[str, object]):
 
 
 def _print_market_bars_residual_repair(payload: Mapping[str, object]):
+    status = str(payload.get("status") or "unknown")
+    mode = str(payload.get("mode") or "preview")
+    expected_as_of = payload.get("expected_as_of") or "latest"
+    active_count = _int_value(payload.get("active_security_count"))
+    existing_count = _int_value(payload.get("existing_as_of_bar_count"))
+    missing_count = _int_value(payload.get("missing_as_of_bar_count"))
+    eligible_count = _int_value(payload.get("eligible_count"))
+    ineligible_count = _int_value(payload.get("ineligible_count"))
+    deactivated_count = _int_value(payload.get("deactivated_count"))
+    external_calls = _int_value(payload.get("external_calls_made"))
+    db_writes_made = _int_value(payload.get("db_writes_made"))
+    db_writes_required = _int_value(payload.get("db_writes_required_to_execute"))
+
+    title_suffix = "executed" if status == "executed" else mode
+    print(f"Market bar residual repair {title_suffix}")
+    status_labels = {
+        "ready_to_execute": "ready to execute after review",
+        "executed": "executed",
+        "stale_approval": "blocked because approval counts no longer match",
+        "nothing_to_repair": "nothing to repair",
+    }
+    print(f"Result: {status_labels.get(status, status.replace('_', ' '))}")
     print(
-        "market_bars_residual_repair "
-        f"status={payload.get('status')} "
-        f"mode={payload.get('mode')} "
-        f"expected_as_of={payload.get('expected_as_of')} "
-        f"scope={payload.get('coverage_scope')} "
-        f"active={payload.get('active_security_count')} "
-        f"existing={payload.get('existing_as_of_bar_count')} "
-        f"missing={payload.get('missing_as_of_bar_count')} "
-        f"eligible={payload.get('eligible_count')} "
-        f"ineligible={payload.get('ineligible_count')} "
-        f"would_clear={str(bool(payload.get('preview_would_clear_market_bars'))).lower()} "
-        f"deactivated={payload.get('deactivated_count')} "
-        f"external_calls={payload.get('external_calls_made')} "
-        f"db_writes={payload.get('db_writes_made')}"
+        "Coverage checked: "
+        f"{expected_as_of}; {existing_count}/{active_count} active securities "
+        f"already have bars; {missing_count} are still missing."
     )
+    if mode == "preview" and status == "ready_to_execute":
+        print(
+            "What this would do: "
+            f"deactivate {eligible_count} strict zero-liquidity/no-history "
+            "active-universe rows from local scan coverage. It does not fill "
+            "bars or call providers."
+        )
+    elif status == "executed":
+        print(
+            "What changed: "
+            f"deactivated {deactivated_count} reviewed active-universe rows in "
+            "the local database."
+        )
+    elif status == "stale_approval":
+        print(
+            "What changed: nothing. The expected counts did not match the "
+            "current database snapshot, so the guarded write stayed blocked."
+        )
+    else:
+        print(
+            "Rows reviewed: "
+            f"{eligible_count} eligible, {ineligible_count} not eligible for "
+            "this local-universe repair."
+        )
     type_counts = _mapping_value(payload.get("eligible_security_type_counts"))
     if type_counts:
-        print(f"eligible_security_types={_count_summary(type_counts)}")
+        print(f"Eligible security types: {_count_summary(type_counts)}")
+    eligible_sample = [
+        str(ticker)
+        for ticker in _sequence_value(payload.get("eligible_ticker_sample"))
+        if str(ticker).strip()
+    ]
+    if eligible_sample:
+        more_count = _int_value(payload.get("eligible_ticker_more"))
+        more_text = f"; +{more_count} more" if more_count else ""
+        print(f"Sample rows: {', '.join(eligible_sample[:12])}{more_text}")
     reason_counts = _mapping_value(payload.get("ineligible_reason_counts"))
     if reason_counts:
-        print(f"ineligible_reasons={_count_summary(reason_counts)}")
+        print(f"Not eligible reasons: {_count_summary(reason_counts)}")
     guard = _mapping_value(payload.get("guard"))
     if guard:
         errors = _sequence_value(guard.get("errors"))
-        print(
-            "guard "
-            f"passed={str(bool(guard.get('passed'))).lower()} "
-            f"expected_missing={guard.get('expected_missing_count')} "
-            f"actual_missing={guard.get('actual_missing_count')} "
-            f"expected_eligible={guard.get('expected_eligible_count')} "
-            f"actual_eligible={guard.get('actual_eligible_count')} "
-            f"errors={','.join(str(item) for item in errors) if errors else 'none'}"
-        )
+        actual_missing = _int_value(guard.get("actual_missing_count"))
+        actual_eligible = _int_value(guard.get("actual_eligible_count"))
+        if not bool(guard.get("execute_requested")):
+            print(
+                "Approval guard: preview only. Execute requires "
+                f"--expect-missing-count {actual_missing} and "
+                f"--expect-eligible-count {actual_eligible}."
+            )
+        elif bool(guard.get("passed")):
+            print(
+                "Approval guard: passed. Expected counts matched the current "
+                "database snapshot."
+            )
+        else:
+            error_text = ", ".join(str(item) for item in errors) if errors else "none"
+            print(f"Approval guard: blocked. {error_text}")
     projection = _mapping_value(payload.get("post_repair_projection"))
     if projection:
+        projected_missing = _int_value(
+            projection.get("projected_missing_as_of_bar_count")
+        )
+        projected_active = _int_value(projection.get("projected_active_security_count"))
+        projected_next = projection.get("projected_next_blocker") or "none"
+        gate_effect = (
+            "clear"
+            if bool(projection.get("projected_market_bar_gate_cleared"))
+            else "still block"
+        )
         print(
-            "post_repair_projection "
-            f"status={projection.get('status')} "
-            f"projected_active={projection.get('projected_active_security_count')} "
-            f"projected_missing={projection.get('projected_missing_as_of_bar_count')} "
-            "market_bar_gate_cleared="
-            f"{str(bool(projection.get('projected_market_bar_gate_cleared'))).lower()} "
-            f"next_blocker={projection.get('projected_next_blocker') or 'none'} "
-            f"db_writes_if_execute={projection.get('db_writes_required_to_execute')} "
-            f"external_calls={projection.get('external_calls_made')} "
-            f"db_writes={projection.get('db_writes_made')}"
+            "After this repair: "
+            f"active universe would be {projected_active}; missing bars would be "
+            f"{projected_missing}; market-bar gate would {gate_effect}; "
+            f"next blocker would be {projected_next}."
         )
         projected_next_action = str(
             projection.get("projected_next_action") or ""
         ).strip()
         if projected_next_action:
-            print(f"post_repair_next_action={_compact_cli_text(projected_next_action)}")
-    print(f"preview_command={payload.get('preview_command')}")
-    print(f"execute_command={payload.get('execute_command')}")
-    print(f"safe_default={payload.get('safe_default')}")
-    print(f"next_action={payload.get('next_action')}")
+            print(f"Then: {_compact_cli_text(projected_next_action)}")
+    post_status = _mapping_value(payload.get("post_repair_status"))
+    if post_status:
+        print(
+            "Verified after execute: "
+            f"market-bars status {post_status.get('status')}; "
+            f"missing bars {_int_value(post_status.get('missing_as_of_bar_count'))}."
+        )
+    print(
+        "Boundary: "
+        f"{external_calls} provider calls, 0 OpenAI calls, 0 broker/order calls, "
+        f"{db_writes_made} DB writes made"
+        + (
+            f"; execute would write {db_writes_required} local rows."
+            if status != "executed" and db_writes_required
+            else "."
+        )
+    )
+    safe_default = _compact_cli_text(payload.get("safe_default"))
+    if safe_default != "n/a":
+        print(f"Safe default: {safe_default}")
+    preview_command = _human_cli_command(payload.get("preview_command"))
+    execute_command = _human_cli_command(payload.get("execute_command"))
+    if status != "executed" and execute_command != "n/a":
+        print("To execute after review:")
+        print(f"  {execute_command}")
+    elif preview_command != "n/a":
+        print("Preview command:")
+        print(f"  {preview_command}")
+    next_action = _compact_cli_text(payload.get("next_action"))
+    if next_action != "n/a":
+        print(f"Next action: {next_action}")
 
 
 def _print_market_bars_saved_capture_plan(payload: Mapping[str, object]):
@@ -9555,6 +9639,13 @@ def _detail_data_summary(brief: Mapping[str, object]) -> object:
 def _compact_cli_text(value: object) -> str:
     text = str(value or "n/a").strip()
     return " ".join(text.split())
+
+
+def _human_cli_command(value: object) -> str:
+    text = _compact_cli_text(value)
+    if text == "n/a":
+        return text
+    return " ".join(part for part in text.split() if part != "--json")
 
 
 def _print_external_json(payload: Mapping[str, object]) -> int:

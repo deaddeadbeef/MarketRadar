@@ -97,7 +97,7 @@ catalyst-radar assert-trial-ready --json
 catalyst-radar assert-trial-ready --minimum-product --json
 catalyst-radar assert-shadow-ready --json
 catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
-catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --json
+catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15
 catalyst-radar shadow-mode run --available-at <UTC-now> --preview --json
 catalyst-radar value-report --month 2026-05 --json
 catalyst-radar dashboard-tui
@@ -112,7 +112,7 @@ Do not treat the output as ready for capital until these blockers clear:
   for a guarded local residual repair command. The preview makes zero calls and
   zero writes; the guarded execute path would write 579 local active-universe
   rows. The current guard is:
-  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579 --expect-eligible-count 579 --execute --json`.
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579 --expect-eligible-count 579 --execute`.
 - After market bars clear, the next projected blocker is scan scope: run a
   full active-universe scan only after reviewing the live Polygon/SEC call plan.
 - Candidate packets and decision cards are not built for the current trusted
@@ -1009,11 +1009,12 @@ For automation, preview payloads keep actual and projected gates separate:
 `clears_market_bar_gate` / `actual_market_bar_gate_cleared` describe the current
 run result, while `execute_would_clear_market_bar_gate` and
 `projected_market_bar_gate_cleared` describe the guarded execute projection.
-The payload's `preview_command` and `execute_command` both include `--json`.
+The human CLI output omits `--json`; the JSON payload's `preview_command` and
+`execute_command` still include `--json` for scripts and API clients.
 
 ```powershell
-catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --json
-catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count <MISSING> --expect-eligible-count <ELIGIBLE> --execute --json
+catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15
+catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count <MISSING> --expect-eligible-count <ELIGIBLE> --execute
 ```
 
 The matching API route is `POST /api/radar/market-bars/residual-repair`.

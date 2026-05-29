@@ -1675,7 +1675,9 @@ def test_market_bars_residual_review_cli_flags_zero_liquidity_saved_gap(
     assert "Boundary: 0 provider calls, 0 OpenAI calls, 0 broker/order calls" in (
         human_output
     )
-    assert "--expect-missing-count 1 --expect-eligible-count 1 --execute --json" in (
+    assert "residual-repair --expected-as-of 2026-05-08" in human_output
+    assert "residual-repair --expected-as-of 2026-05-08 --json" not in human_output
+    assert "--expect-missing-count 1 --expect-eligible-count 1 --execute" in (
         human_output
     )
     assert "approval_required_unblock status=ready_to_execute" not in human_output
@@ -1824,9 +1826,23 @@ def test_market_bars_residual_repair_cli_preview_and_execute_with_guards(
 
     assert human_code == 0
     human_output = capsys.readouterr().out
-    assert "post_repair_projection status=would_clear_market_bars" in human_output
-    assert "projected_missing=0" in human_output
-    assert "external_calls=0 db_writes=0" in human_output
+    assert "Market bar residual repair preview" in human_output
+    assert "Result: ready to execute after review" in human_output
+    assert "What this would do: deactivate 1 strict zero-liquidity/no-history" in (
+        human_output
+    )
+    assert "Approval guard: preview only" in human_output
+    assert "After this repair: active universe would be 1; missing bars would be 0" in (
+        human_output
+    )
+    assert "Boundary: 0 provider calls, 0 OpenAI calls, 0 broker/order calls" in (
+        human_output
+    )
+    assert "--expect-missing-count 1 and --expect-eligible-count 1" in human_output
+    assert "--expect-missing-count 1 --expect-eligible-count 1 --execute" in (
+        human_output
+    )
+    assert "--json" not in human_output
 
     stale_code = main(
         [
