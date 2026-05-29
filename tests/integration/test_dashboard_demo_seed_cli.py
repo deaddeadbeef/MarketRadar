@@ -9370,6 +9370,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "ipo"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "IPO / S-1 catalyst evidence" in frame
+            assert "IPO/S-1 rows are catalyst evidence only" in frame
+            assert "Use the sidebar, page keys" not in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")
@@ -9751,6 +9753,8 @@ def test_modern_dashboard_command_navigation_reports_response(
                 assert app.status_message == expected_response
                 frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
                 assert expected_response in frame
+                if expected_page in {"themes", "validation", "costs"}:
+                    assert "Use the sidebar, page keys" not in frame
 
     asyncio.run(run_app())
 
