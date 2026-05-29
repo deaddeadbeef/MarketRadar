@@ -8737,6 +8737,8 @@ def _market_bar_provider_saved_capture_confirm_command(
     command = _market_bar_saved_capture_confirm_command(packet)
     if command:
         return command
+    if packet:
+        return ""
     provider_command = str(
         provider_plan.get("provider_saved_file_capture_command") or ""
     ).strip()
