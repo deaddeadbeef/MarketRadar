@@ -5630,7 +5630,12 @@ def test_broker_page_labels_empty_local_artifact_sections() -> None:
     assert "No saved local trigger rules yet" in broker
     assert "Blocked Order Tickets" in broker
     assert "No blocked order tickets yet" in broker
-    assert "NEXT SAFE ACTION: Broker needs_auth; browsing makes 0 Schwab calls" in broker
+    assert "Connection" in broker
+    assert "needs auth" in broker
+    assert "Portfolio equity" in broker
+    assert "$0.00" in broker
+    assert "NEXT SAFE ACTION: Broker needs auth; browsing makes 0 Schwab calls" in broker
+    assert "needs_auth" not in broker
 
 
 def test_ops_footer_uses_coverage_first_source_step() -> None:
