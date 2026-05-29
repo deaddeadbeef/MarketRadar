@@ -3025,11 +3025,16 @@ def _powershell_command_guidance(raw: str) -> str:
     else:
         return ""
 
-    boundary = (
-        _candidate_case_command_boundary(f"catalyst-radar {child_command} ")
-        if child_command in {"build-packets", "build-decision-cards"}
-        else "Run it only after accepting the command's call/write boundary."
-    )
+    shell_command_lower = shell_command.lower()
+    if " market-bars residual-review " in f" {shell_command_lower} ":
+        boundary = (
+            "Read-only market-bar review; no provider, OpenAI, broker, order, "
+            "or DB write calls."
+        )
+    elif child_command in {"build-packets", "build-decision-cards"}:
+        boundary = _candidate_case_command_boundary(f"catalyst-radar {child_command} ")
+    else:
+        boundary = "Run it only after accepting the command's call/write boundary."
     return _command_no_side_effects(
         "PowerShell command, not a dashboard command. "
         f"Run this in a normal PowerShell prompt: {shell_command}. {boundary}"
