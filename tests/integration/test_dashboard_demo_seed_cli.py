@@ -5449,6 +5449,20 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
     assert "none recorded" in case
     assert "Blocked" not in case
 
+    app = MarketRadarDashboardApp(
+        engine=create_engine("sqlite:///:memory:", future=True),
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="candidate:ACME",
+    )
+    app.payload = payload
+    guide = app._guide_text()
+    assert "Research case file; not trade approval" in guide
+    assert "press 2 Evidence Gaps before building packets or tickets" in guide
+    assert "browsing this case makes 0 provider calls" in guide
+    assert "Inspect this evidence before acting elsewhere" not in guide
+
 
 def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     payload = {
