@@ -13469,11 +13469,8 @@ def _help_lines(width: int) -> list[str]:
     lines.append(_rule("Command Reference", width))
     commands = [
         (
-            "0..10 or page name",
-            (
-                "Switch page; labels include inbox, evidence gaps, safe run, "
-                "and candidate review."
-            ),
+            "0..9, Ctrl+A, or page name",
+            "Switch page; Ctrl+A opens Agent Coach.",
         ),
         ("features", "List current Market Radar features and where they live in the TUI."),
         ("open <#|ticker>", "Open a candidate from Candidate Review."),
