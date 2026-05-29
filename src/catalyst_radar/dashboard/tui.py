@@ -9229,9 +9229,12 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 "Run the PowerShell setup command below after reviewing the "
                 "call/write budget."
             )
+        first_blocker = f"{priority}: {area}"
+        if setup_first:
+            first_blocker = _setup_blocker_first_label(area)
         top_items: list[tuple[str, object]] = [
             ("Stoplight", "Red rows block trust; green rows are already clear."),
-            ("First blocker", f"{priority}: {area}"),
+            ("First blocker", first_blocker),
             (
                 "Safe interaction",
                 "Open rows to inspect; 0 calls, 0 orders.",
@@ -9257,8 +9260,10 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
         lines.append("")
         if setup_first:
-            readiness_next_action = f"Start here: {display_action}"
-            readiness_evidence = f"setup blocked: {area}; no market scan yet"
+            readiness_next_action = (
+                f"{_setup_blocker_first_label(area)}: {display_action}"
+            )
+            readiness_evidence = f"{area} setup blocked; no market scan yet"
     lines.extend(
         _kv_lines(
             (
