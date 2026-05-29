@@ -8143,10 +8143,10 @@ def _no_real_result_next_action(
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule(_market_inbox_title(payload), width)]
-    lines.extend(_novice_cockpit_lines(payload, width))
-    lines.append(_priced_in_beginner_legend(width))
-    lines.append("")
     if _real_results_empty(payload):
+        lines.extend(_novice_cockpit_lines(payload, width))
+        lines.append(_priced_in_beginner_legend(width))
+        lines.append("")
         command = _first_scan_setup_command(payload)
         blocker = _readiness_first_setup_blocker(payload)
         if blocker:
@@ -8199,12 +8199,87 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
         return lines
-    lines.append(
-        "Latest scan results now arrive in Market Inbox as messages to triage."
-    )
+    lines.extend(_market_inbox_focus_lines(payload, width))
+    lines.append("")
     inbox_scope = _market_inbox_scope_summary(payload)
     if inbox_scope:
         lines.append(f"Inbox summary: {inbox_scope}.")
+    overview_rows = _market_inbox_rows(payload)
+    if overview_rows:
+        lines.extend(_market_inbox_triage_context_lines(payload, width))
+    else:
+        lines.extend(_market_inbox_diagnostic_lines(payload, width))
+    if overview_rows:
+        lines.extend(
+            _table_lines(
+                overview_rows,
+                [
+                    ("mailbox", "Mailbox", 16),
+                    ("ticker", "Ticker", 6),
+                    ("subject", "Subject", 24),
+                    ("why", "Why this reached you", 31),
+                    ("missing", "Missing / waiting", 20),
+                    ("next", "Next safe action", 27),
+                ],
+                width=width,
+                limit=50,
+            )
+        )
+    else:
+        lines.extend(_novice_empty_scan_lines(width))
+    lines.append("")
+    lines.extend(_wrap(_market_inbox_caption(payload), width))
+    return lines
+
+
+def _market_inbox_focus_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    calls = int(_number_or_zero(payload.get("external_calls_made")))
+    lines = _wrap(
+        "MarketRadar answers one question: has market emotion been fully "
+        "priced in, or is price still behind?",
+        width,
+    )
+    lines.extend(
+        _wrap(
+            "Read this like email: open rows that look worth reading, clear "
+            "Evidence Gaps first, and do not treat any row as actionable until "
+            "Decision Review says it is ready.",
+            width,
+        )
+    )
+    lines.append(_priced_in_beginner_legend(width))
+    lines.append(f"Browsing this dashboard made {calls} calls and 0 order submissions.")
+    return lines
+
+
+def _market_inbox_triage_context_lines(
+    payload: Mapping[str, object],
+    width: int,
+) -> list[str]:
+    lines: list[str] = []
+    decision_summary = _decision_readiness_summary(payload)
+    if decision_summary:
+        lines.extend(_wrap(f"Current blocker: {decision_summary}", width))
+    next_action = _current_priced_in_blocker_next_action(payload)
+    if next_action and next_action not in (decision_summary or ""):
+        lines.extend(_wrap(f"Do first: {next_action}", width))
+    lines.extend(
+        _wrap(
+            "Details: press 2 Evidence Gaps for blockers, 3 Safe Run for call "
+            "budget, 8 Ops for provider health, or Ctrl+A Agent Coach for a "
+            "zero-call agent preview.",
+            width,
+        )
+    )
+    lines.append("Messages below are research mail, not trade ideas.")
+    return lines
+
+
+def _market_inbox_diagnostic_lines(
+    payload: Mapping[str, object],
+    width: int,
+) -> list[str]:
+    lines: list[str] = []
     minimum_stop = _minimum_product_stop_line_summary(payload)
     if minimum_stop:
         lines.append(
@@ -8322,27 +8397,6 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     decision_summary = _decision_readiness_summary(payload)
     if decision_summary:
         lines.extend(_wrap(f"Decision readiness: {decision_summary}", width))
-    overview_rows = _market_inbox_rows(payload)
-    if overview_rows:
-        lines.extend(
-            _table_lines(
-                overview_rows,
-                [
-                    ("mailbox", "Mailbox", 16),
-                    ("ticker", "Ticker", 6),
-                    ("subject", "Subject", 24),
-                    ("why", "Why this reached you", 31),
-                    ("missing", "Missing / waiting", 20),
-                    ("next", "Next safe action", 27),
-                ],
-                width=width,
-                limit=50,
-            )
-        )
-    else:
-        lines.extend(_novice_empty_scan_lines(width))
-    lines.append("")
-    lines.extend(_wrap(_market_inbox_caption(payload), width))
     return lines
 
 
