@@ -1794,8 +1794,8 @@ class MarketRadarDashboardApp(App[int]):
             )
         if page == "candidate":
             return (
-                f"Candidate {ticker}. Try: 2, inbox, action {ticker} watch, "
-                f"ticket {ticker} ..., help, q"
+                f"Candidate {ticker}. Try: 2 Evidence Gaps, inbox, "
+                f"action {ticker} watch, help, q"
             )
         if page == "candidates":
             return "Candidate Review. Try: open 1, ticker AAPL, inbox, ready, full, help, q"
