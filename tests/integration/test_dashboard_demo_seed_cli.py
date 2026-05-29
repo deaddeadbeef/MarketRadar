@@ -1685,8 +1685,10 @@ def test_dashboard_missing_evidence_uses_current_blocker_not_stale_real_results_
         "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
         in combined
     )
-    assert "Budget: 0 provider call(s), 0 DB write(s); no approval." in overview
-    assert "Budget: 0 provider call(s), 0 DB write(s); no approval." in narrow_overview
+    assert "Browsing cost: 0 provider calls, 0 OpenAI calls." in overview
+    assert "Guarded command budget: provider calls 0" in overview
+    assert "Browsing cost: 0 provider calls, 0 OpenAI calls." in narrow_overview
+    assert "Guarded command budget: provider calls 0" in narrow_overview
     assert "Run/import real market data" not in combined
     assert "priced-in-answer --limit 50" not in combined
 
@@ -1831,9 +1833,13 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Trade status:" in output.out
     assert "Trade safe:" in output.out
     assert "Latest scan results - rows" in output.out
-    assert "Full scan audit:" in output.out
-    assert "Instrument scope:" in output.out
-    assert "Decision readiness:" in output.out
+    assert "Current blocker:" in output.out
+    assert "Do first:" in output.out
+    assert "Messages below are research mail, not trade ideas." in output.out
+    assert "Details: press 2 Evidence Gaps" in output.out
+    assert "Full scan audit:" not in output.out
+    assert "After this:" not in output.out
+    assert "catalyst-radar run-daily" not in output.out
     assert "Mailbox" in output.out
     assert "Missing" in output.out
     assert "Next data step:" in output.out
@@ -4768,9 +4774,12 @@ def test_overview_audit_summary_respects_requested_width() -> None:
 
     rendered = render_dashboard_tui(payload, page="overview", width=width)
 
-    assert "Full scan audit:" in rendered
-    assert "Instrument scope:" in rendered
-    assert "Decision readiness:" in rendered
+    assert "Current blocker:" in rendered
+    assert "Details: press 2 Evidence Gaps" in rendered
+    assert "Messages below are research mail, not trade ideas." in rendered
+    assert "Full scan audit:" not in rendered
+    assert "After this:" not in rendered
+    assert "catalyst-radar run-daily" not in rendered
     offenders = [
         f"{line_number}:{len(line)}:{line[:60]}"
         for line_number, line in enumerate(rendered.splitlines(), start=1)
