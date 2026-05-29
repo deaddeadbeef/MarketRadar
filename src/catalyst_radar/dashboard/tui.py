@@ -11411,6 +11411,12 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
             if item.get("title")
         )
         blockers = ", ".join(str(item) for item in _rows_or_values(brief.get("blockers")))
+        source_gaps = _candidate_source_action_summary(brief)
+        hard_blocker = (
+            "yes - hard blocker recorded"
+            if brief.get("blocked")
+            else "no hard blocker recorded"
+        )
         return (
             ("Signal", _priced_in_signal(str(brief.get("status") or ""), fallback="Candidate")),
             ("Usefulness", _candidate_usefulness_summary(brief)),
@@ -11431,9 +11437,9 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
                 ),
             ),
             ("Data coverage", _data_coverage_summary(row)),
-            ("Source gaps", _candidate_source_action_summary(brief)),
-            ("Blocked", "yes" if brief.get("blocked") else "no"),
-            ("Blockers", blockers),
+            ("Source gaps", source_gaps),
+            ("Hard blocker", hard_blocker),
+            ("Blocker details", blockers or "none recorded"),
             ("Next step", brief.get("next_step")),
             ("State", row.get("state")),
             ("Decision card", row.get("decision_card_id") or row.get("card")),
