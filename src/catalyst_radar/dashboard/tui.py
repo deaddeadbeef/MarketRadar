@@ -6761,7 +6761,7 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
         ticker = str(row.get("ticker") or "").strip().upper()
         signal = str(row.get("signal") or "Market signal").strip()
         gap = row.get("emotion_reaction_gap")
-        gap_text = "" if gap in (None, "") else f" | gap {gap}"
+        gap_text = "" if gap in (None, "") else f" - gap {gap}"
         subject = _clip(f"{signal}{gap_text}", 80)
         missing = str(row.get("data_coverage") or "unknown").strip() or "unknown"
         next_action = str(row.get("next_action") or "").strip()
