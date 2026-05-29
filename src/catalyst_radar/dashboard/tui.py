@@ -1983,6 +1983,7 @@ class MarketRadarDashboardApp(App[int]):
             "run": _run_page_next_safe_action(self.payload),
             "candidates": _candidates_next_safe_action(self.payload),
             "alerts": "Click or focus a row and press Enter to open an alert.",
+            "ipo": _footer_next_action(self.payload, "ipo"),
             "agent": (
                 _no_real_result_next_action(
                     self.payload,
@@ -1996,6 +1997,9 @@ class MarketRadarDashboardApp(App[int]):
             "ops": _ops_next_safe_action(self.payload),
             "telemetry": _telemetry_next_safe_action(self.payload),
             "features": _footer_next_action(self.payload, "features"),
+            "themes": _footer_next_action(self.payload, "themes"),
+            "validation": _footer_next_action(self.payload, "validation"),
+            "costs": _footer_next_action(self.payload, "costs"),
             "help": "Use the help table as the command reference.",
             "candidate": candidate_action,
         }.get(
