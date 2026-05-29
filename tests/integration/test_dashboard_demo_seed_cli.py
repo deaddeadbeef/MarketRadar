@@ -9300,6 +9300,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "first blocker" in frame
             assert "still needs options/broker" in frame
             assert "No packet yet" in frame
+            assert "tickets wait for Decision Review" in frame
+            assert "trigger, ticket, or dismiss" not in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")
