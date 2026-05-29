@@ -5822,6 +5822,17 @@ def test_telemetry_footer_uses_audit_status() -> None:
             "attention_count": 2,
             "guarded_count": 0,
             "events": [],
+            "rollup": [
+                {
+                    "category": "Needs attention",
+                    "count": 2,
+                    "latest_status": "blocked_input",
+                    "latest_reason": "blocked_by_failed_dependency:alert_planning",
+                    "operator_action": (
+                        "Inspect the latest failed, rejected, or blocked operation."
+                    ),
+                }
+            ],
         },
         "telemetry_coverage": {
             "status": "ready",
@@ -5849,6 +5860,10 @@ def test_telemetry_footer_uses_audit_status() -> None:
         line.startswith("Attention") and line.rstrip().endswith(": 2")
         for line in telemetry.splitlines()
     )
+    assert "Telemetry Attention Rollup" in telemetry
+    assert "Needs attention" in telemetry
+    assert "blocked input" in telemetry
+    assert "Inspect the latest failed" in telemetry
     assert "NEXT SAFE ACTION: Telemetry core ready; inspect 2 attention item(s)" in telemetry
     assert "Use the workflow navigation or open the highlighted row" not in telemetry
 
