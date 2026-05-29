@@ -9546,6 +9546,8 @@ def test_modern_dashboard_reference_rows_explain_enter_action(
 
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Feature inventory" in frame
+            assert "Use Features as the map of what exists" in frame
+            assert "Use the sidebar, page keys" not in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")
