@@ -1993,6 +1993,7 @@ class MarketRadarDashboardApp(App[int]):
                 else "Review the dry-run multi-agent brief; it makes zero provider calls."
             ),
             "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
+            "ops": _ops_next_safe_action(self.payload),
             "help": "Use the help table as the command reference.",
             "candidate": candidate_action,
         }.get(
@@ -14063,7 +14064,8 @@ def _ops_next_safe_action(payload: Mapping[str, object]) -> str:
             or "Review source gaps."
         )
         command_text = (
-            f" use `{_clip(command, 84)}`."
+            " press 2 Evidence Gaps for the full PowerShell command; "
+            "run outside dashboard."
             if command
             else f" execute: batch {workflow_source} execute."
         )
