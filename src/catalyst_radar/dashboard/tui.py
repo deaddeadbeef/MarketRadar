@@ -6897,6 +6897,7 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
                 f"Blocked case: {ticker}. No calls. Press 2 Evidence Gaps first."
             )
         elif mailbox == "Worth Reading":
+            next_action = "Open case; verify gaps."
             status_message = (
                 f"Worth reading: {ticker}. No calls. Open the case file, then "
                 "verify missing evidence before action."
@@ -6911,7 +6912,7 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
             {
                 "mailbox": mailbox,
                 "subject": subject,
-                "why": row.get("why_now") or "No explanation recorded.",
+                "why": _market_inbox_why(row),
                 "missing": "No current data gap" if missing == "none" else missing,
                 "next": next_action or "Open the case file and review evidence.",
                 "status_message": status_message,
@@ -6919,6 +6920,24 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
         )
         messages.append(message)
     return messages
+
+
+def _market_inbox_why(row: Mapping[str, object]) -> str:
+    emotion = row.get("emotion_score")
+    reaction = row.get("reaction_score")
+    if emotion not in (None, "") and reaction not in (None, ""):
+        return (
+            f"mood {_format_market_inbox_score(emotion)} vs "
+            f"price {_format_market_inbox_score(reaction)}"
+        )
+    why_now = str(row.get("why_now") or "").strip()
+    return why_now or "No explanation recorded."
+
+
+def _format_market_inbox_score(value: object) -> str:
+    number = _number_or_zero(value)
+    text = f"{number:.1f}"
+    return text.rstrip("0").rstrip(".")
 
 
 def _first_scan_setup_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
