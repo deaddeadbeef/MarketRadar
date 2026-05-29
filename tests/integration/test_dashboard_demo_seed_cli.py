@@ -5379,6 +5379,7 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
                 {
                     "ticker": "ACME",
                     "state": "AddToWatchlist",
+                    "as_of": "2026-05-10T21:00:00+00:00",
                     "data_sources": {
                         "available": ["market_bars", "catalyst_events"],
                         "missing": ["options"],
@@ -5420,6 +5421,11 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
         "Fix source gaps first (options, broker context); then Build a Candidate "
         "Packet."
     ) in case
+    assert "Next command" in case
+    assert "catalyst-radar build-packets --as-of 2026-05-10" in case
+    assert "--ticker ACME --min-state ResearchOnly" in case
+    assert "Command boundary" in case
+    assert "Local DB write; no provider, OpenAI, broker, or order calls." in case
     assert "Evidence to verify:" not in case
     assert "Gaps:" not in case
     assert "Hard blocker" in case

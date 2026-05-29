@@ -11470,12 +11470,79 @@ def _candidate_case_summary_kv_pairs(
         if not safe
         else "Not trade approval; verify the evidence before any action."
     )
-    return (
+    pairs: list[tuple[str, object]] = [
         ("Can I act now?", can_act),
         ("What happened?", why),
         ("What is missing?", source_gaps or "none"),
         ("Next safe action", _candidate_case_next_safe_action(payload, ticker)),
+    ]
+    next_command = _candidate_case_next_command(row, ticker)
+    if next_command:
+        pairs.append(("Next command", next_command))
+        pairs.append(("Command boundary", _candidate_case_command_boundary(next_command)))
+    return tuple(pairs)
+
+
+def _candidate_case_next_command(row: Mapping[str, object], ticker: str) -> str:
+    brief = _mapping(row.get("priced_in_evidence_brief"))
+    usefulness = _mapping(brief.get("usefulness")) or _mapping(row.get("usefulness"))
+    explicit = str(
+        _first_nonblank(
+            row.get("priced_in_next_command"),
+            brief.get("next_command"),
+            usefulness.get("next_command"),
+        )
+        or ""
+    ).strip()
+    if explicit:
+        return explicit
+    next_step = str(
+        _first_nonblank(
+            brief.get("next_step") if brief else None,
+            row.get("priced_in_next_step"),
+            row.get("next_step"),
+            row.get("decision_next_step"),
+        )
+        or ""
+    ).lower()
+    command_ticker = (
+        ticker.strip().upper()
+        or str(row.get("ticker") or "<TICKER>").strip().upper()
     )
+    command_ticker = command_ticker or "<TICKER>"
+    command_as_of = _candidate_case_command_as_of(row)
+    if "candidate packet" in next_step and not str(row.get("candidate_packet_id") or "").strip():
+        return (
+            "catalyst-radar build-packets "
+            f"--as-of {command_as_of} --ticker {command_ticker} "
+            "--min-state ResearchOnly"
+        )
+    if (
+        "decision card" in next_step
+        and str(row.get("candidate_packet_id") or "").strip()
+        and not str(row.get("decision_card_id") or "").strip()
+    ):
+        return (
+            "catalyst-radar build-decision-cards "
+            f"--as-of {command_as_of} --ticker {command_ticker} "
+            "--min-state ResearchOnly"
+        )
+    return ""
+
+
+def _candidate_case_command_as_of(row: Mapping[str, object]) -> str:
+    parsed = _datetime_or_none(row.get("as_of"))
+    if parsed is None:
+        return "<LATEST_TRADING_DATE>"
+    return parsed.date().isoformat()
+
+
+def _candidate_case_command_boundary(command: str) -> str:
+    if " build-packets " in f" {command} ":
+        return "Local DB write; no provider, OpenAI, broker, or order calls."
+    if " build-decision-cards " in f" {command} ":
+        return "Local review artifact write; no broker or order calls."
+    return "Review before running; browsing this page made 0 calls."
 
 
 def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
