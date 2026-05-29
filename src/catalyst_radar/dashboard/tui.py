@@ -2867,7 +2867,8 @@ class MarketRadarDashboardApp(App[int]):
             f"Candidate {ticker}",
             [("key", "Case question", 24), ("value", "Answer", 110)],
             rows,
-            "Verify the evidence, then decide watch, trigger, ticket, or dismiss.",
+            "Verify evidence first. Watch/trigger/dismiss are local; "
+            "tickets wait for Decision Review.",
         )
 
     def _alert_detail_model(
