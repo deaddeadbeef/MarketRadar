@@ -5597,6 +5597,27 @@ def test_support_pages_have_specific_next_actions() -> None:
         assert "Use the workflow navigation or open the highlighted row" not in rendered
 
 
+def test_features_page_map_uses_readable_unclipped_rows() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+        "feature_inventory": list(dashboard_tui_module.DASHBOARD_FEATURES),
+    }
+
+    rendered = render_dashboard_tui(payload, page="features", width=120)
+
+    assert "Current Market Radar Features" in rendered
+    assert "Readiness, value, next step" in rendered
+    assert "1 Inbox, 2 Gaps" in rendered
+    assert "Review calls before executing." in rendered
+    assert "..." not in rendered
+
+
 def test_help_page_matches_agent_navigation_shortcut() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},
