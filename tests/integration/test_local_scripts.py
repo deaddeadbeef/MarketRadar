@@ -98,6 +98,8 @@ def test_dashboard_e2e_debug_script_checks_render_and_orphans() -> None:
     assert "RedirectStandardError" in text
     assert "Get-DashboardProcessSnapshot" in text
     assert "Get-DashboardExpectedPageLabels" in text
+    assert 'StartsWith("candidate:")' in text
+    assert "Candidate $candidateTicker" in text
     assert "Agent Coach" in text
     assert "left child process(es) behind" in text
     assert "Dashboard E2E debug passed." in text

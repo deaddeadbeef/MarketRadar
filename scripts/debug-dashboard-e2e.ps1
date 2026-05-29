@@ -79,6 +79,12 @@ function Get-DashboardExpectedPageLabels {
     }
     $normalized = $normalized.Trim().ToLowerInvariant()
     $normalized = $normalized -replace "[\s_]+", "-"
+    if ($normalized.StartsWith("candidate:")) {
+        $candidateTicker = $Page.Split(":", 2)[1].Trim().ToUpperInvariant()
+        if (-not [string]::IsNullOrWhiteSpace($candidateTicker)) {
+            return @("Candidate $candidateTicker")
+        }
+    }
     switch ($normalized) {
         "0" { @("tutorial", "Start") }
         "learn" { @("tutorial", "Start") }

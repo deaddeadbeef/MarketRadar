@@ -7123,9 +7123,14 @@ def _candidate_case_next_safe_action(payload: Mapping[str, object], ticker: str)
     has_source_gaps = source_gaps not in {"", "none", "n/a"}
     evidence_target = f"Top evidence: {_clip(top_evidence, 52)}. " if top_evidence else ""
     if has_source_gaps:
+        gap_labels = _candidate_case_source_gap_labels(row, brief)
+        gap_label = ", ".join(gap_labels[:4]) if gap_labels else "listed evidence"
+        if len(gap_labels) > 4:
+            gap_label = f"{gap_label}, +{len(gap_labels) - 4} more"
+        then_clause = _clip((next_step or "return to Candidate Review").rstrip("."), 80)
         return (
-            f"{ticker}: no trade decision yet. Fix source gaps after evidence check. "
-            f"{evidence_target}Gaps: {_clip(source_gaps, 80)}."
+            f"{ticker}: no trade decision yet. Fix source gaps first ({gap_label}); "
+            f"then {then_clause}."
         )
     if next_step:
         return (
@@ -7136,6 +7141,29 @@ def _candidate_case_next_safe_action(payload: Mapping[str, object], ticker: str)
         f"{ticker}: no trade decision yet. Verify evidence first, then return to "
         "Inbox or Decision Review."
     )
+
+
+def _candidate_case_source_gap_labels(
+    row: Mapping[str, object],
+    brief: Mapping[str, object],
+) -> list[str]:
+    labels: list[str] = []
+
+    def add_label(value: object) -> None:
+        label = _human_source_name(value).strip().lower()
+        if label and label not in labels:
+            labels.append(label)
+
+    if brief:
+        for action in _rows(brief.get("source_actions")):
+            if str(action.get("status") or "") in {"ready", "not_applicable"}:
+                continue
+            add_label(action.get("source"))
+    data_sources = row.get("priced_in_data_sources") or row.get("data_sources")
+    if isinstance(data_sources, Mapping):
+        for value in [*_texts(data_sources.get("missing")), *_texts(data_sources.get("stale"))]:
+            add_label(value)
+    return labels
 
 
 def _candidate_case_source_gap_summary(

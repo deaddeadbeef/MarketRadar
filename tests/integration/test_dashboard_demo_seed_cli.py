@@ -5013,7 +5013,7 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "What is missing?" in case
     assert "Next safe action" in case
     assert "ACME: no trade decision yet" in case
-    assert "Fix source gaps" in case
+    assert "Fix source gaps first" in case
     assert "Use the workflow navigation or open the highlighted row" not in case
 
     inbox_rows = _market_inbox_rows(payload)
@@ -5393,6 +5393,9 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
     assert "What is missing?" in case
     assert "Source gaps" in case
     assert "options: Sync point-in-time options." in case
+    assert "Fix source gaps first (options); then Build a Candidate Packet." in case
+    assert "Evidence to verify:" not in case
+    assert "Gaps:" not in case
     assert "Hard blocker" in case
     assert "no hard blocker recorded" in case
     assert "Blocker details" in case
