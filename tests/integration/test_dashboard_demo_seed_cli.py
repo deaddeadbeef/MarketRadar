@@ -9205,6 +9205,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "NEXT SAFE ACTION" in frame
             assert "Open first Urgent message" in frame
             assert "Open 1 Urgent" not in frame
+            assert "Browsing cost: 0 provider calls, 0 OpenAI calls." in frame
+            assert "Guarded command budget" not in frame
             assert "LAST RESPONSE" in frame
             assert "CORE" in frame
             assert "REVIEW" in frame

@@ -2009,7 +2009,7 @@ class MarketRadarDashboardApp(App[int]):
         cost_summary = (
             "Cost: 0 provider/OpenAI calls. Feedback is local."
             if page == "alerts"
-            else _cost_boundary_summary(self.payload)
+            else _modern_cost_boundary_summary()
         )
         return (
             "[bold #7ee787]NEXT SAFE ACTION[/]\n"
@@ -15063,6 +15063,10 @@ def _cost_boundary_summary(payload: Mapping[str, object]) -> str:
         "Browsing cost: 0 provider calls, 0 OpenAI calls. "
         f"{_execution_cost_summary(payload)}"
     )
+
+
+def _modern_cost_boundary_summary() -> str:
+    return "Browsing cost: 0 provider calls, 0 OpenAI calls."
 
 
 def _candidate_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
