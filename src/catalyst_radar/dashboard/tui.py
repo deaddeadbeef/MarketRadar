@@ -7908,19 +7908,40 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append(_priced_in_beginner_legend(width))
     lines.append("")
     if _real_results_empty(payload):
-        lines.extend(_no_real_result_lines(payload, width))
+        command = _first_scan_setup_command(payload)
+        blocker = _readiness_first_setup_blocker(payload)
+        if blocker:
+            area = _human_source_name(blocker.get("area") or "setup blocker")
+            next_action = f"{_setup_blocker_first_label(area)}."
+        else:
+            next_action = "Start with setup row 1."
+        lines.append("No real result yet: no stock-analysis messages exist.")
+        lines.extend(
+            _wrap(
+                "This page becomes your Market Inbox after the first capped "
+                "scan. For now it only shows setup mail.",
+                width,
+            )
+        )
+        if next_action:
+            lines.extend(_wrap(f"First setup task: {next_action}", width))
+        if command:
+            lines.extend(_wrap(f"PowerShell command: {command}", width))
+            lines.append(
+                "Where to run: normal PowerShell prompt, not the dashboard command box."
+            )
+        lines.append("After setup: press 2 Evidence Gaps for bars, then 3 Safe Run.")
+        lines.append("Viewing this inbox makes 0 provider calls and 0 orders.")
         lines.append("")
         setup_rows = _market_inbox_rows(payload)
         if setup_rows:
-            lines.append("First real scan setup - these are instructions, not stock results.")
+            lines.append("Setup mail - these are instructions, not stock results.")
             lines.extend(
                 _table_lines(
                     setup_rows,
                     [
-                        ("mailbox", "Mailbox", 12),
                         ("subject", "Step", 28),
                         ("why", "Why this matters", 42),
-                        ("missing", "Missing", 18),
                         ("next", "Next safe action", 42),
                     ],
                     width=width,
@@ -7928,9 +7949,14 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 )
             )
             lines.append("")
-        lines.extend(_novice_empty_scan_lines(width))
-        lines.append("")
-        lines.extend(_wrap(_market_inbox_caption(payload), width))
+        lines.extend(
+            _wrap(
+                "When scan rows exist, this page groups them as messages: "
+                "Urgent first, Worth Reading second, Waiting Evidence only "
+                "after data repair.",
+                width,
+            )
+        )
         return lines
     lines.append(
         "Latest scan results now arrive in Market Inbox as messages to triage."
