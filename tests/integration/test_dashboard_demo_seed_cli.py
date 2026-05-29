@@ -5646,10 +5646,8 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     assert "press 4 Candidate Review" in overview
     assert "full review table" in overview
     assert "Visible examples: ACME." in overview
-    assert (
-        "NEXT SAFE ACTION: Open 1 Worth Reading; research only. "
-        "Decision Review before action."
-    ) in overview
+    assert "NEXT SAFE ACTION: Open first Worth Reading row. Research only." in overview
+    assert "Open 1 Worth Reading" not in overview
     assert "Evidence Gaps first" in overview
     assert "Bullish not priced" in overview
     assert "Bullish not priced - ..." not in overview
@@ -9205,7 +9203,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "KEYS" in frame
             assert "MOUSE" in frame
             assert "NEXT SAFE ACTION" in frame
-            assert "Open 1 Urgent message(s) first" in frame
+            assert "Open first Urgent message" in frame
+            assert "Open 1 Urgent" not in frame
             assert "LAST RESPONSE" in frame
             assert "CORE" in frame
             assert "REVIEW" in frame
@@ -9990,8 +9989,9 @@ def test_modern_dashboard_inbox_names_exact_worth_reading_action(
                 raise AssertionError("dashboard snapshot did not load")
 
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Open 1 Worth Reading; research only." in frame
-            assert "Decision Review before action." in frame
+            assert "Open first Worth Reading row. Research only." in frame
+            assert "Open 1 Worth Reading" not in frame
+            assert "Visible rows" not in frame
 
     asyncio.run(run_app())
 

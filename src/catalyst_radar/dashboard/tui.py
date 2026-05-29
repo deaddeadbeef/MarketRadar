@@ -1964,7 +1964,7 @@ class MarketRadarDashboardApp(App[int]):
         )
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
-            "overview": f"{inbox_action}{page_text}",
+            "overview": inbox_action,
             "readiness": _readiness_next_safe_action(
                 self.payload,
                 command_first=False,
@@ -7378,15 +7378,9 @@ def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
     blocked = counts.get("Blocked", 0)
     visible_total = sum(counts.values())
     if urgent:
-        return (
-            f"Open {urgent} Urgent message(s) first: click the first urgent row "
-            "or press Enter, then verify the evidence."
-        )
+        return "Open first Urgent message. Verify evidence."
     if worth_reading:
-        return (
-            f"Open {worth_reading} Worth Reading; research only. "
-            "Decision Review before action."
-        )
+        return "Open first Worth Reading row. Research only."
     if waiting and waiting == visible_total:
         return (
             "Press 2 Evidence Gaps first. These rows are not trade ideas until "
