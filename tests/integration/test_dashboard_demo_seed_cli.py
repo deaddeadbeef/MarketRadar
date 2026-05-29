@@ -1235,6 +1235,47 @@ def test_dashboard_agent_page_shows_agent_brief(
     assert "Why this page is blank" not in output.out
 
 
+def test_modern_agent_page_prioritizes_trusted_evidence_gate(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="agent",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+
+            assert "Agent brief - preview by default" in frame
+            assert "Trusted scan evidence" in frame
+            assert "scan rows 1 visible" in frame
+            assert "Run/import real market data" in frame
+            assert "Fill the missing env/budget values" not in frame
+
+    asyncio.run(run_app())
+
+
 def test_tui_agent_run_preview_is_zero_call() -> None:
     engine = create_engine("sqlite:///:memory:", future=True)
     create_schema(engine)

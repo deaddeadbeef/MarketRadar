@@ -10685,7 +10685,7 @@ def _agent_brief_rows(
             rows.append(
                 {
                     "kind": "Gate",
-                    "item": "Trusted evidence: waiting",
+                    "item": "Trusted scan evidence",
                     "detail": (
                         f"scan rows {row_count} visible; missing {missing}; "
                         f"next {_human_agent_text(next_action)}"
@@ -10790,8 +10790,17 @@ def _agent_coach_summary_rows(
         if payload is not None and _real_results_empty(payload)
         else ""
     )
+    evidence_waiting = (
+        payload is not None
+        and _real_results_missing(payload)
+        and not _real_results_empty(payload)
+    )
+    evidence_action = (
+        _no_real_result_next_action(payload, real_results) if evidence_waiting else ""
+    )
     next_action = _human_agent_text(
         setup_action
+        or evidence_action
         or _first_nonblank(
             credit_gate.get("next_action"),
             real_results.get("next_action"),
@@ -10800,7 +10809,7 @@ def _agent_coach_summary_rows(
         or "Stay in preview until gates are ready."
     )
     credit_status = credit_gate.get("status") or runtime.get("credit_gate_status") or "unknown"
-    return [
+    rows = [
         {
             "kind": "Start",
             "item": "What can the agent do?",
@@ -10809,30 +10818,48 @@ def _agent_coach_summary_rows(
                 "it cannot trade from this page."
             ),
         },
-        {
-            "kind": "Cost",
-            "item": "OpenAI calls",
-            "detail": (
-                "No calls made in preview; agent execute is required and still passes "
-                "through the credit gate."
-            ),
-        },
-        {
-            "kind": "Safety",
-            "item": "What is blocked?",
-            "detail": (
-                "real mode gate: "
-                f"{_human_status_label(runtime.get('real_mode_gate_status') or 'unknown')}; "
-                f"credit: {_human_status_label(credit_status)}; "
-                f"blocked tools: {blocked}."
-            ),
-        },
-        {
-            "kind": "Next",
-            "item": "Safe next action",
-            "detail": next_action,
-        },
     ]
+    if evidence_waiting:
+        row_count = _visible_scan_row_count(payload, real_results)
+        missing = ", ".join(_texts(real_results.get("missing"))) or "trusted evidence"
+        rows.append(
+            {
+                "kind": "Gate",
+                "item": "Trusted scan evidence",
+                "detail": (
+                    f"scan rows {row_count} visible; missing {missing}; "
+                    "agent execute stays blocked."
+                ),
+            }
+    )
+    rows.extend(
+        [
+            {
+                "kind": "Cost",
+                "item": "OpenAI calls",
+                "detail": (
+                    "No calls made in preview; agent execute is required and still "
+                    "passes through the credit gate."
+                ),
+            },
+            {
+                "kind": "Safety",
+                "item": "What is blocked?",
+                "detail": (
+                    "real mode gate: "
+                    f"{_human_status_label(runtime.get('real_mode_gate_status') or 'unknown')}; "
+                    f"credit: {_human_status_label(credit_status)}; "
+                    f"blocked tools: {blocked}."
+                ),
+            },
+            {
+                "kind": "Next",
+                "item": "Safe next action",
+                "detail": next_action,
+            },
+        ]
+    )
+    return rows
 
 
 def _agent_runtime_name(value: object) -> str:
