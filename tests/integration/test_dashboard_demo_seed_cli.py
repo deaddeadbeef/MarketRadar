@@ -5489,6 +5489,48 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     assert "Current queue: 2 waiting evidence" not in overview
 
 
+def test_market_inbox_selected_universe_caption_gives_full_scan_command() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_ready": False,
+            "answer": "Selected universe only.",
+        },
+        "priced_in_queue": {
+            "status": "selected_universe",
+            "count": 2,
+            "returned_count": 2,
+            "total_count": 120,
+            "offset": 0,
+            "filters": {"status": "all", "usefulness": None, "limit": 2},
+            "latest_run": {"universe": "liquid-us"},
+            "scan": {"scanned_candidate_states": 120},
+            "usefulness_counts": {
+                "research_useful": 0,
+                "blocked": 2,
+                "monitor_only": 118,
+            },
+            "rows": [
+                {"ticker": "ACME", "priced_in_status": "neutral"},
+                {"ticker": "BETA", "priced_in_status": "neutral"},
+            ],
+        },
+    }
+
+    overview = render_dashboard_tui(payload, page="overview", width=180)
+
+    assert "selected universe, not the whole active market" in overview
+    assert (
+        "powershell -ExecutionPolicy Bypass -File scripts/run-full-market-scan.ps1"
+        in overview
+    )
+    assert "scripts/run-full-market-scan.ps1 -Execute" in overview
+    assert "without --universe" not in overview
+
+
 def test_evidence_gaps_footer_names_first_must_fix_gap() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},
