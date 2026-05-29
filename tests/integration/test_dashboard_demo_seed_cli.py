@@ -1818,6 +1818,50 @@ def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
     asyncio.run(run_app())
 
 
+def test_modern_dashboard_command_placeholder_matches_page_context(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="overview",
+    )
+    app.payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+    )
+
+    expected = {
+        "overview": ("Inbox.", "open 1"),
+        "readiness": ("Evidence Gaps.", "batch <source>"),
+        "run": ("Safe Run.", "run execute only after reviewing calls"),
+        "candidate:ACME": ("Candidate ACME.", "action ACME watch"),
+        "broker": ("Broker.", "ticket <ticker>"),
+        "ops": ("Source workbench.", "batch <source> execute"),
+        "agent": ("Agent Coach.", "agent execute only with budget"),
+        "alerts": ("Alerts.", "feedback <alert-id>"),
+    }
+
+    for page, needles in expected.items():
+        app.page = page
+        placeholder = app._command_placeholder()
+        assert all(needle in placeholder for needle in needles), placeholder
+        assert "Type a command or click a message. Try:" not in placeholder
+
+
 def test_dashboard_tui_once_can_show_full_scan_mode(
     tmp_path: Path,
     monkeypatch,

@@ -1779,6 +1779,42 @@ class MarketRadarDashboardApp(App[int]):
                 "No scan yet. Try: setup, 2 Evidence Gaps, 3 Safe Run, "
                 "refresh, help, q"
             )
+        page = self.page.split(":", 1)[0]
+        ticker = self.page.split(":", 1)[1].upper() if ":" in self.page else "<ticker>"
+        if page == "overview":
+            return "Inbox. Try: open 1, ready, full, mismatches, next, prev, 2, 3, help, q"
+        if page == "readiness":
+            return "Evidence Gaps. Try: batch <source>, bars manual import, 3, refresh, help, q"
+        if page == "run":
+            return (
+                "Safe Run. Try: run execute only after reviewing calls; "
+                "2, inbox, refresh, help, q"
+            )
+        if page == "candidate":
+            return (
+                f"Candidate {ticker}. Try: 2, inbox, action {ticker} watch, "
+                f"ticket {ticker} ..., help, q"
+            )
+        if page == "candidates":
+            return "Candidate Review. Try: open 1, ticker AAPL, inbox, ready, full, help, q"
+        if page == "review":
+            return "Decision Review. Try: open 1, inbox, full, mismatches, broker, help, q"
+        if page == "alerts":
+            return "Alerts. Try: open 1, feedback <alert-id> useful/noisy/acted, inbox, help, q"
+        if page == "alert":
+            return "Alert. Try: feedback <alert-id> useful/noisy/acted, alerts, inbox, help, q"
+        if page == "broker":
+            return (
+                "Broker. Try: action <ticker> watch, trigger <ticker> ..., "
+                "ticket <ticker> ..., help, q"
+            )
+        if page == "ops":
+            return (
+                "Source workbench. Try: batch <source>, "
+                "batch <source> execute, source-gap <source>, help, q"
+            )
+        if page == "agent":
+            return "Agent Coach. Try: agent, agent execute only with budget, inbox, 2, help, q"
         return (
             "Type a command or click a message. Try: inbox, ready, full, "
             "mismatches, 2, 4, run, refresh, help, q"
