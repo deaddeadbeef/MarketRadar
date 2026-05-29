@@ -12696,6 +12696,12 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.extend(_wrap(_broker_next_safe_action(payload), width))
+    auth_lines = _broker_auth_setup_lines(snapshot)
+    if auth_lines:
+        lines.append("")
+        lines.append(_rule("Schwab Auth Setup", width))
+        for line in auth_lines:
+            lines.extend(_wrap(line, width))
     lines.append("")
     action_rows = _rows(broker.get("opportunity_actions"))
     lines.append(_rule("Local Watch Actions", width))
@@ -12785,6 +12791,31 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     return lines
+
+
+def _broker_auth_setup_lines(snapshot: Mapping[str, object]) -> list[str]:
+    status = str(snapshot.get("connection_status") or "").strip().lower()
+    if status not in {"needs_auth", "needs auth", "disconnected", "missing"}:
+        return []
+    return [
+        (
+            "Use Schwab only for read-only portfolio or market context; it is "
+            "not required for market scanning."
+        ),
+        (
+            "Set SCHWAB_CLIENT_ID, SCHWAB_CLIENT_SECRET, SCHWAB_REDIRECT_URI, "
+            "and BROKER_TOKEN_ENCRYPTION_KEY in .env.local."
+        ),
+        (
+            "Start the local API, then open "
+            "https://127.0.0.1:8443/api/brokers/schwab/connect."
+        ),
+        (
+            "Keep SCHWAB_ORDER_SUBMISSION_ENABLED=false; tickets stay local "
+            "previews and do not submit orders."
+        ),
+        "Runbook: docs/runbooks/schwab.md.",
+    ]
 
 
 def _source_action_sample_tickers(action: Mapping[str, object]) -> str:
