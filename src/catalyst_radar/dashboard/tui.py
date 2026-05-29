@@ -13074,6 +13074,36 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
         _readiness_first_setup_blocker(payload) if _real_results_empty(payload) else {}
     )
     lines = [_rule("Telemetry", width)]
+    if setup_blocker:
+        lines.extend(
+            _locked_review_setup_lines(
+                payload,
+                width,
+                title="No telemetry audit events yet.",
+                unlocks=(
+                    "Telemetry becomes useful after setup and one guarded run "
+                    "records local events."
+                ),
+                after_setup=(
+                    "run one capped scan, then return here to inspect run health."
+                ),
+            )
+        )
+        lines.append("")
+        lines.extend(
+            _table_lines(
+                _telemetry_event_rows(telemetry, setup_blocker=setup_blocker),
+                [
+                    ("occurred_at", "Occurred", 24),
+                    ("event_label", "Event", 24),
+                    ("status_label", "Status", 14),
+                    ("summary_label", "Summary", 64),
+                ],
+                width=width,
+                limit=1,
+            )
+        )
+        return lines
     lines.extend(
         _kv_lines(
             (
@@ -13104,32 +13134,6 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width=width,
         )
     )
-    if setup_blocker:
-        area = str(setup_blocker.get("area") or "setup").strip()
-        action = str(setup_blocker.get("next_action") or "").strip()
-        setup_command = _first_scan_setup_command(payload)
-        setup_items: list[tuple[str, object]] = [
-            ("Setup blocker", f"{_setup_blocker_first_label(area)}."),
-            ("Do first", action),
-        ]
-        if setup_command:
-            setup_items.extend(
-                [
-                    ("PowerShell command", setup_command),
-                    (
-                        "Where to run",
-                        "Run it in a normal PowerShell prompt, not in the "
-                        "dashboard command box.",
-                    ),
-                ]
-            )
-        setup_items.append(
-            (
-                "Telemetry useful after",
-                "Setup is complete and one guarded run has recorded local events.",
-            )
-        )
-        lines.extend(_kv_lines(setup_items, width=width))
     lines.append("")
     lines.extend(
         _table_lines(
