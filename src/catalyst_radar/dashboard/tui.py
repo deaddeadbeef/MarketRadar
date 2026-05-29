@@ -7943,14 +7943,9 @@ def _setup_command_footer_action(payload: Mapping[str, object]) -> str:
 
 def _setup_command_status_message(payload: Mapping[str, object]) -> str:
     command = _first_scan_setup_command(payload)
-    blocker = _readiness_first_setup_blocker(payload)
-    area = _human_source_name(blocker.get("area") if blocker else "setup")
     if command:
         return _command_no_side_effects(
-            f"{_setup_blocker_first_label(area)}. Run this in a normal PowerShell "
-            f"prompt, not in the dashboard command box: {command}. Continue only "
-            "if you approve the provider call or database write; then return here "
-            "and press r to refresh."
+            "Run the page's PowerShell command after approval; then press r."
         )
     if _real_results_empty(payload):
         return _command_no_side_effects(
