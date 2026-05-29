@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 from collections.abc import Mapping, Sequence
@@ -92,6 +93,7 @@ from catalyst_radar.dashboard.source_batches import (
 )
 from catalyst_radar.dashboard.tui import (
     DashboardFilters,
+    MarketRadarDashboardApp,
     dashboard_filters_for_page,
     dashboard_json_default,
     dashboard_snapshot_payload,
@@ -1305,8 +1307,54 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_tui.add_argument("--page", default="overview")
     dashboard_tui.add_argument("--once", action="store_true")
     dashboard_tui.add_argument("--no-clear", action="store_true")
+    dashboard_tui.add_argument(
+        "--screenshot-out",
+        help=(
+            "Write a Textual SVG screenshot of the requested dashboard page and exit."
+        ),
+    )
+    dashboard_tui.add_argument("--screenshot-width", type=int, default=160)
+    dashboard_tui.add_argument("--screenshot-height", type=int, default=44)
 
     return parser
+
+
+def _write_dashboard_screenshot(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    dotenv_loaded: bool,
+    filters: DashboardFilters,
+    initial_page: str,
+    output_path: Path,
+    width: int,
+    height: int,
+) -> Path:
+    width = max(80, int(width))
+    height = max(24, int(height))
+
+    async def capture() -> str:
+        app = MarketRadarDashboardApp(
+            engine=engine,
+            config=config,
+            dotenv_loaded=dotenv_loaded,
+            filters=filters,
+            initial_page=initial_page,
+        )
+        async with app.run_test(size=(width, height)) as pilot:
+            for _ in range(100):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise RuntimeError("dashboard snapshot did not load")
+            await pilot.pause()
+            return app.export_screenshot()
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(asyncio.run(capture()), encoding="utf-8")
+    return output_path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2160,6 +2208,22 @@ def main(argv: list[str] | None = None) -> int:
             telemetry_limit=args.telemetry_limit,
         )
         filters = dashboard_filters_for_page(filters, args.page)
+        if args.screenshot_out:
+            screenshot_path = _write_dashboard_screenshot(
+                engine=engine,
+                config=config,
+                dotenv_loaded=dotenv_loaded,
+                filters=filters,
+                initial_page=args.page,
+                output_path=Path(args.screenshot_out),
+                width=args.screenshot_width,
+                height=args.screenshot_height,
+            )
+            print(
+                "dashboard screenshot wrote "
+                f"path={screenshot_path} page={args.page} external_calls=0"
+            )
+            return 0
         if args.once:
             payload = dashboard_snapshot_payload(
                 engine=engine,

@@ -557,6 +557,7 @@ The primary operator dashboard can also run entirely in the terminal:
 ```powershell
 catalyst-radar dashboard-tui
 catalyst-radar dashboard-tui --once --page features
+catalyst-radar dashboard-tui --page overview --screenshot-out .state\dashboard-overview-latest.svg
 ```
 
 For a one-command PowerShell launcher, install the profile alias:
@@ -594,6 +595,8 @@ powershell -ExecutionPolicy Bypass -File scripts/debug-dashboard-e2e.ps1
 That debug script runs the same PowerShell launcher in once mode, verifies a
 dashboard frame rendered with `External calls made: 0`, and fails if the
 launcher leaves a new `dashboard-tui` child process behind.
+For visual QA, `dashboard-tui --screenshot-out <path>` writes a Textual SVG of
+the selected page and exits without provider, OpenAI, Schwab, or broker calls.
 
 ### Terminal dashboard basics
 
