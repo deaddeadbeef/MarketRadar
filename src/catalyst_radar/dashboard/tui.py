@@ -8215,7 +8215,21 @@ def _review_lines(payload: Mapping[str, object], width: int) -> list[str]:
     readiness = _mapping(payload.get("readiness"))
     lines = [_rule("Decision Review - priced-in answer, not trade approval", width)]
     if _real_results_empty(payload):
-        lines.extend(_no_real_result_lines(payload, width))
+        lines.extend(
+            _locked_review_setup_lines(
+                payload,
+                width,
+                title="No decision review yet.",
+                unlocks=(
+                    "This page summarizes whether the priced-in answer is ready "
+                    "for human review after real scan rows exist."
+                ),
+                after_setup=(
+                    "open Evidence Gaps, run one capped scan, then review "
+                    "candidate packets first."
+                ),
+            )
+        )
         return lines
     lines.append(
         "Answer: "
@@ -11294,12 +11308,19 @@ def _themes_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule("Themes", width)]
     if not rows:
         if _real_results_empty(payload):
-            lines.extend(_no_real_result_lines(payload, width))
             lines.extend(
-                _wrap(
-                    "Theme clusters appear only after real scan rows exist. "
-                    "There is no cluster to inspect or act on yet.",
+                _locked_review_setup_lines(
+                    payload,
                     width,
+                    title="No theme clusters yet.",
+                    unlocks=(
+                        "Theme clusters appear only after real scan rows reveal "
+                        "repeated catalyst patterns across stocks."
+                    ),
+                    after_setup=(
+                        "review Inbox and Candidate Review first; themes are "
+                        "secondary context, not trade signals."
+                    ),
                 )
             )
         else:
