@@ -1657,13 +1657,14 @@ def test_modern_dashboard_empty_inbox_setup_row_opens_evidence_gaps(
             await pilot.press("enter")
             await pilot.pause()
             assert app.page == "readiness"
-            assert "Run this in a normal PowerShell prompt" in app.status_message
             assert "No API calls/orders/writes." in app.status_message
+            assert "Run the page's PowerShell command after approval" in app.status_message
+            assert "then press r" in app.status_message
 
             assert await pilot.click("#action-setup")
             await pilot.pause()
             assert app.page == "readiness"
-            assert "Run this in a normal PowerShell prompt" in app.status_message
+            assert "Run the page's PowerShell command after approval" in app.status_message
 
     asyncio.run(run_app())
 
