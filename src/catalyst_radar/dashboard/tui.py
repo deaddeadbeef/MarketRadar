@@ -2120,7 +2120,8 @@ class MarketRadarDashboardApp(App[int]):
         )
 
     def _guide_text(self) -> str:
-        page = self.page.split(":", 1)[0]
+        raw_page = self.page
+        page = raw_page.split(":", 1)[0]
         readiness = _mapping(self.payload.get("readiness"))
         candidates = _mapping(self.payload.get("candidates"))
         alerts = _mapping(self.payload.get("alerts"))
@@ -2473,8 +2474,8 @@ class MarketRadarDashboardApp(App[int]):
                     "[bold]Do next:[/] Esc focuses the command box; q quits.",
                 ]
             )
-        if page.startswith("candidate:"):
-            ticker = page.split(":", 1)[1].strip().upper()
+        if raw_page.startswith("candidate:"):
+            ticker = raw_page.split(":", 1)[1].strip().upper()
             row = _candidate_detail_row(self.payload, ticker)
             brief = _mapping(row.get("priced_in_evidence_brief"))
             if row and _candidate_case_has_source_gaps(row, brief):
