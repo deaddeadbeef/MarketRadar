@@ -9472,11 +9472,16 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
         if scan_status == "selected_universe":
             latest_run = _mapping(queue.get("latest_run"))
             universe = str(latest_run.get("universe") or "selected").strip()
+            plan_command = (
+                "powershell -ExecutionPolicy Bypass -File "
+                "scripts/run-full-market-scan.ps1"
+            )
             return (
                 f"This page shows rows {start}-{end}: {returned} visible rows from "
                 f"{total} latest-scan rows in universe={universe}. "
                 "That is a selected universe, not the whole active market. "
-                "Run the radar without --universe to scan all active securities. "
+                f"Plan the all-active scan with `{plan_command}`; execute only "
+                f"after review with `{plan_command} -Execute`. "
                 f"{usefulness_text}{source_gap_text}{decision_gap_text} "
                 "Browsing makes 0 provider calls."
             )
