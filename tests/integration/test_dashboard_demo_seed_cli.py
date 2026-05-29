@@ -8929,6 +8929,48 @@ def test_dashboard_tui_supports_interactive_navigation_and_filters(
     assert "Saved alert feedback: demo-alert-acme ACME acted" in rendered
 
 
+def test_dashboard_tui_can_export_visual_screenshot(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    screenshot_path = tmp_path / "dashboard-overview.svg"
+    assert (
+        main(
+            [
+                "dashboard-tui",
+                "--page",
+                "overview",
+                "--screenshot-out",
+                str(screenshot_path),
+                "--screenshot-width",
+                "150",
+                "--screenshot-height",
+                "44",
+            ]
+        )
+        == 0
+    )
+
+    stdout = capsys.readouterr().out
+    assert "dashboard screenshot wrote" in stdout
+    assert "external_calls=0" in stdout
+    screenshot = html.unescape(screenshot_path.read_text(encoding="utf-8")).replace(
+        "\xa0", " "
+    )
+    assert "<svg" in screenshot
+    assert "MARKET INBOX" in screenshot
+    assert "ATTENTION QUEUE" in screenshot
+    assert "NEXT SAFE ACTION" in screenshot
+    assert "LAST RESPONSE" in screenshot
+
+
 def test_modern_dashboard_tui_supports_mouse_navigation(
     tmp_path: Path,
     monkeypatch,
