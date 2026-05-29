@@ -1846,7 +1846,11 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
 
     expected = {
         "overview": ("Inbox.", "open 1"),
-        "readiness": ("Evidence Gaps.", "batch <source>"),
+        "readiness": (
+            "Evidence Gaps.",
+            "Do not paste PowerShell here",
+            "first-blocker command outside dashboard",
+        ),
         "run": ("Safe Run.", "Do not paste PowerShell here", "run execute waits"),
         "candidates": ("Candidate Review.", "Evidence first", "2 Evidence Gaps"),
         "candidate:ACME": ("Candidate ACME.", "2 Evidence Gaps", "action ACME watch"),
@@ -1868,6 +1872,9 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
     assert "run execute only after reviewing calls" not in app._command_placeholder()
     app.page = "candidates"
     assert "open 1" not in app._command_placeholder()
+    app.page = "readiness"
+    assert "batch <source>" not in app._command_placeholder()
+    assert "bars manual import" not in app._command_placeholder()
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(
@@ -5821,6 +5828,11 @@ def test_modern_run_and_evidence_pages_show_command_run_location() -> None:
                     assert "Copy into PowerShell; do not enter below." in frame
                     assert "Safety boundary" in frame
                     assert "Dashboard shows this only; running it is separate." in frame
+                    placeholder = app._command_placeholder()
+                    assert "Do not paste PowerShell here" in placeholder
+                    assert "first-blocker command outside dashboard" in placeholder
+                    assert "batch <source>" not in placeholder
+                    assert "bars manual import" not in placeholder
 
     asyncio.run(run_app())
 
