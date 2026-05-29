@@ -12884,6 +12884,7 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
 
 def _ops_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[str]:
     blocker = _readiness_first_setup_blocker(payload)
+    command = _first_scan_setup_command(payload)
     next_action = _no_real_result_next_action(
         payload,
         _mapping(payload.get("real_results")),
@@ -12894,7 +12895,11 @@ def _ops_setup_locked_lines(payload: Mapping[str, object], width: int) -> list[s
         area = _human_source_name(blocker.get("area") or "setup blocker")
         blocker_label = f"{_setup_blocker_first_label(area)}."
         do_first = _humanize_dashboard_text(blocker.get("next_action"))
-    command = _first_scan_setup_command(payload)
+        if command:
+            do_first = (
+                "Use the PowerShell command below after accepting the data "
+                "change or provider call."
+            )
     setup_rows: list[tuple[str, object]] = [
         ("Can Ops diagnose runs?", "Not yet. No real scan rows exist."),
         ("First blocker", blocker_label),
