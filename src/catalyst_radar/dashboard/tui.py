@@ -11953,6 +11953,36 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
     snapshot = _mapping(broker.get("snapshot"))
     exposure = _mapping(broker.get("exposure"))
     lines = [_rule("Broker / Portfolio", width)]
+    if _real_results_empty(payload):
+        lines.append(
+            "Broker is optional; you do not need Schwab connected to start the market scan."
+        )
+        lines.extend(
+            _locked_review_setup_lines(
+                payload,
+                width,
+                title="No broker action needed yet.",
+                unlocks=(
+                    "Portfolio context can help later, after a real candidate exists "
+                    "and you choose to compare it with your account."
+                ),
+                after_setup=(
+                    "review candidates first; authenticate Schwab only if you want "
+                    "portfolio context."
+                ),
+            )
+        )
+        lines.extend(
+            _kv_lines(
+                (
+                    ("Schwab status", snapshot.get("connection_status")),
+                    ("Orders", "disabled unless explicitly configured"),
+                    ("Broker calls", "0 Schwab calls while browsing this page."),
+                ),
+                width=width,
+            )
+        )
+        return lines
     lines.extend(
         _kv_lines(
             (
@@ -11973,23 +12003,6 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width,
         )
     )
-    if _real_results_empty(payload):
-        lines.extend(_no_real_result_lines(payload, width))
-        lines.extend(
-            _wrap(
-                "Broker context is optional later. Do not authenticate Schwab or "
-                "create local watch, trigger, or ticket artifacts until real scan "
-                "rows exist and a candidate has been reviewed.",
-                width,
-            )
-        )
-        lines.extend(
-            _wrap(
-                "Browsing this page still makes 0 Schwab calls and submits 0 orders.",
-                width,
-            )
-        )
-        return lines
     lines.extend(_wrap(_broker_next_safe_action(payload), width))
     lines.append("")
     action_rows = _rows(broker.get("opportunity_actions"))
