@@ -9227,6 +9227,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "OpenAI calls" in frame
             assert "No calls made" in frame
             assert "Safe next action" in frame
+            assert "Agent locked: 0 OpenAI calls." in frame
+            assert "Press 2 Evidence Gaps" in frame
+            assert "0 OpenAI calls" in frame
             assert "AddToWatchlist" not in frame
             assert "residual_universe_review" not in frame
             assert "manual_csv" not in frame

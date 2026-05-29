@@ -1984,15 +1984,7 @@ class MarketRadarDashboardApp(App[int]):
             "candidates": _candidates_next_safe_action(self.payload),
             "alerts": "Click or focus a row and press Enter to open an alert.",
             "ipo": _footer_next_action(self.payload, "ipo"),
-            "agent": (
-                _no_real_result_next_action(
-                    self.payload,
-                    _mapping(self.payload.get("real_results")),
-                )
-                + " Agent preview is zero-call; execute stays blocked."
-                if _real_results_missing(self.payload)
-                else "Review the dry-run multi-agent brief; it makes zero provider calls."
-            ),
+            "agent": _modern_agent_next_safe_action(self.payload),
             "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
             "ops": _ops_next_safe_action(self.payload),
             "telemetry": _telemetry_next_safe_action(self.payload),
@@ -8503,6 +8495,12 @@ def _no_real_result_next_action(
         str(real_results.get("next_action") or "").strip()
         or "Run/import real market data, then rerun the priced-in answer."
     )
+
+
+def _modern_agent_next_safe_action(payload: Mapping[str, object]) -> str:
+    if _real_results_missing(payload):
+        return "Agent locked: 0 OpenAI calls. Press 2 Evidence Gaps."
+    return "Review agent preview; run agent execute only after budget approval."
 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
