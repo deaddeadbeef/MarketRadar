@@ -4968,6 +4968,16 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "Fix Evidence Gaps first." in candidates
     assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" in candidates
     assert "not trade approval" in candidates
+    default_width_candidates = render_dashboard_tui(payload, page="candidates", width=120)
+    candidate_header = next(
+        line
+        for line in default_width_candidates.splitlines()
+        if "Priced-in" in line and "Evidence" in line
+    )
+    assert "Ticker" in candidate_header
+    assert "Score" in candidate_header
+    assert "T..." not in candidate_header
+    assert "S..." not in candidate_header
 
     alerts = render_dashboard_tui(payload, page="alerts", width=180)
     assert "Alerts are research notifications, not trade signals or orders." in alerts

@@ -11205,16 +11205,7 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.extend(
         _table_lines(
             _indexed(rows),
-            [
-                ("index", "#", 4),
-                ("ticker", "Ticker", 7),
-                ("priced_in_status", "Priced-in", 20),
-                ("emotion_reaction_gap", "Gap", 7),
-                ("score", "Score", 7),
-                ("data_coverage", "Evidence", 36),
-                ("why_now", "Why Now", 30),
-                ("next_step", "Next Step", 28),
-            ],
+            _candidate_text_columns(width),
             width=width,
             limit=30,
         )
@@ -11233,6 +11224,30 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     return lines
+
+
+def _candidate_text_columns(width: int) -> list[tuple[str, str, int]]:
+    if width >= 160:
+        return [
+            ("index", "#", 4),
+            ("ticker", "Ticker", 7),
+            ("priced_in_status", "Priced-in", 20),
+            ("emotion_reaction_gap", "Gap", 7),
+            ("score", "Score", 7),
+            ("data_coverage", "Evidence", 36),
+            ("why_now", "Why Now", 30),
+            ("next_step", "Next Step", 28),
+        ]
+    return [
+        ("index", "#", 4),
+        ("ticker", "Ticker", 6),
+        ("priced_in_status", "Priced-in", 14),
+        ("emotion_reaction_gap", "Gap", 6),
+        ("score", "Score", 6),
+        ("data_coverage", "Evidence", 24),
+        ("why_now", "Why Now", 20),
+        ("next_step", "Next Step", 19),
+    ]
 
 
 def _candidate_table_row(
