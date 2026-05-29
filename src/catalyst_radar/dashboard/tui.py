@@ -7254,8 +7254,8 @@ def _candidate_case_next_safe_action(payload: Mapping[str, object], ticker: str)
             gap_label = f"{gap_label}, +{len(gap_labels) - 4} more"
         action_gap_label = _candidate_case_source_gap_action_label(gap_labels)
         return (
-            f"{ticker}: Press 2 Evidence Gaps for {action_gap_label or gap_label}; "
-            "no packet until gaps clear."
+            f"{ticker}: Press 2 Evidence Gaps for first blocker; still needs "
+            f"{action_gap_label or gap_label}. No packet yet."
         )
     if next_step:
         return (
