@@ -8951,18 +8951,21 @@ def test_dashboard_run_page_next_safe_action_uses_operator_step():
     }
     action = _run_page_next_safe_action(payload)
 
+    assert "Review command above; run in PowerShell only." in action
     assert "Review residual market-bar rows before filling bars" in action
-    assert "catalyst-radar market-bars residual-review" in action
-    assert "--expected-as-of 2026-05-15" in action
+    assert "catalyst-radar market-bars residual-review" not in action
+    assert "--expected-as-of 2026-05-15" not in action
     assert "--expected-as-..." not in action
     assert "0 provider call(s), 0 DB write(s); no approval." in action
     assert "run execute only if intended" not in action
 
     run = render_dashboard_tui(payload, page="run", width=120)
     normalized_run = " ".join(run.split())
+    assert "NEXT SAFE ACTION: Review command above; run in PowerShell only." in run
     assert "Review residual market-bar rows before filling bars" in run
     assert "catalyst-radar market-bars residual-review" in run
-    assert "--expected-as-of 2026-05-15" in run
+    assert "--expected-as-of" in normalized_run
+    assert "2026-05-15" in normalized_run
     assert "--expected-as-..." not in run
     assert "0 provider call(s), 0 DB write(s); no approval." in normalized_run
     assert "Review the call budget; type run execute" not in run

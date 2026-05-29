@@ -3393,7 +3393,7 @@ def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
     if command:
         return "\n".join(
             [
-                f"Use `{command}`.",
+                "Review command above; run in PowerShell only.",
                 f"Budget: {calls} provider call(s), {writes} DB write(s); {approval}.",
                 action,
             ]
