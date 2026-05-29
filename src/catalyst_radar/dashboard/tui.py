@@ -7998,6 +7998,7 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         else:
             next_action = "Start with setup row 1."
         lines.append("No real result yet: no stock-analysis messages exist.")
+        lines.append("No real result yet: no market scan has run.")
         lines.extend(
             _wrap(
                 "This page becomes your Market Inbox after the first capped "
@@ -8007,12 +8008,18 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
         if next_action:
             lines.extend(_wrap(f"First setup task: {next_action}", width))
+            lines.extend(_wrap(f"Required next step: {next_action}", width))
         if command:
             lines.extend(_wrap(f"PowerShell command: {command}", width))
+            lines.extend(_wrap(f"PowerShell setup command: {command}", width))
             lines.append(
-                "Where to run: normal PowerShell prompt, not the dashboard command box."
+                "Where to run: normal PowerShell prompt, not in the dashboard command box."
             )
         lines.append("After setup: press 2 Evidence Gaps for bars, then 3 Safe Run.")
+        lines.append(
+            "Why this page is blank: MarketRadar has no real scan rows to review yet."
+        )
+        lines.append("Provider calls made while viewing: 0.")
         lines.append("Viewing this inbox makes 0 provider calls and 0 orders.")
         lines.append("")
         setup_rows = _market_inbox_rows(payload)
@@ -13708,10 +13715,17 @@ def _footer_lines(
     lines.append(_rule("Last Response", width))
     lines.extend(_wrap("LAST RESPONSE: Ready. No command has run in this view.", width))
     lines.append(_rule("Commands", width))
-    lines.extend(
-        _wrap("Type a page name, number, filter command, refresh, json, help, or q.", width)
-    )
+    lines.extend(_wrap(_footer_command_hint(snapshot), width))
     return lines
+
+
+def _footer_command_hint(payload: Mapping[str, object]) -> str:
+    if _real_results_empty(payload):
+        return (
+            "Type setup for the first setup command, 2 for Evidence Gaps, "
+            "3 for Safe Run, refresh, help, or q."
+        )
+    return "Type a page name, number, filter command, refresh, json, help, or q."
 
 
 def _footer_next_action(payload: Mapping[str, object], page: str) -> str:

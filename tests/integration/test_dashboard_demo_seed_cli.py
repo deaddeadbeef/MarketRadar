@@ -1297,6 +1297,7 @@ def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
     assert "ACME" not in output.out
     assert "Bullish not priced" not in output.out
     assert "External calls made: 0" in output.out
+    assert "Type setup for the first setup command" in output.out
 
 
 def test_dashboard_empty_candidates_points_to_first_setup_blocker(
@@ -1575,6 +1576,8 @@ def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
     assert "PowerShell command" in screen
     assert "normal PowerShell prompt" in screen
     assert "Run PowerShell command above." in screen
+    assert "No real result yet: no market scan has run." in screen
+    assert "Type setup for the first setup command" in screen
     assert "Run intentionally:" not in screen
     assert "2. Fill latest prices" in screen
     assert "3. Run one capped scan" in screen
