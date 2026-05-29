@@ -5568,6 +5568,26 @@ def test_support_pages_have_specific_next_actions() -> None:
         assert "Use the workflow navigation or open the highlighted row" not in rendered
 
 
+def test_help_page_matches_agent_navigation_shortcut() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "runtime_context": {"build": {"commit": "test"}},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0},
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "call_plan": {"max_external_call_count": 0},
+    }
+
+    rendered = render_dashboard_tui(payload, page="help", width=150)
+
+    assert "0..9, Ctrl+A, or page name" in rendered
+    assert "Switch page; Ctrl+A opens Agent Coach." in rendered
+    assert "safe ..." not in rendered
+    assert "0..10 or page name" not in rendered
+    assert "10 Agent Coach" not in rendered
+
+
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
