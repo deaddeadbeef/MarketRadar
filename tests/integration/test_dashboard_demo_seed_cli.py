@@ -1313,15 +1313,15 @@ def test_dashboard_empty_candidates_points_to_first_setup_blocker(
 
     assert output.err == ""
     assert "Page: Candidate Review" in output.out
-    assert "No real result yet" in output.out
-    assert "no market scan has run" in output.out
-    assert "Required next step:" in output.out
+    assert "No candidate packets yet" in output.out
+    assert "No market scan has run yet" in output.out
+    assert "This page opens individual stock cases" in output.out
     assert "Set up Active universe first" in output.out
-    assert "Seed or refresh the universe" in output.out
-    assert "Run setup commands in PowerShell" in output.out
-    assert "not in the dashboard command box" in normalized
+    assert "PowerShell command" in output.out
+    assert "Approval" in output.out
+    assert "not the dashboard command box" in normalized
     assert "Continue only if you accept the data change or provider call" in normalized
-    assert "Why this page is blank" in output.out
+    assert "Why this page is blank" not in output.out
     assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" not in output.out
     assert "Run/import real market data" not in output.out
@@ -1998,9 +1998,10 @@ def test_dashboard_footer_separates_browsing_cost_from_guarded_budget(
     assert output.err == ""
     assert "Page: Alerts" in output.out
     assert "Alerts are research notifications, not trade signals or orders." in output.out
-    assert "No real result yet" in output.out
-    assert "Why this page is blank" in output.out
-    assert "There is nothing to open or act on yet" in output.out
+    assert "No alert messages yet" in output.out
+    assert "No market scan has run yet" in output.out
+    assert "Why this page is blank" not in output.out
+    assert "review candidates first" in output.out
     assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "Browsing cost: 0 provider calls, 0 OpenAI calls" in output.out
     assert "Guarded command budget: provider calls" in output.out

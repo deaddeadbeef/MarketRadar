@@ -10723,7 +10723,21 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
     ]
     lines = [_rule("Candidates", width)]
     if _real_results_empty(payload):
-        lines.extend(_no_real_result_lines(payload, width))
+        lines.extend(
+            _locked_review_setup_lines(
+                payload,
+                width,
+                title="No candidate packets yet.",
+                unlocks=(
+                    "This page opens individual stock cases after MarketRadar has "
+                    "real scan rows."
+                ),
+                after_setup=(
+                    "fill latest bars, run one capped scan, then return here "
+                    "from Inbox."
+                ),
+            )
+        )
         return lines
     if not decision_safe:
         lines.extend(
@@ -11100,18 +11114,64 @@ def _alert_evidence_summary(row: Mapping[str, object]) -> str:
     return "; ".join(title for title in titles if title)
 
 
+def _locked_review_setup_lines(
+    payload: Mapping[str, object],
+    width: int,
+    *,
+    title: str,
+    unlocks: str,
+    after_setup: str,
+) -> list[str]:
+    command = _first_scan_setup_command(payload)
+    blocker = _readiness_first_setup_blocker(payload)
+    if blocker:
+        area = _human_source_name(blocker.get("area") or "setup blocker")
+        next_action = f"{_setup_blocker_first_label(area)}."
+    else:
+        next_action = "Start with setup row 1."
+    lines = [title, "No market scan has run yet, so this page is locked."]
+    lines.extend(_wrap(unlocks, width))
+    lines.extend(
+        _kv_lines(
+            [
+                ("Do first", next_action),
+                ("PowerShell command", command or "No setup command recorded."),
+                (
+                    "Approval",
+                    "Continue only if you accept the data change or provider call.",
+                ),
+                (
+                    "Where to run",
+                    "normal PowerShell prompt, not the dashboard command box.",
+                ),
+                ("After setup", after_setup),
+                ("Browsing", "0 provider calls, 0 OpenAI calls, 0 orders."),
+            ],
+            width=width,
+        )
+    )
+    return lines
+
+
 def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = _rows(_mapping(payload.get("alerts")).get("rows"))
     lines = [_rule("Alerts", width)]
     lines.extend(_wrap("Alerts are research notifications, not trade signals or orders.", width))
     if not rows:
         if _real_results_empty(payload):
-            lines.extend(_no_real_result_lines(payload, width))
             lines.extend(
-                _wrap(
-                    "Alerts appear only after real scan rows survive the evidence gates. "
-                    "There is nothing to open or act on yet.",
+                _locked_review_setup_lines(
+                    payload,
                     width,
+                    title="No alert messages yet.",
+                    unlocks=(
+                        "Alerts appear only after real scan rows survive evidence "
+                        "gates and become research notifications."
+                    ),
+                    after_setup=(
+                        "review candidates first; alerts come from reviewed "
+                        "research rows."
+                    ),
                 )
             )
         else:
