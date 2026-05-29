@@ -3272,7 +3272,7 @@ def _execute_agent_command(
         f"real_results={real_results.get('status', 'unknown')} "
         f"rows={real_results.get('row_count', 0)}; "
         f"credit_gate={credit.get('status', 'unknown')} "
-        f"estimated_cost_usd={credit.get('estimated_cost_usd', 0)}. "
+        f"estimated_cost={_format_usd_amount(credit.get('estimated_cost_usd', 0))}. "
         f"{no_real_result} Use `{next_execute}` only after the preview matches your intent."
     )
 
@@ -10980,11 +10980,11 @@ def _agent_brief_rows(
                 "kind": "Gate",
                 "item": f"OpenAI budget: {status}",
                 "detail": (
-                    f"estimate=${credit_gate.get('estimated_cost_usd', 0)}; "
-                    f"daily={credit_gate.get('daily_spend_usd', 0)}/"
-                    f"{credit_gate.get('daily_budget_usd', 0)}; "
-                    f"monthly={credit_gate.get('monthly_spend_usd', 0)}/"
-                    f"{credit_gate.get('monthly_budget_usd', 0)}"
+                    f"estimate={_format_usd_amount(credit_gate.get('estimated_cost_usd', 0))}; "
+                    f"daily={_format_usd_amount(credit_gate.get('daily_spend_usd', 0))}/"
+                    f"{_format_usd_amount(credit_gate.get('daily_budget_usd', 0))}; "
+                    f"monthly={_format_usd_amount(credit_gate.get('monthly_spend_usd', 0))}/"
+                    f"{_format_usd_amount(credit_gate.get('monthly_budget_usd', 0))}"
                 ),
             }
         )
@@ -14338,8 +14338,13 @@ def _execution_cost_summary(payload: Mapping[str, object]) -> str:
     return (
         f"Guarded command budget: provider calls {provider_calls}; "
         f"OpenAI execute cap {openai_cap}; "
-        f"estimated OpenAI cost ${estimated_cost}; DB writes shown by each command."
+        f"estimated OpenAI cost {_format_usd_amount(estimated_cost)}; "
+        "DB writes shown by each command."
     )
+
+
+def _format_usd_amount(value: object) -> str:
+    return f"${_number_or_zero(value):,.2f}"
 
 
 def _cost_boundary_summary(payload: Mapping[str, object]) -> str:

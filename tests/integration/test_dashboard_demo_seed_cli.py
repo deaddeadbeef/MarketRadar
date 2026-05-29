@@ -1687,8 +1687,12 @@ def test_dashboard_missing_evidence_uses_current_blocker_not_stale_real_results_
     )
     assert "Browsing cost: 0 provider calls, 0 OpenAI calls." in overview
     assert "Guarded command budget: provider calls 0" in overview
+    assert "estimated OpenAI cost $0.00" in overview
     assert "Browsing cost: 0 provider calls, 0 OpenAI calls." in narrow_overview
     assert "Guarded command budget: provider calls 0" in narrow_overview
+    assert "estimate=$0.00" in agent
+    assert "estimated OpenAI cost $0.0;" not in combined
+    assert "estimate=$0.0;" not in combined
     assert "Run/import real market data" not in combined
     assert "priced-in-answer --limit 50" not in combined
 
@@ -2248,6 +2252,7 @@ def test_dashboard_footer_separates_browsing_cost_from_guarded_budget(
     assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "Browsing cost: 0 provider calls, 0 OpenAI calls" in output.out
     assert "Guarded command budget: provider calls" in output.out
+    assert "estimated OpenAI cost $0.00" in output.out
     assert "Cost before execute" not in output.out
     assert "Use `open <#>`" not in output.out
     assert "No rows." not in output.out
