@@ -5697,6 +5697,13 @@ def test_broker_page_labels_empty_local_artifact_sections() -> None:
     assert "Portfolio equity" in broker
     assert "$0.00" in broker
     assert "NEXT SAFE ACTION: Broker needs auth; browsing makes 0 Schwab calls" in broker
+    assert "Schwab Auth Setup" in broker
+    assert "not required for market scanning" in broker
+    assert "SCHWAB_CLIENT_ID" in broker
+    assert "BROKER_TOKEN_ENCRYPTION_KEY" in broker
+    assert "https://127.0.0.1:8443/api/brokers/schwab/connect" in broker
+    assert "SCHWAB_ORDER_SUBMISSION_ENABLED=false" in broker
+    assert "docs/runbooks/schwab.md" in broker
     assert "needs_auth" not in broker
 
 
