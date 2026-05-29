@@ -2034,7 +2034,7 @@ class MarketRadarDashboardApp(App[int]):
             )
             self.query_one("#metric-calls", Static).update(
                 _metric_text(
-                    "Cost boundary",
+                    "Cost before execute",
                     "0 browsing calls",
                     _execution_cost_summary(self.payload),
                 )
