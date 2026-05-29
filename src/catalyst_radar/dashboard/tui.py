@@ -7192,8 +7192,9 @@ def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
         )
     if worth_reading:
         return (
-            f"Open {worth_reading} Worth Reading message(s) next. Treat them as "
-            "research until the Decision Review page says otherwise."
+            "Enter opens highlighted Worth Reading; click works. "
+            f"{worth_reading} research only; Decision Review required before "
+            "action."
         )
     if waiting and waiting == visible_total:
         return (
@@ -8461,8 +8462,9 @@ def _market_inbox_research_preview(payload: Mapping[str, object]) -> str:
     examples = f" Visible examples: {', '.join(tickers)}." if tickers else ""
     return (
         f"Worth reading now: {research_count} research {lead_label}. "
-        "Press 4 Candidate Review to inspect them; press 2 Evidence Gaps "
-        f"before trusting any row.{examples}"
+        "Press Enter on the highlighted row or click a Worth Reading row to "
+        "open the first case; press 4 Candidate Review for the full review "
+        f"table; press 2 Evidence Gaps before trusting any row.{examples}"
     )
 
 

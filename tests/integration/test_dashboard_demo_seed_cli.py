@@ -5521,10 +5521,13 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
         "Queue total: 120; research 9 / blocked 58 / monitor 53."
     ) in overview
     assert "Worth reading now: 9 research leads." in overview
-    assert "Press 4 Candidate Review to inspect them" in overview
+    assert "Press Enter on the highlighted row or click a Worth Reading row" in overview
+    assert "press 4 Candidate Review" in overview
+    assert "full review table" in overview
     assert "Visible examples: ACME." in overview
-    assert "NEXT SAFE ACTION: Open 1 Worth Reading message(s) next" in overview
-    assert "Treat them as research until the Decision Review page says otherwise" in overview
+    assert "NEXT SAFE ACTION: Enter opens highlighted Worth Reading" in overview
+    assert "click works" in overview
+    assert "Decision Review required before action" in overview
     assert "Evidence Gaps first" in overview
     assert "Build a Candidate Packet" not in overview
     assert "Current queue: 2 waiting evidence" not in overview
@@ -9698,6 +9701,88 @@ def test_modern_dashboard_waiting_evidence_row_points_back_to_gaps(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Evidence Gaps first" in frame
             assert "No calls" in frame
+
+    asyncio.run(run_app())
+
+
+def test_modern_dashboard_inbox_names_exact_worth_reading_action(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    payload = {
+        "schema_version": "dashboard-cli-snapshot-v1",
+        "external_calls_made": 0,
+        "controls": {"ticker": None, "available_at": None},
+        "readiness": {
+            "status": "research_only",
+            "safe_to_make_investment_decision": False,
+            "headline": "Current rows are research only.",
+        },
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_ready": False,
+            "answer": "Full answer is blocked until source gaps are filled.",
+        },
+        "priced_in_queue": {
+            "status": "ready",
+            "count": 1,
+            "returned_count": 1,
+            "total_count": 1,
+            "offset": 0,
+            "filters": {"status": "all", "usefulness": None, "limit": 1},
+            "rows": [
+                {
+                    "ticker": "READ",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "emotion_score": 80,
+                    "reaction_score": 20,
+                    "emotion_reaction_gap": 60,
+                    "candidate_theme": "margin_inflection",
+                    "data_sources": {
+                        "available": ["market_bars"],
+                        "missing": ["options"],
+                        "stale": [],
+                    },
+                    "usefulness": {
+                        "status": "research_useful",
+                        "decision_ready": False,
+                    },
+                },
+            ],
+        },
+        "call_plan": {},
+        "ops_health": {"database": {}},
+    }
+    monkeypatch.setattr(
+        dashboard_tui_module,
+        "dashboard_snapshot_payload",
+        lambda **kwargs: payload,
+    )
+
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="overview",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(150, 44)) as pilot:
+            for _ in range(80):
+                if app.payload:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("dashboard snapshot did not load")
+
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Enter opens highlighted Worth Reading" in frame
+            assert "click works" in frame
+            assert "Decision Review required before action" in frame
 
     asyncio.run(run_app())
 
