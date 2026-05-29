@@ -5336,6 +5336,62 @@ def test_costs_page_only_shows_available_validation_metrics() -> None:
     assert "Backtest benchmark" not in costs
 
 
+def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None:
+    payload = {
+        "runtime_context": {
+            "database": {"name": "demo.db"},
+            "build": {"commit": "test"},
+        },
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {
+            "status": "research_only",
+            "safe_to_make_investment_decision": False,
+        },
+        "priced_in_answer": {"status": "blocked", "answer": "Research only."},
+        "priced_in_queue": {"filters": {"status": "all"}, "count": 0, "rows": []},
+        "candidates": {
+            "rows": [
+                {
+                    "ticker": "ACME",
+                    "state": "AddToWatchlist",
+                    "data_sources": {
+                        "available": ["market_bars", "catalyst_events"],
+                        "missing": ["options"],
+                        "stale": [],
+                    },
+                    "priced_in_evidence_brief": {
+                        "status": "bullish_not_priced_in",
+                        "blocked": False,
+                        "why_now": "Bullish emotion is ahead of price reaction.",
+                        "source_actions": [
+                            {
+                                "source": "options",
+                                "status": "missing",
+                                "next_action": "Sync point-in-time options.",
+                            }
+                        ],
+                        "evidence": [{"title": "ACME 8-K", "source": "SEC EDGAR"}],
+                        "next_step": "Build a Candidate Packet.",
+                    },
+                }
+            ]
+        },
+    }
+
+    case = render_dashboard_tui(payload, page="candidate:ACME", width=160)
+
+    assert "Can I act now?" in case
+    assert "What is missing?" in case
+    assert "Source gaps" in case
+    assert "options: Sync point-in-time options." in case
+    assert "Hard blocker" in case
+    assert "no hard blocker recorded" in case
+    assert "Blocker details" in case
+    assert "none recorded" in case
+    assert "Blocked" not in case
+
+
 def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},
