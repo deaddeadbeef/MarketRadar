@@ -9484,6 +9484,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Telemetry audit tape" in frame
             assert "NEXT SAFE ACTION" in frame
+            assert "Telemetry missing" in frame
+            assert "Use the sidebar" not in frame
             assert "Use the workflow navigation or open the highlighted row" not in frame
 
             app.query_one("#nav-help").focus()
