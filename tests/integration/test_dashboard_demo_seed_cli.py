@@ -1289,11 +1289,12 @@ def test_dashboard_once_empty_database_shows_no_real_result_not_demo(
     assert output.err == ""
     assert "No real result yet" in output.out
     assert "no market scan has run" in output.out
+    assert "no stock-analysis messages" in output.out
     assert "Required next step:" in output.out
     assert "PowerShell setup command: catalyst-radar" in output.out
     assert "not in the dashboard command box" in normalized
-    assert "Why this page is blank" in output.out
-    assert "Provider calls made while viewing: 0" in output.out
+    assert "Why this page is blank" not in output.out
+    assert "Provider calls made while viewing: 0" not in output.out
     assert "ACME" not in output.out
     assert "Bullish not priced" not in output.out
     assert "External calls made: 0" in output.out
@@ -1568,16 +1569,18 @@ def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
     assert "ACME" not in render_dashboard_tui(payload, page="overview", width=160)
 
     screen = render_dashboard_tui(payload, page="overview", width=160)
-    assert "No real result yet: no stock-analysis messages exist." in screen
+    assert "No real result yet: no market scan has run" in screen
+    assert "no stock-analysis messages" in screen
     assert "This page becomes your Market Inbox after the first capped scan." in screen
     assert "Setup mail" in screen
     assert "these are instructions, not stock results" in screen
     assert "1. Build the stock universe" in screen
-    assert "PowerShell command" in screen
+    assert "PowerShell setup command" in screen
+    assert "PowerShell command: catalyst-radar" not in screen
     assert "normal PowerShell prompt" in screen
     assert "Run PowerShell command above." in screen
-    assert "No real result yet: no market scan has run." in screen
     assert "Type setup for the first setup command" in screen
+    assert "Provider calls made while viewing: 0" not in screen
     assert "Run intentionally:" not in screen
     assert "2. Fill latest prices" in screen
     assert "3. Run one capped scan" in screen

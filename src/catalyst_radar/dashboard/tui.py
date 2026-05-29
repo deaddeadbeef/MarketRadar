@@ -7997,8 +7997,9 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             next_action = f"{_setup_blocker_first_label(area)}."
         else:
             next_action = "Start with setup row 1."
-        lines.append("No real result yet: no stock-analysis messages exist.")
-        lines.append("No real result yet: no market scan has run.")
+        lines.append(
+            "No real result yet: no market scan has run, so there are no stock-analysis messages."
+        )
         lines.extend(
             _wrap(
                 "This page becomes your Market Inbox after the first capped "
@@ -8007,20 +8008,13 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
         if next_action:
-            lines.extend(_wrap(f"First setup task: {next_action}", width))
             lines.extend(_wrap(f"Required next step: {next_action}", width))
         if command:
-            lines.extend(_wrap(f"PowerShell command: {command}", width))
             lines.extend(_wrap(f"PowerShell setup command: {command}", width))
             lines.append(
                 "Where to run: normal PowerShell prompt, not in the dashboard command box."
             )
         lines.append("After setup: press 2 Evidence Gaps for bars, then 3 Safe Run.")
-        lines.append(
-            "Why this page is blank: MarketRadar has no real scan rows to review yet."
-        )
-        lines.append("Provider calls made while viewing: 0.")
-        lines.append("Viewing this inbox makes 0 provider calls and 0 orders.")
         lines.append("")
         setup_rows = _market_inbox_rows(payload)
         if setup_rows:
