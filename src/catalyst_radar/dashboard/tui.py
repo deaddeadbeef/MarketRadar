@@ -9836,21 +9836,21 @@ def _run_modern_table_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
         rows.extend(
             [
                 {
-                    "layer": "PowerShell command",
+                    "layer": "Review command",
                     "provider": "local",
-                    "status": "review",
+                    "status": "manual",
                     "external_call_count_max": 0,
                     "next_action": command,
                 },
                 {
-                    "layer": "Where to run",
+                    "layer": "Run location",
                     "provider": "PowerShell",
                     "status": "local",
                     "external_call_count_max": 0,
-                    "next_action": _POWERSHELL_RUN_LOCATION,
+                    "next_action": "Copy into PowerShell; do not enter below.",
                 },
                 {
-                    "layer": "Command boundary",
+                    "layer": "Safety boundary",
                     "provider": "local",
                     "status": "zero call",
                     "external_call_count_max": 0,
