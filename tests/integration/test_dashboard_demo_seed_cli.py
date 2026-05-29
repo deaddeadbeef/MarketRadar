@@ -1848,6 +1848,7 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
         "overview": ("Inbox.", "open 1"),
         "readiness": ("Evidence Gaps.", "batch <source>"),
         "run": ("Safe Run.", "Do not paste PowerShell here", "run execute waits"),
+        "candidates": ("Candidate Review.", "Evidence first", "2 Evidence Gaps"),
         "candidate:ACME": ("Candidate ACME.", "2 Evidence Gaps", "action ACME watch"),
         "broker": ("Broker.", "ticket <ticker>"),
         "ops": ("Source workbench.", "batch <source> execute"),
@@ -1865,6 +1866,8 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
     assert "ticket ACME" not in app._command_placeholder()
     app.page = "run"
     assert "run execute only after reviewing calls" not in app._command_placeholder()
+    app.page = "candidates"
+    assert "open 1" not in app._command_placeholder()
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(
@@ -5066,6 +5069,7 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "broker_context" not in candidates
     assert "Fix Evidence Gaps first." in candidates
     assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" in candidates
+    assert "Do next: open one candidate" not in candidates
     assert "not trade approval" in candidates
     default_width_candidates = render_dashboard_tui(payload, page="candidates", width=120)
     candidate_header = next(
@@ -9395,6 +9399,10 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Research-only" in frame
             assert "not trade ideas" in frame
             assert "Evidence Gaps first" in frame
+            assert "Candidates - open rows only to inspect evidence" in frame
+            assert "Opening a row is inspection only" in frame
+            assert "Candidates - click a row or press Enter to open" not in frame
+            assert "Do next: open one candidate" not in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")

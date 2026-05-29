@@ -1811,6 +1811,12 @@ class MarketRadarDashboardApp(App[int]):
                 f"action {ticker} watch, help, q"
             )
         if page == "candidates":
+            readiness = _mapping(self.payload.get("readiness"))
+            if readiness.get("safe_to_make_investment_decision") is not True:
+                return (
+                    "Candidate Review. Evidence first. Try: 2 Evidence Gaps, "
+                    "inbox, full, help, q"
+                )
             return "Candidate Review. Try: open 1, ticker AAPL, inbox, ready, full, help, q"
         if page == "review":
             if not _priced_in_review_rows(self.payload):
@@ -2435,6 +2441,23 @@ class MarketRadarDashboardApp(App[int]):
                 ]
             )
         if page == "candidates":
+            if readiness.get("safe_to_make_investment_decision") is not True:
+                return "\n".join(
+                    [
+                        (
+                            "[bold #7ee787]USE THIS PAGE[/] Review companies, "
+                            "not trade signals."
+                        ),
+                        (
+                            f"[bold]Rows:[/] {candidates.get('count') or 0} "
+                            "research rows. Opening a row is inspection only."
+                        ),
+                        (
+                            "[bold]Do next:[/] press 2 Evidence Gaps first; "
+                            "candidate rows are not trade ideas yet."
+                        ),
+                    ]
+                )
             return "\n".join(
                 [
                     "[bold #7ee787]USE THIS PAGE[/] Review companies, not trade signals.",
@@ -2646,12 +2669,22 @@ class MarketRadarDashboardApp(App[int]):
                 f"{call_plan.get('headline') or ''} {call_plan.get('next_action') or ''}",
             )
         if page == "candidates":
+            decision_safe = (
+                _mapping(self.payload.get("readiness")).get(
+                    "safe_to_make_investment_decision"
+                )
+                is True
+            )
             rows = [
                 _candidate_table_row(row, row_key=str(row.get("ticker") or index))
                 for index, row in enumerate(_candidate_rows(self.payload), start=1)
             ]
             return (
-                "Candidates - click a row or press Enter to open",
+                (
+                    "Candidates - click a row or press Enter to open"
+                    if decision_safe
+                    else "Candidates - open rows only to inspect evidence"
+                ),
                 [
                     ("ticker", "Ticker", 8),
                     ("priced_in_status", "Priced-in", 20),
