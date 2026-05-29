@@ -5001,6 +5001,8 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     inbox_rows = _market_inbox_rows(payload)
     assert [row["mailbox"] for row in inbox_rows] == ["Urgent", "Waiting Evidence"]
     assert inbox_rows[0]["subject"].startswith("Bullish not priced")
+    assert " | " not in inbox_rows[0]["subject"]
+    assert " - gap 55" in inbox_rows[0]["subject"]
     assert inbox_rows[0]["missing"] == "missing options, broker context"
     assert "Open the case file" in inbox_rows[0]["next"]
     assert inbox_rows[1]["next"] == "Evidence Gaps first."
