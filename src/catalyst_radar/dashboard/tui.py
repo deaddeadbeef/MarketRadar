@@ -14061,22 +14061,20 @@ def _ops_next_safe_action(payload: Mapping[str, object]) -> str:
         command = str(
             workflow.get("coverage_first_command") or workflow.get("next_command") or ""
         ).strip()
+        source_label = _human_source_name(workflow_source)
+        if command:
+            return f"{source_label.capitalize()} first: 2=command; Enter=plan."
         action = _human_source_status_text(
             workflow.get("coverage_first_action")
             or workflow.get("next_action")
             or "Review source gaps."
         )
-        command_text = (
-            " press 2 Evidence Gaps for the full PowerShell command; "
-            "run outside dashboard."
-            if command
-            else f" execute: batch {workflow_source} execute."
-        )
+        command_text = f" execute: batch {workflow_source} execute."
         action_text = ""
         if not command and action:
             action_text = f" {_clip(action, 72)}"
         return (
-            f"Coverage-first: {_human_source_name(workflow_source)}. "
+            f"Coverage-first: {source_label}. "
             f"Plan-only;{command_text}{action_text}"
         )
     rows = _source_coverage_workbench_rows(payload)
