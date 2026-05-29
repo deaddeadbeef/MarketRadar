@@ -1847,7 +1847,7 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
     expected = {
         "overview": ("Inbox.", "open 1"),
         "readiness": ("Evidence Gaps.", "batch <source>"),
-        "run": ("Safe Run.", "Do NEXT SAFE ACTION first", "run execute waits"),
+        "run": ("Safe Run.", "Do not paste PowerShell here", "run execute waits"),
         "candidate:ACME": ("Candidate ACME.", "2 Evidence Gaps", "action ACME watch"),
         "broker": ("Broker.", "ticket <ticker>"),
         "ops": ("Source workbench.", "batch <source> execute"),
