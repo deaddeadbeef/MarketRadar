@@ -1852,7 +1852,7 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
         "broker": ("Broker.", "ticket <ticker>"),
         "ops": ("Source workbench.", "batch <source> execute"),
         "agent": ("Agent Coach.", "agent execute only with budget"),
-        "alerts": ("Alerts.", "feedback <alert-id>"),
+        "alerts": ("Alerts.", "feedback 1"),
         "alert:demo-alert-acme": ("Alert ACME.", "feedback 1"),
     }
 
@@ -5089,7 +5089,7 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "research digest" in alert_case
     assert "research_digest" not in alert_case
     assert "Feedback command" in alert_case
-    assert "feedback alert-acme useful|noisy|acted [notes]" in alert_case
+    assert "feedback 1 useful|noisy|acted [notes]" in alert_case
     assert "NEXT SAFE ACTION: Alert detail is a research notification" in alert_case
     assert "Use the workflow navigation or open the highlighted row" not in alert_case
 
@@ -9362,7 +9362,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "not trade approval" in frame
             assert "immediate manual" in frame
             assert "immediate_manual_review" not in frame
-            assert "feedback demo-alert-acme" in frame
+            assert "feedback 1 useful|noisy|acted" in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")

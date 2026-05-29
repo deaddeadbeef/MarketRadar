@@ -665,7 +665,7 @@ The broker page also supports local operator writes that do not submit real
 orders: `action <ticker> <watch|ready|simulate_entry|dismiss> [notes]`,
 `trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,
 `ticket <ticker> <buy|sell> <entry> <stop> [risk_pct] [notes]`, and
-`feedback <alert-id|#> <label> [notes]`.
+`feedback <row-number|alert-id> <label> [notes]`.
 
 ### Local status scripts
 

@@ -1807,19 +1807,12 @@ class MarketRadarDashboardApp(App[int]):
                 )
             return "Decision Review. Try: open 1, inbox, full, mismatches, broker, help, q"
         if page == "alerts":
-            return "Alerts. Try: open 1, feedback <alert-id> useful/noisy/acted, inbox, help, q"
+            return "Alerts. Try: open 1, feedback 1 useful/noisy/acted, inbox, help, q"
         if page == "alert":
             alert_ref = page_ref or "<alert-id>"
-            feedback_ref = alert_ref
-            alert_label = alert_ref
-            for index, row in enumerate(
-                _rows(_mapping(self.payload.get("alerts")).get("rows")),
-                start=1,
-            ):
-                if str(row.get("id") or "").strip() == alert_ref:
-                    feedback_ref = str(index)
-                    alert_label = str(row.get("ticker") or alert_ref)
-                    break
+            alert_label, feedback_ref = _alert_feedback_prompt_parts(
+                self.payload, alert_ref
+            )
             return (
                 f"Alert {alert_label}. Try: feedback {feedback_ref} "
                 "useful/noisy/acted, alerts, inbox, help, q"
@@ -2885,8 +2878,11 @@ class MarketRadarDashboardApp(App[int]):
         return (
             _alert_display_title(row, alert_id),
             [("key", "Alert question", 24), ("value", "Answer", 110)],
-            _alert_case_detail_table_rows(row),
-            "Use feedback <alert-id|#> <label> [notes] to record alert usefulness.",
+            _alert_case_detail_table_rows(
+                row,
+                feedback_ref=_alert_feedback_prompt_parts(self.payload, alert_id)[1],
+            ),
+            "Use feedback <row-number|alert-id> <label> [notes] to record alert usefulness.",
         )
 
     def _help_model(
@@ -2973,7 +2969,7 @@ class MarketRadarDashboardApp(App[int]):
                 "meaning": "Save local broker-context artifacts only.",
             },
             {
-                "command": "feedback <alert-id|#> <label>",
+                "command": "feedback <row-number|alert-id> <label>",
                 "meaning": "Record useful/noisy/acted alert feedback.",
             },
             {
@@ -6050,7 +6046,7 @@ def _record_alert_feedback(
     parts = value.split(maxsplit=2)
     if len(parts) < 2:
         return (
-            "Usage: feedback <alert-id|#> "
+            "Usage: feedback <row-number|alert-id> "
             "<useful|noisy|too_late|too_early|ignored|acted> [notes]"
         )
     alert_rows = _rows(_mapping(payload.get("alerts")).get("rows"))
@@ -12050,14 +12046,38 @@ def _alert_detail_row(payload: Mapping[str, object], alert_id: str) -> Mapping[s
     return next((item for item in rows if str(item.get("id") or "") == alert_id), {})
 
 
-def _alert_case_detail_table_rows(row: Mapping[str, object]) -> list[Mapping[str, object]]:
+def _alert_feedback_prompt_parts(
+    payload: Mapping[str, object],
+    alert_id: str,
+) -> tuple[str, str]:
+    alert_ref = str(alert_id or "<alert-id>").strip()
+    rows = _rows(_mapping(payload.get("alerts")).get("rows"))
+    for index, row in enumerate(rows, start=1):
+        if str(row.get("id") or "").strip() == alert_ref:
+            label = str(row.get("ticker") or alert_ref).strip().upper()
+            return label, str(index)
+    return alert_ref, alert_ref
+
+
+def _alert_case_detail_table_rows(
+    row: Mapping[str, object],
+    *,
+    feedback_ref: str | None = None,
+) -> list[Mapping[str, object]]:
     if not row:
         return _mapping_items(_compact_detail(row))
-    pairs = (*_alert_case_summary_kv_pairs(row), *_alert_detail_kv_pairs(row))
+    pairs = (
+        *_alert_case_summary_kv_pairs(row, feedback_ref=feedback_ref),
+        *_alert_detail_kv_pairs(row),
+    )
     return [{"key": key, "value": value} for key, value in pairs]
 
 
-def _alert_case_summary_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
+def _alert_case_summary_kv_pairs(
+    row: Mapping[str, object],
+    *,
+    feedback_ref: str | None = None,
+) -> tuple[tuple[str, object], ...]:
     alert_id = str(row.get("id") or "<alert-id>").strip()
     ticker = str(row.get("ticker") or "n/a").strip().upper()
     reason = (
@@ -12075,7 +12095,7 @@ def _alert_case_summary_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, 
         ),
         separator=" / ",
     )
-    feedback_command = f"feedback {alert_id} useful|noisy|acted [notes]"
+    feedback_command = f"feedback {feedback_ref or alert_id} useful|noisy|acted [notes]"
     return (
         ("Why did I get this?", reason),
         ("Is this a trade signal?", "No - alert rows are review prompts, not trade approval."),
@@ -12245,7 +12265,13 @@ def _alert_detail_lines(payload: Mapping[str, object], alert_id: str, width: int
         return lines
     lines.extend(
         _kv_lines(
-            (*_alert_case_summary_kv_pairs(row), *_alert_detail_kv_pairs(row)),
+            (
+                *_alert_case_summary_kv_pairs(
+                    row,
+                    feedback_ref=_alert_feedback_prompt_parts(payload, alert_id)[1],
+                ),
+                *_alert_detail_kv_pairs(row),
+            ),
             width=width,
         )
     )
@@ -14660,7 +14686,10 @@ def _help_lines(width: int) -> list[str]:
         ("trigger <ticker> <type> <op> <threshold>", "Save a market trigger."),
         ("eval-triggers [ticker]", "Evaluate saved triggers against stored market context."),
         ("ticket <ticker> <side> <entry> <stop>", "Save a blocked order-preview ticket."),
-        ("feedback <alert-id|#> <label>", "Record alert feedback from current alert rows."),
+        (
+            "feedback <row-number|alert-id> <label>",
+            "Record alert feedback from current alert rows.",
+        ),
         ("ledger coverage", "Show Warning/manual-review rows missing value-ledger entries."),
         (
             "ledger record <#|id|ticker> <label> <action> <decision> <value> <confidence>",

@@ -51,7 +51,7 @@ with the smaller current answer subset. CLI/API parity is available through
 The TUI also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 `trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,
 `ticket <ticker> <buy|sell> <entry> <stop> [risk_pct] [notes]`, and
-`feedback <alert-id|#> <label> [notes]`.
+`feedback <row-number|alert-id> <label> [notes]`.
 
 ## Current Features
 
