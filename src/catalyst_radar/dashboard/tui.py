@@ -2992,10 +2992,48 @@ _SNAPSHOT_RELOAD_COMMANDS = {
 }
 
 _COMMAND_NO_SIDE_EFFECTS = "No API calls/orders/writes."
+_POWERSHELL_COMMANDS_SHOWN_IN_TUI = {
+    "build-packets",
+    "build-decision-cards",
+    "ingest-csv",
+    "ingest-polygon",
+    "market-bars",
+    "priced-in-queue",
+}
 
 
 def _command_no_side_effects(message: str) -> str:
     return f"{_COMMAND_NO_SIDE_EFFECTS}\n{message}"
+
+
+def _powershell_command_guidance(raw: str) -> str:
+    text = raw.strip()
+    if not text:
+        return ""
+    command, _, rest = text.partition(" ")
+    command_name = command.strip().lower()
+    if command_name == "catalyst-radar":
+        shell_command = text
+        child_command = (
+            rest.strip().split(maxsplit=1)[0].lower() if rest.strip() else ""
+        )
+    elif command_name in _POWERSHELL_COMMANDS_SHOWN_IN_TUI:
+        if command_name == "market-bars" and not rest.strip():
+            return ""
+        shell_command = f"catalyst-radar {text}"
+        child_command = command_name
+    else:
+        return ""
+
+    boundary = (
+        _candidate_case_command_boundary(f"catalyst-radar {child_command} ")
+        if child_command in {"build-packets", "build-decision-cards"}
+        else "Run it only after accepting the command's call/write boundary."
+    )
+    return _command_no_side_effects(
+        "PowerShell command, not a dashboard command. "
+        f"Run this in a normal PowerShell prompt: {shell_command}. {boundary}"
+    )
 
 
 def _priced_in_operator_step(payload: Mapping[str, object]):
@@ -3291,6 +3329,9 @@ def _apply_command(
     command, _, rest = raw.partition(" ")
     command = command.strip().lower()
     value = rest.strip()
+    powershell_guidance = _powershell_command_guidance(raw)
+    if powershell_guidance:
+        return _CommandUpdate(page=page, filters=filters, message=powershell_guidance)
     if command in {"q", "quit", "exit"}:
         return _CommandUpdate(page=page, filters=filters, exit_requested=True)
     if command in {"r", "refresh"}:

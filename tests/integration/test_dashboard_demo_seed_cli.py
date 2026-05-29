@@ -8670,6 +8670,29 @@ def test_tui_invalid_commands_report_no_side_effects():
         assert expected in update.message
 
 
+def test_tui_guides_powershell_commands_without_side_effects():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    config = AppConfig.from_env({})
+
+    update = _apply_command(
+        "catalyst-radar build-packets --as-of 2026-05-15 --ticker A --min-state ResearchOnly",
+        {},
+        "candidate:A",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+
+    assert update.page == "candidate:A"
+    assert "No API calls/orders/writes." in update.message
+    assert "PowerShell command, not a dashboard command" in update.message
+    assert "catalyst-radar build-packets --as-of 2026-05-15" in update.message
+    assert "Local DB write; no provider, OpenAI, broker, or order calls." in (
+        update.message
+    )
+    assert "Unknown command" not in update.message
+
+
 def test_dashboard_run_page_next_safe_action_uses_operator_step():
     payload = {
         "priced_in_answer": {
