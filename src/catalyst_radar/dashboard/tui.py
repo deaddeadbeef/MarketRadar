@@ -12468,6 +12468,22 @@ def _telemetry_event_table_row(
     }
 
 
+def _telemetry_rollup_rows(telemetry: Mapping[str, object]) -> list[Mapping[str, object]]:
+    rows: list[Mapping[str, object]] = []
+    for index, row in enumerate(_rows(telemetry.get("rollup")), start=1):
+        rows.append(
+            {
+                "_row_key": f"telemetry-rollup-{index}",
+                "category": _human_status_label(row.get("category")),
+                "count": row.get("count"),
+                "latest_status": _human_status_label(row.get("latest_status")),
+                "latest_reason": _humanize_telemetry_summary(row.get("latest_reason")),
+                "operator_action": _humanize_dashboard_text(row.get("operator_action")),
+            }
+        )
+    return rows
+
+
 def _human_telemetry_event(value: object) -> str:
     text = _text(value)
     if text == "n/a":
@@ -13758,6 +13774,23 @@ def _telemetry_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.append("")
+    rollup_rows = _telemetry_rollup_rows(telemetry)
+    if rollup_rows and int(_number_or_zero(telemetry.get("attention_count"))) > 0:
+        lines.append(_rule("Telemetry Attention Rollup", width))
+        lines.extend(
+            _table_lines(
+                rollup_rows,
+                [
+                    ("category", "Category", 20),
+                    ("count", "Count", 8),
+                    ("latest_status", "Latest", 16),
+                    ("operator_action", "Operator Action", 70),
+                ],
+                width=width,
+                limit=4,
+            )
+        )
+        lines.append("")
     lines.extend(
         _table_lines(
             _telemetry_event_rows(telemetry, setup_blocker=setup_blocker),
