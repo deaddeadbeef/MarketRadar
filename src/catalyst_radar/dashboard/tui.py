@@ -8265,6 +8265,9 @@ def _market_inbox_triage_context_lines(
     next_action = _current_priced_in_blocker_next_action(payload)
     if next_action and next_action not in (decision_summary or ""):
         lines.extend(_wrap(f"Do first: {next_action}", width))
+    research_preview = _market_inbox_research_preview(payload)
+    if research_preview:
+        lines.extend(_wrap(research_preview, width))
     lines.extend(
         _wrap(
             "Details: press 2 Evidence Gaps for blockers, 3 Safe Run for call "
@@ -8275,6 +8278,31 @@ def _market_inbox_triage_context_lines(
     )
     lines.append("Messages below are research mail, not trade ideas.")
     return lines
+
+
+def _market_inbox_research_preview(payload: Mapping[str, object]) -> str:
+    priced_queue = _mapping(payload.get("priced_in_queue"))
+    usefulness_counts = _mapping(priced_queue.get("usefulness_counts"))
+    research_count = int(_number_or_zero(usefulness_counts.get("research_useful")))
+    if research_count <= 0:
+        return ""
+    tickers: list[str] = []
+    for row in _priced_in_overview_rows(payload):
+        usefulness = _mapping(row.get("usefulness"))
+        if str(usefulness.get("status") or "").strip() != "research_useful":
+            continue
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if ticker and ticker not in tickers:
+            tickers.append(ticker)
+        if len(tickers) >= 5:
+            break
+    lead_label = "lead" if research_count == 1 else "leads"
+    examples = f" Visible examples: {', '.join(tickers)}." if tickers else ""
+    return (
+        f"Worth reading now: {research_count} research {lead_label}. "
+        "Press 4 Candidate Review to inspect them; press 2 Evidence Gaps "
+        f"before trusting any row.{examples}"
+    )
 
 
 def _market_inbox_diagnostic_lines(

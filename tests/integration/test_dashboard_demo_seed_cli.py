@@ -5476,6 +5476,9 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
         "Visible page: 2 waiting evidence. "
         "Queue total: 120; research 9 / blocked 58 / monitor 53."
     ) in overview
+    assert "Worth reading now: 9 research leads." in overview
+    assert "Press 4 Candidate Review to inspect them" in overview
+    assert "Visible examples: ACME." in overview
     assert "Press 2 Evidence Gaps first" in overview
     assert "not trade ideas until blockers clear" in overview
     assert "Evidence Gaps first" in overview
