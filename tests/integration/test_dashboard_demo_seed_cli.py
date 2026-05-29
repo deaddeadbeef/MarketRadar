@@ -4359,7 +4359,7 @@ def test_market_inbox_uses_human_summary_labels() -> None:
 
     screen = render_dashboard_tui(payload, page="overview", width=160)
 
-    assert "blocker LLM real mode disabled" in screen
+    assert "blocker Premium LLM safety gate" in screen
     assert "market bars:5" in screen
     assert "catalyst events:2" in screen
     assert "local text:1" in screen

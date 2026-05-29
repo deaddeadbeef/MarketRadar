@@ -14290,7 +14290,7 @@ _STATUS_LABELS: Mapping[str, str] = {
     "insufficient_evidence": "Insufficient evidence",
     "live_call_planned": "live call planned",
     "live_calls_planned": "live calls planned",
-    "llm_real_mode_disabled": "LLM real mode disabled",
+    "llm_real_mode_disabled": "Premium LLM safety gate",
     "local_text": "local text",
     "manual_review_ready": "manual review ready",
     "market_bars": "market bars",
