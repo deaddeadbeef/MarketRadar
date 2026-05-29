@@ -13606,10 +13606,8 @@ def _footer_lines(
 ) -> list[str]:
     snapshot = _mapping(payload)
     action = _footer_next_action(snapshot, page)
-    lines = [
-        _rule("Next Safe Action", width),
-        f"NEXT SAFE ACTION: {_clip(action, max(20, width - 19))}",
-    ]
+    lines = [_rule("Next Safe Action", width)]
+    lines.extend(_wrap(f"NEXT SAFE ACTION: {action}", width))
     lines.extend(_wrap(_cost_boundary_summary(snapshot), width))
     lines.append(_rule("Last Response", width))
     lines.extend(_wrap("LAST RESPONSE: Ready. No command has run in this view.", width))
