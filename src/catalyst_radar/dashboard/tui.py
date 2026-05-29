@@ -1786,6 +1786,16 @@ class MarketRadarDashboardApp(App[int]):
         if page == "overview":
             return "Inbox. Try: open 1, ready, full, mismatches, next, prev, 2, 3, help, q"
         if page == "readiness":
+            first_gap = _readiness_first_work_item(self.payload)
+            action = str(
+                first_gap.get("next_action") or first_gap.get("action") or ""
+            ).strip()
+            if _first_catalyst_radar_command(action):
+                return (
+                    "Evidence Gaps. Do not paste PowerShell here. Run the "
+                    "first-blocker command outside dashboard; refresh when done. "
+                    "3, inbox, help, q"
+                )
             return "Evidence Gaps. Try: batch <source>, bars manual import, 3, refresh, help, q"
         if page == "run":
             step = _priced_in_operator_step(self.payload)
