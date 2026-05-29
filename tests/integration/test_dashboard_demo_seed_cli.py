@@ -2345,6 +2345,13 @@ def test_run_mission_brief_useful_next_prefers_operator_step() -> None:
 
     items = dict(_run_mission_brief_items(payload))
 
+    assert items["Where to run"] == (
+        "Run it in a normal PowerShell prompt, not in the dashboard command box."
+    )
+    assert items["Command boundary"] == (
+        "Read-only market-bar review; no provider, OpenAI, broker, order, "
+        "or DB write calls."
+    )
     assert items["Useful next"] == "Review residual rows before filling bars."
     assert "Fill missing" not in items["Useful next"]
 
@@ -5623,8 +5630,74 @@ def test_evidence_gaps_footer_names_first_must_fix_gap() -> None:
         "NEXT SAFE ACTION: Use `catalyst-radar market-bars residual-review "
         "--expected-as-of 2026-05-15`."
     ) in footer
+    assert "PowerShell command" in readiness
+    assert (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+        in readiness
+    )
+    assert "Where to run" in readiness
+    assert "normal PowerShell prompt, not in the dashboard command box." in readiness
+    assert "Command boundary" in readiness
+    assert "Read-only market-bar review" in readiness
     assert "with the command above" in footer
     assert "--expected-as-..." not in footer
+
+
+def test_modern_run_and_evidence_pages_show_command_run_location() -> None:
+    payload = _blocked_market_bar_payload_with_stale_real_results_action()
+    payload["operator_work_queue"] = {
+        "status": "blocked",
+        "headline": "2 setup blockers remain.",
+        "rows": [
+            {
+                "priority": "must_fix",
+                "area": "Live market scan",
+                "item": "Market bars are incomplete.",
+                "next_action": (
+                    "Review residual market-bar rows first with "
+                    "`catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-15`. Fill market bars "
+                    "only after the residual rows are confirmed tradable."
+                ),
+            }
+        ],
+    }
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="run",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(180, 50)) as pilot:
+            await pilot.pause()
+            app._snapshot_generation += 1
+
+            for page in ("run", "readiness"):
+                app.page = page
+                app.payload = payload
+                app.status_message = "Ready."
+                app.refresh_view()
+                for _ in range(80):
+                    frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+                    if "PowerShell command" in frame and "Where to run" in frame:
+                        break
+                    await asyncio.sleep(0.05)
+                    await pilot.pause()
+                else:
+                    raise AssertionError(f"{page} command guidance did not render")
+                assert "PowerShell command" in frame
+                assert "market-bars residual-review --expected-as-of 2026-05-15" in frame
+                assert "Where to run" in frame
+                assert "normal PowerShell prompt" in frame
+                assert "Command boundary" in frame
+                assert "Read-only market-bar review" in frame
+
+    asyncio.run(run_app())
 
 
 def test_evidence_gaps_setup_blocker_preserves_exact_setup_command() -> None:
