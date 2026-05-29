@@ -12412,8 +12412,9 @@ def _broker_next_safe_action(payload: Mapping[str, object]) -> str:
             "broker action."
         )
     if not connected or connection_status.lower() not in {"connected", "ready"}:
+        connection_label = _human_status_label(connection_status or "missing")
         return (
-            f"Broker {connection_status or 'missing'}; browsing makes 0 Schwab "
+            f"Broker {connection_label}; browsing makes 0 Schwab "
             "calls. Authenticate only when you want portfolio context."
         )
     return (
@@ -12567,13 +12568,13 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.extend(
         _kv_lines(
             (
-                ("Connection", snapshot.get("connection_status")),
+                ("Connection", _human_status_label(snapshot.get("connection_status"))),
                 ("Broker", snapshot.get("broker")),
                 ("Last sync", snapshot.get("last_successful_sync_at")),
                 ("Account count", snapshot.get("account_count")),
                 ("Position count", snapshot.get("position_count")),
                 ("Open orders", snapshot.get("open_order_count")),
-                ("Portfolio equity", exposure.get("portfolio_equity")),
+                ("Portfolio equity", _format_usd_amount(exposure.get("portfolio_equity"))),
             ),
             width=width,
         )
@@ -14393,6 +14394,7 @@ _STATUS_LABELS: Mapping[str, str] = {
     "manual_review_ready": "manual review ready",
     "market_bars": "market bars",
     "market_momentum": "market momentum",
+    "needs_auth": "needs auth",
     "no_candidate_packets": "no candidate packets",
     "no_validation_runs": "No validation runs yet",
     "not_started": "not started",
