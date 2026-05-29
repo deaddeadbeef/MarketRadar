@@ -4233,6 +4233,35 @@ def test_empty_validation_page_explains_missing_report() -> None:
     assert " : n/a" not in rendered
 
 
+def test_dashboard_tui_validation_waits_for_scan_before_replay(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-validation.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "validation"]) == 0
+    output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
+
+    assert output.err == ""
+    assert "Page: Validation" in output.out
+    assert "No validation report yet" in output.out
+    assert "No market scan has run yet" in output.out
+    assert "Set up Active universe first" in output.out
+    assert "PowerShell command" in output.out
+    assert "normal PowerShell prompt" in normalized
+    assert "not the dashboard command box" in normalized
+    assert "validation replay or outcome" in normalized
+    assert "tracking exists" in normalized
+    assert (
+        "NEXT SAFE ACTION: Set up Active universe first: run PowerShell command"
+        in output.out
+    )
+    assert "Next: use Inbox and Candidates" not in output.out
+
+
 def test_dashboard_text_render_respects_requested_width() -> None:
     width = 80
     pages = [

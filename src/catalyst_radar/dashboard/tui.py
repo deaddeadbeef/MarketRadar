@@ -11383,20 +11383,37 @@ def _validation_lines(payload: Mapping[str, object], width: int) -> list[str]:
     report = _mapping(validation.get("report"))
     lines = [_rule("Validation", width)]
     if not latest_run and not report:
-        lines.extend(
-            _wrap(
-                "No validation report yet. Keep this research-only until shadow or "
-                "paper validation has outcomes to measure.",
-                width,
+        if _real_results_empty(payload):
+            lines.extend(
+                _locked_review_setup_lines(
+                    payload,
+                    width,
+                    title="No validation report yet.",
+                    unlocks=(
+                        "Validation measures whether MarketRadar's research rows "
+                        "were useful after real scan evidence exists."
+                    ),
+                    after_setup=(
+                        "run one capped scan, review candidates, then return here "
+                        "after validation replay or outcome tracking exists."
+                    ),
+                )
             )
-        )
-        lines.extend(
-            _wrap(
-                "Next: use Inbox and Candidates for research review; return here after "
-                "validation replay or outcome tracking exists.",
-                width,
+        else:
+            lines.extend(
+                _wrap(
+                    "No validation report yet. Keep this research-only until shadow or "
+                    "paper validation has outcomes to measure.",
+                    width,
+                )
             )
-        )
+            lines.extend(
+                _wrap(
+                    "Next: use Inbox and Candidates for research review; return here "
+                    "after validation replay or outcome tracking exists.",
+                    width,
+                )
+            )
         return lines
     lines.extend(
         _kv_lines(
@@ -13737,6 +13754,11 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
             return (
                 "Validation is the quality gate. Review false positives before "
                 "trusting alert usefulness."
+            )
+        if _real_results_empty(payload):
+            return setup_footer or (
+                "Set up the market scan first; validation comes after real scan "
+                "evidence and outcomes."
             )
         return "No validation report yet. Keep decisions research-only until evidence exists."
     if page == "costs":
