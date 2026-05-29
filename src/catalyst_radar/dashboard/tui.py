@@ -7906,6 +7906,47 @@ def _no_real_result_lines(payload: Mapping[str, object], width: int) -> list[str
     return lines
 
 
+def _visible_scan_row_count(
+    payload: Mapping[str, object],
+    real_results: Mapping[str, object],
+) -> int:
+    queue_rows = len(_rows(_mapping(payload.get("priced_in_queue")).get("rows")))
+    candidate_rows = len(_rows(_mapping(payload.get("candidates")).get("rows")))
+    reported_rows = int(_number_or_zero(real_results.get("row_count")))
+    return max(reported_rows, queue_rows, candidate_rows)
+
+
+def _agent_waiting_on_trusted_evidence_lines(
+    payload: Mapping[str, object],
+    width: int,
+) -> list[str]:
+    real_results = _mapping(payload.get("real_results"))
+    missing = ", ".join(_texts(real_results.get("missing"))) or "trusted scan evidence"
+    next_action = _no_real_result_next_action(payload, real_results)
+    row_count = _visible_scan_row_count(payload, real_results)
+    row_label = "row" if row_count == 1 else "rows"
+    lines = ["Agent Coach is waiting on trusted scan evidence."]
+    lines.extend(
+        _wrap(
+            f"Visible scan rows: {row_count} {row_label}; manual review is "
+            "available, but agent execute stays blocked until the evidence gates clear.",
+            width,
+        )
+    )
+    if real_results.get("canned_data_detected"):
+        lines.extend(
+            _wrap(
+                "Rows may include demo, fixture, or CSV data. Treat them as UI "
+                "practice, not investment evidence.",
+                width,
+            )
+        )
+    lines.extend(_wrap(f"Missing evidence gates: {missing}.", width))
+    lines.extend(_wrap(f"Required next step: {next_action}", width))
+    lines.append("Provider calls made while viewing: 0.")
+    return lines
+
+
 def _first_scan_setup_command(payload: Mapping[str, object]) -> str:
     for row in _first_scan_setup_rows(payload):
         command = str(row.get("command") or "").strip()
@@ -10634,17 +10675,35 @@ def _agent_brief_rows(
             if payload is not None
             else _human_agent_text(real_results.get("next_action"))
         )
-        rows.append(
-            {
-                "kind": "Gate",
-                "item": f"Real results: {status}",
-                "detail": (
-                    f"rows {real_results.get('row_count', 0)}; "
-                    f"latest run {real_results.get('latest_run_id') or 'n/a'}; "
-                    f"next {_human_agent_text(next_action)}"
-                ),
-            }
-        )
+        if (
+            payload is not None
+            and _real_results_missing(payload)
+            and not _real_results_empty(payload)
+        ):
+            row_count = _visible_scan_row_count(payload, real_results)
+            missing = ", ".join(_texts(real_results.get("missing"))) or status
+            rows.append(
+                {
+                    "kind": "Gate",
+                    "item": "Trusted evidence: waiting",
+                    "detail": (
+                        f"scan rows {row_count} visible; missing {missing}; "
+                        f"next {_human_agent_text(next_action)}"
+                    ),
+                }
+            )
+        else:
+            rows.append(
+                {
+                    "kind": "Gate",
+                    "item": f"Real results: {status}",
+                    "detail": (
+                        f"rows {real_results.get('row_count', 0)}; "
+                        f"latest run {real_results.get('latest_run_id') or 'n/a'}; "
+                        f"next {_human_agent_text(next_action)}"
+                    ),
+                }
+            )
     credit_gate = _mapping(brief.get("credit_gate"))
     if credit_gate:
         status = _human_status_label(credit_gate.get("status") or "unknown")
@@ -13390,7 +13449,7 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.extend(_agent_setup_locked_lines(payload, brief, width))
         return lines
     if _real_results_missing(payload):
-        lines.extend(_no_real_result_lines(payload, width))
+        lines.extend(_agent_waiting_on_trusted_evidence_lines(payload, width))
     lines.extend(
         _wrap(
             f"Mode: {_human_status_label(brief.get('mode') or 'dry_run')} | "

@@ -1228,6 +1228,11 @@ def test_dashboard_agent_page_shows_agent_brief(
     assert "GitHub Copilot not used" in output.out
     assert "read-only snapshot tools" in output.out
     assert "Priced-in answer is" in output.out
+    assert "Agent Coach is waiting on trusted scan evidence" in output.out
+    assert "Visible scan rows: 1" in output.out
+    assert "Missing evidence gates: latest radar run" in output.out
+    assert "No real result yet: no market scan has run" not in output.out
+    assert "Why this page is blank" not in output.out
 
 
 def test_tui_agent_run_preview_is_zero_call() -> None:
