@@ -1807,9 +1807,8 @@ class MarketRadarDashboardApp(App[int]):
             status = str(step.get("status") or "").strip().lower() if step else ""
             if status == "blocked" or (command and "run execute" not in command):
                 return (
-                    "Safe Run. Do not paste PowerShell here. Run NEXT SAFE "
-                    "ACTION outside dashboard; run execute waits. "
-                    "2, inbox, refresh, help, q"
+                    "Safe Run. Do not paste PowerShell. Outside: NEXT SAFE "
+                    "ACTION; run execute waits. 2, q"
                 )
             return (
                 "Safe Run. Try: run execute only after reviewing calls; "
