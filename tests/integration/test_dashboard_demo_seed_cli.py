@@ -1944,20 +1944,22 @@ def test_dashboard_tui_telemetry_points_to_setup_before_run_on_empty_database(
 
     assert output.err == ""
     assert "Page: Telemetry" in output.out
+    assert "No telemetry audit events yet" in output.out
     assert "No local audit events" in output.out
     assert "Set up Active universe first" in output.out
     assert "PowerShell command" in output.out
     assert "catalyst-radar ingest-" in output.out
     assert "Where to run" in output.out
     assert "normal PowerShell prompt" in normalized
-    assert "not in the dashboard command box" in normalized
+    assert "not the dashboard command box" in normalized
     assert (
         "NEXT SAFE ACTION: Set up Active universe first: run PowerShell command"
         in output.out
     )
     assert "above after accepting call/write" in output.out
-    assert "Telemetry useful after" in output.out
-    assert "one guarded run has recorded local events" in output.out
+    assert "Telemetry becomes useful after setup" in output.out
+    assert "one guarded run records local events" in output.out
+    assert "Domain                        | Status" not in output.out
     assert "Run a radar cycle to create the first telemetry event" not in output.out
     assert "Start one capped radar run from the dashboard or API" not in output.out
 
