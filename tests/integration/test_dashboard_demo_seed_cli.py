@@ -1558,10 +1558,13 @@ def test_empty_market_inbox_shows_first_scan_setup_rows() -> None:
     assert "ACME" not in render_dashboard_tui(payload, page="overview", width=160)
 
     screen = render_dashboard_tui(payload, page="overview", width=160)
-    assert "First real scan setup" in screen
+    assert "No real result yet: no stock-analysis messages exist." in screen
+    assert "This page becomes your Market Inbox after the first capped scan." in screen
+    assert "Setup mail" in screen
     assert "these are instructions, not stock results" in screen
     assert "1. Build the stock universe" in screen
-    assert "PowerShell setup command" in screen
+    assert "PowerShell command" in screen
+    assert "normal PowerShell prompt" in screen
     assert "Run PowerShell command above." in screen
     assert "Run intentionally:" not in screen
     assert "2. Fill latest prices" in screen
