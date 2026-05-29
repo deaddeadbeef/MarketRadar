@@ -1952,6 +1952,8 @@ def test_dashboard_tui_telemetry_points_to_setup_before_run_on_empty_database(
     assert "Page: Telemetry" in output.out
     assert "No telemetry audit events yet" in output.out
     assert "No local audit events" in output.out
+    assert "Setup first; telemetry appears after a guarded run." in output.out
+    assert "Set up Active..." not in output.out
     assert "Set up Active universe first" in output.out
     assert "PowerShell command" in output.out
     assert "catalyst-radar ingest-" in output.out

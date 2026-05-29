@@ -11955,10 +11955,12 @@ def _telemetry_event_rows(
             _telemetry_event_table_row(row, row_key=str(index))
             for index, row in enumerate(events, start=1)
         ]
-    setup_note = ""
+    empty_summary = (
+        "Nothing has recorded telemetry locally. Refresh after an intentional "
+        "guarded run."
+    )
     if setup_blocker:
-        area = str(setup_blocker.get("area") or "setup").strip()
-        setup_note = f" {_setup_blocker_first_label(area)}."
+        empty_summary = "Setup first; telemetry appears after a guarded run."
     return [
         {
             "_row_key": "telemetry-empty",
@@ -11967,14 +11969,8 @@ def _telemetry_event_rows(
             "event_label": "No local audit events",
             "status": "waiting",
             "status_label": "waiting",
-            "summary": (
-                "Nothing has recorded telemetry locally."
-                f"{setup_note} Refresh after an intentional guarded run."
-            ),
-            "summary_label": (
-                "Nothing has recorded telemetry locally."
-                f"{setup_note} Refresh after an intentional guarded run."
-            ),
+            "summary": empty_summary,
+            "summary_label": empty_summary,
         }
     ]
 
