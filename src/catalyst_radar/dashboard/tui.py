@@ -2473,6 +2473,28 @@ class MarketRadarDashboardApp(App[int]):
                     "[bold]Do next:[/] Esc focuses the command box; q quits.",
                 ]
             )
+        if page.startswith("candidate:"):
+            ticker = page.split(":", 1)[1].strip().upper()
+            row = _candidate_detail_row(self.payload, ticker)
+            brief = _mapping(row.get("priced_in_evidence_brief"))
+            if row and _candidate_case_has_source_gaps(row, brief):
+                return "\n".join(
+                    [
+                        "[bold #7ee787]USE THIS PAGE[/] Research case file; not trade approval.",
+                        (
+                            "[bold]Do next:[/] press 2 Evidence Gaps before "
+                            "building packets or tickets."
+                        ),
+                        "[bold]Reminder:[/] browsing this case makes 0 provider calls.",
+                    ]
+                )
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Inspect this evidence before acting elsewhere.",
+                    "[bold]Do next:[/] review the rows, then return to Inbox with 1.",
+                    "[bold]Reminder:[/] navigation and filtering make 0 provider calls.",
+                ]
+            )
         return "\n".join(
             [
                 "[bold #7ee787]USE THIS PAGE[/] Inspect this evidence before acting elsewhere.",
@@ -11723,6 +11745,8 @@ def _candidate_case_summary_kv_pairs(
 
 def _candidate_case_next_command(row: Mapping[str, object], ticker: str) -> str:
     brief = _mapping(row.get("priced_in_evidence_brief"))
+    if _candidate_case_has_source_gaps(row, brief):
+        return ""
     usefulness = _mapping(brief.get("usefulness")) or _mapping(row.get("usefulness"))
     explicit = str(
         _first_nonblank(
@@ -11768,6 +11792,14 @@ def _candidate_case_next_command(row: Mapping[str, object], ticker: str) -> str:
     return ""
 
 
+def _candidate_case_has_source_gaps(
+    row: Mapping[str, object],
+    brief: Mapping[str, object],
+) -> bool:
+    source_gaps = _candidate_case_source_gap_summary(row, brief)
+    return source_gaps not in {"", "none", "n/a"}
+
+
 def _candidate_case_command_as_of(row: Mapping[str, object]) -> str:
     parsed = _datetime_or_none(row.get("as_of"))
     if parsed is None:
@@ -11802,9 +11834,20 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
             if brief.get("blocked")
             else "no hard blocker recorded"
         )
+        blocked_by_source_gaps = _candidate_case_has_source_gaps(row, brief)
+        usefulness_summary = (
+            "Research-useful mismatch; blocked until Evidence Gaps clear."
+            if blocked_by_source_gaps
+            else _candidate_usefulness_summary(brief)
+        )
+        next_step = (
+            "Press 2 Evidence Gaps before building packets."
+            if blocked_by_source_gaps
+            else brief.get("next_step")
+        )
         return (
             ("Signal", _priced_in_signal(str(brief.get("status") or ""), fallback="Candidate")),
-            ("Usefulness", _candidate_usefulness_summary(brief)),
+            ("Usefulness", usefulness_summary),
             ("Why now", brief.get("why_now")),
             ("Non-company evidence", _non_company_evidence_table_summary(brief)),
             ("Emotion vs reaction", _priced_in_mismatch_text(
@@ -11825,7 +11868,7 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
             ("Source gaps", source_gaps),
             ("Hard blocker", hard_blocker),
             ("Blocker details", blockers or "none recorded"),
-            ("Next step", brief.get("next_step")),
+            ("Next step", next_step),
             ("State", row.get("state")),
             ("Decision card", row.get("decision_card_id") or row.get("card")),
         )
