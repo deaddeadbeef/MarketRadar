@@ -1964,6 +1964,36 @@ def test_dashboard_tui_telemetry_points_to_setup_before_run_on_empty_database(
     assert "Start one capped radar run from the dashboard or API" not in output.out
 
 
+def test_dashboard_tui_costs_waits_for_scan_before_value_judgment(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'empty-costs.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["dashboard-tui", "--once", "--page", "costs"]) == 0
+    output = capsys.readouterr()
+    normalized = " ".join(output.out.split())
+
+    assert output.err == ""
+    assert "Page: Costs" in output.out
+    assert "No cost or value proof yet" in output.out
+    assert "No market scan has run yet" in output.out
+    assert "Set up Active universe first" in output.out
+    assert "PowerShell command" in output.out
+    assert "not the dashboard command box" in normalized
+    assert "Monthly target" in output.out
+    assert "$40" in output.out
+    assert "Useful means" in output.out
+    assert "forward-testable hypothesis" in normalized
+    assert "Cost attempts" in output.out
+    assert "0 provider and 0 OpenAI calls" in output.out
+    assert "Attempt count" not in output.out
+    assert "Monthly value verdict" not in output.out
+    assert "Candidate ledger coverage" not in output.out
+
+
 def test_dashboard_tui_overview_explains_scan_legend_for_novices(
     tmp_path: Path,
     monkeypatch,

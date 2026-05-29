@@ -11419,6 +11419,25 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
     lines = [_rule("Costs", width)]
+    if _costs_waiting_for_first_scan(payload, costs, value_ledger, value_outcomes):
+        lines.extend(
+            _locked_review_setup_lines(
+                payload,
+                width,
+                title="No cost or value proof yet.",
+                unlocks=(
+                    "Costs become useful after a real scan creates candidates, "
+                    "feedback, and outcomes to measure."
+                ),
+                after_setup=(
+                    "run one capped scan, review candidates, then record feedback "
+                    "before judging whether MarketRadar is worth its cost."
+                ),
+            )
+        )
+        # Keep the pre-scan target readable; detailed decimals belong in the ledger.
+        lines.extend(_kv_lines(_costs_empty_value_rows(value_ledger), width=width))
+        return lines
     lines.extend(
         _kv_lines(
             (
@@ -11580,6 +11599,45 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
     return lines
+
+
+def _costs_waiting_for_first_scan(
+    payload: Mapping[str, object],
+    costs: Mapping[str, object],
+    value_ledger: Mapping[str, object],
+    value_outcomes: Mapping[str, object],
+) -> bool:
+    value_report = _mapping(payload.get("value_report"))
+    return (
+        _real_results_empty(payload)
+        and int(_number_or_zero(costs.get("attempt_count"))) <= 0
+        and int(_number_or_zero(value_ledger.get("entry_count"))) <= 0
+        and int(_number_or_zero(value_outcomes.get("outcome_count"))) <= 0
+        and str(value_report.get("first_blocker") or "") == "candidate_evidence"
+    )
+
+
+def _costs_empty_value_rows(
+    value_ledger: Mapping[str, object],
+) -> tuple[tuple[str, object], ...]:
+    target = value_ledger.get("target_monthly_value_usd") or 40
+    if isinstance(target, int | float) and not isinstance(target, bool):
+        target_text = f"${target:g}"
+    else:
+        target_text = f"${target}"
+    return (
+        ("Monthly target", f"{target_text} of decision-support value."),
+        (
+            "Useful means",
+            "saved research time, avoided a bad action, or produced "
+            "a forward-testable hypothesis.",
+        ),
+        (
+            "Cost attempts",
+            "none recorded; browsing this page spends 0 provider and "
+            "0 OpenAI calls.",
+        ),
+    )
 
 
 def _candidate_ledger_coverage_text(coverage: Mapping[str, object]) -> str:
@@ -13658,6 +13716,15 @@ def _footer_next_action(payload: Mapping[str, object], page: str) -> str:
             )
         return "No validation report yet. Keep decisions research-only until evidence exists."
     if page == "costs":
+        if _costs_waiting_for_first_scan(
+            payload,
+            _mapping(payload.get("costs")),
+            _mapping(payload.get("value_ledger")),
+            _mapping(payload.get("value_outcomes")),
+        ):
+            setup_footer = _setup_command_footer_action(payload)
+            if setup_footer:
+                return setup_footer
         value_report = _mapping(payload.get("value_report"))
         if value_report:
             return (
