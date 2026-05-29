@@ -6497,7 +6497,9 @@ def _tutorial_mission_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
         "Boundary": ("SAFE", "Respect the boundary"),
     }
     rows: list[Mapping[str, object]] = []
-    for label, value in _run_mission_brief_items(payload):
+    for label, value in _run_source_status_display_items(
+        _run_mission_brief_items(payload)
+    ):
         if label not in step_labels:
             continue
         step, action = step_labels[label]
@@ -6613,7 +6615,7 @@ def _tutorial_caption(payload: Mapping[str, object]) -> str:
 
 def _tutorial_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines: list[str] = []
-    mission_items = _run_mission_brief_items(payload)
+    mission_items = _run_source_status_display_items(_run_mission_brief_items(payload))
     if mission_items:
         lines.append(_rule("Mission - why this exists", width))
         lines.extend(_kv_lines(mission_items, width=width))

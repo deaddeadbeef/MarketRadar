@@ -4312,14 +4312,17 @@ def test_run_page_humanizes_mission_brief_source_tokens() -> None:
     }
 
     screen = render_dashboard_tui(payload, page="run", width=180)
+    start = render_dashboard_tui(payload, page="start", width=180)
+    combined = "\n".join((screen, start))
 
     assert "Mission Brief" in screen
-    assert "market bars" in screen
-    assert "catalyst events" in screen
-    assert "local text" in screen
-    assert "blocker market bars; gap 2" in screen
+    assert "Mission - why this exists" in start
+    assert "market bars" in combined
+    assert "catalyst events" in combined
+    assert "local text" in combined
+    assert "blocker market bars; gap 2" in combined
     command_text_removed = (
-        screen.replace("batch market_bars", "")
+        combined.replace("batch market_bars", "")
         .replace("--source market_bars", "")
         .replace("batch catalyst_events", "")
         .replace("--source catalyst_events", "")
