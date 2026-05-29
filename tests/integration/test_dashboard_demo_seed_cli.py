@@ -1823,6 +1823,9 @@ def test_dashboard_tui_overview_is_novice_first_on_empty_database(
     assert "Best next step: Set up Active universe first" in output.out
     assert "Start with Setup row 1" not in output.out
     assert "Set up setup first" not in output.out
+    assert "NEXT SAFE ACTION: Set up Active universe first. Open Evidence Gaps" in output.out
+    assert "blockers; only run provider commands" in output.out
+    assert "intentio..." not in output.out
     assert "Raise CATALYST_POLYGON_TICKERS_MAX_PAGES" not in output.out
     assert "Browsing this dashboard made 0 calls" in output.out
     assert "0 Start" in output.out
