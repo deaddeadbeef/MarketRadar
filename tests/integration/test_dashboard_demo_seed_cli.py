@@ -5393,6 +5393,11 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
                                 "source": "options",
                                 "status": "missing",
                                 "next_action": "Sync point-in-time options.",
+                            },
+                            {
+                                "source": "broker_context",
+                                "status": "missing",
+                                "next_action": "Sync read-only broker context.",
                             }
                         ],
                         "evidence": [{"title": "ACME 8-K", "source": "SEC EDGAR"}],
@@ -5409,7 +5414,12 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
     assert "What is missing?" in case
     assert "Source gaps" in case
     assert "options: Sync point-in-time options." in case
-    assert "Fix source gaps first (options); then Build a Candidate Packet." in case
+    assert "broker context: Sync read-only broker context." in case
+    assert "broker_context" not in case
+    assert (
+        "Fix source gaps first (options, broker context); then Build a Candidate "
+        "Packet."
+    ) in case
     assert "Evidence to verify:" not in case
     assert "Gaps:" not in case
     assert "Hard blocker" in case
