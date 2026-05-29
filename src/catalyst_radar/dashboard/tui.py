@@ -1995,6 +1995,7 @@ class MarketRadarDashboardApp(App[int]):
             "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
             "ops": _ops_next_safe_action(self.payload),
             "telemetry": _telemetry_next_safe_action(self.payload),
+            "features": _footer_next_action(self.payload, "features"),
             "help": "Use the help table as the command reference.",
             "candidate": candidate_action,
         }.get(
