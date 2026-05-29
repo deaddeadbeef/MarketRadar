@@ -7309,9 +7309,8 @@ def _market_inbox_next_safe_action(payload: Mapping[str, object]) -> str:
         )
     if worth_reading:
         return (
-            "Enter opens highlighted Worth Reading; click works. "
-            f"{worth_reading} research only; Decision Review required before "
-            "action."
+            f"Open {worth_reading} Worth Reading; research only. "
+            "Decision Review before action."
         )
     if waiting and waiting == visible_total:
         return (
