@@ -2000,10 +2000,15 @@ class MarketRadarDashboardApp(App[int]):
             page,
             "Use the sidebar, page keys, or Ctrl+N/Ctrl+P to move; type a command below.",
         )
+        cost_summary = (
+            "Cost: 0 provider/OpenAI calls. Feedback is local."
+            if page == "alerts"
+            else _cost_boundary_summary(self.payload)
+        )
         return (
             "[bold #7ee787]NEXT SAFE ACTION[/]\n"
             f"{page_action}\n"
-            f"{_cost_boundary_summary(self.payload)}"
+            f"{cost_summary}"
         )
 
     def _refresh_header(self) -> None:

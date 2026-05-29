@@ -9359,6 +9359,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert ">> 5  Alerts [1]" in frame
             assert "research notifications" in frame
             assert "not trade signals" in frame
+            assert "Feedback is local" in frame
+            assert "Guarded command" not in frame
             assert "immediate manual" in frame
             assert "immediate_manual_review" not in frame
             assert "demo-alert-acme" not in frame
