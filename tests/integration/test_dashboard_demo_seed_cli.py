@@ -1848,7 +1848,7 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
         "overview": ("Inbox.", "open 1"),
         "readiness": ("Evidence Gaps.", "batch <source>"),
         "run": ("Safe Run.", "run execute only after reviewing calls"),
-        "candidate:ACME": ("Candidate ACME.", "action ACME watch"),
+        "candidate:ACME": ("Candidate ACME.", "2 Evidence Gaps", "action ACME watch"),
         "broker": ("Broker.", "ticket <ticker>"),
         "ops": ("Source workbench.", "batch <source> execute"),
         "agent": ("Agent Coach.", "agent execute only with budget"),
@@ -1861,6 +1861,8 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
         placeholder = app._command_placeholder()
         assert all(needle in placeholder for needle in needles), placeholder
         assert "Type a command or click a message. Try:" not in placeholder
+    app.page = "candidate:ACME"
+    assert "ticket ACME" not in app._command_placeholder()
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(
