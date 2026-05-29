@@ -7252,10 +7252,10 @@ def _candidate_case_next_safe_action(payload: Mapping[str, object], ticker: str)
         gap_label = ", ".join(gap_labels[:4]) if gap_labels else "listed evidence"
         if len(gap_labels) > 4:
             gap_label = f"{gap_label}, +{len(gap_labels) - 4} more"
-        then_clause = _clip((next_step or "return to Candidate Review").rstrip("."), 80)
+        action_gap_label = _candidate_case_source_gap_action_label(gap_labels)
         return (
-            f"{ticker}: no trade decision yet. Fix source gaps first ({gap_label}); "
-            f"then {then_clause}."
+            f"{ticker}: Press 2 Evidence Gaps for {action_gap_label or gap_label}; "
+            "no packet until gaps clear."
         )
     if next_step:
         return (
@@ -7289,6 +7289,21 @@ def _candidate_case_source_gap_labels(
         for value in [*_texts(data_sources.get("missing")), *_texts(data_sources.get("stale"))]:
             add_label(value)
     return labels
+
+
+def _candidate_case_source_gap_action_label(gap_labels: Sequence[str]) -> str:
+    compact: list[str] = []
+    for label in gap_labels[:3]:
+        action_label = label.replace("broker context", "broker")
+        action_label = action_label.replace("catalyst events", "catalysts")
+        if action_label and action_label not in compact:
+            compact.append(action_label)
+    if not compact:
+        return ""
+    summary = "/".join(compact)
+    if len(gap_labels) > 3:
+        summary = f"{summary}/+{len(gap_labels) - 3} more"
+    return summary
 
 
 def _candidate_case_source_gap_summary(
