@@ -1131,7 +1131,7 @@ class MarketRadarDashboardApp(App[int]):
     }
 
     #guide {
-        height: 4;
+        height: 8;
         border: round #315473;
         background: #0a151f;
         color: #d7dde8;
@@ -2300,6 +2300,17 @@ class MarketRadarDashboardApp(App[int]):
                 action = str(
                     first_gap.get("next_action") or first_gap.get("action") or ""
                 ).strip()
+                command = _first_catalyst_radar_command(action)
+                command_lines = []
+                if command:
+                    command_lines = [
+                        f"[bold]PowerShell command:[/] {command}",
+                        f"[bold]Where to run:[/] {_POWERSHELL_RUN_LOCATION}",
+                        (
+                            "[bold]Command boundary:[/] "
+                            f"{_powershell_command_boundary(command)}"
+                        ),
+                    ]
                 return "\n".join(
                     [
                         (
@@ -2311,6 +2322,7 @@ class MarketRadarDashboardApp(App[int]):
                             f"[bold]Safe:[/] 0 calls, 0 orders. "
                             f"[bold]Do next:[/] {_clip(action or next_action, 110)}"
                         ),
+                        *command_lines,
                     ]
                 )
             return "\n".join(
@@ -2321,6 +2333,19 @@ class MarketRadarDashboardApp(App[int]):
                 ]
             )
         if page == "run":
+            command = str(
+                next_step.get("tui_command") or next_step.get("command") or ""
+            ).strip()
+            command_lines = []
+            if command.startswith("catalyst-radar"):
+                command_lines = [
+                    f"[bold]PowerShell command:[/] {command}",
+                    f"[bold]Where to run:[/] {_POWERSHELL_RUN_LOCATION}",
+                    (
+                        "[bold]Command boundary:[/] "
+                        f"{_powershell_command_boundary(command)}"
+                    ),
+                ]
             return "\n".join(
                 [
                     "[bold #7ee787]USE THIS PAGE[/] A run may call external providers.",
@@ -2329,6 +2354,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"[bold]Status:[/] {call_plan.get('status') or 'unknown'}."
                     ),
                     "[bold]Do next:[/] inspect rows first; type run execute only when you mean it.",
+                    *command_lines,
                 ]
             )
         if page == "candidates":
@@ -2500,7 +2526,7 @@ class MarketRadarDashboardApp(App[int]):
                     ("finding", "Finding", 44),
                     ("next_action", "Next action", 58),
                 ],
-                _rows(_mapping(self.payload.get("readiness")).get("readiness_checklist")),
+                _readiness_modern_table_rows(self.payload),
                 (
                     "Rows explain evidence areas. Start with blocked rows; "
                     "Enter only inspects and makes no calls."
@@ -2517,7 +2543,7 @@ class MarketRadarDashboardApp(App[int]):
                     ("external_call_count_max", "Calls", 8),
                     ("next_action", "Next action", 66),
                 ],
-                _rows(call_plan.get("rows")),
+                _run_modern_table_rows(self.payload),
                 f"{call_plan.get('headline') or ''} {call_plan.get('next_action') or ''}",
             )
         if page == "candidates":
@@ -2992,6 +3018,9 @@ _SNAPSHOT_RELOAD_COMMANDS = {
 }
 
 _COMMAND_NO_SIDE_EFFECTS = "No API calls/orders/writes."
+_POWERSHELL_RUN_LOCATION = (
+    "Run it in a normal PowerShell prompt, not in the dashboard command box."
+)
 _POWERSHELL_COMMANDS_SHOWN_IN_TUI = {
     "build-packets",
     "build-decision-cards",
@@ -3006,35 +3035,76 @@ def _command_no_side_effects(message: str) -> str:
     return f"{_COMMAND_NO_SIDE_EFFECTS}\n{message}"
 
 
+def _first_catalyst_radar_command(value: object) -> str:
+    text = str(value or "").strip()
+    marker = "catalyst-radar "
+    start = text.find(marker)
+    if start < 0:
+        return ""
+    command = text[start:]
+    if start > 0 and text[start - 1] == "`":
+        command = command.split("`", 1)[0]
+    else:
+        command = command.splitlines()[0].split(";", 1)[0]
+    return command.strip().strip("`").rstrip(".,;")
+
+
+def _catalyst_child_command(shell_command: str) -> str:
+    command = shell_command.strip()
+    if not command.lower().startswith("catalyst-radar "):
+        return ""
+    rest = command.partition(" ")[2].strip()
+    return rest.split(maxsplit=1)[0].lower() if rest else ""
+
+
+def _powershell_command_boundary(shell_command: str) -> str:
+    shell_command_lower = shell_command.lower()
+    child_command = _catalyst_child_command(shell_command)
+    if " market-bars residual-review " in f" {shell_command_lower} ":
+        return (
+            "Read-only market-bar review; no provider, OpenAI, broker, order, "
+            "or DB write calls."
+        )
+    if child_command in {"build-packets", "build-decision-cards"}:
+        return _candidate_case_command_boundary(f"catalyst-radar {child_command} ")
+    return "Run it only after accepting the command's call/write boundary."
+
+
+def _powershell_command_context_items(
+    shell_command: str,
+    *,
+    include_command: bool = False,
+) -> tuple[tuple[str, object], ...]:
+    if not shell_command.strip().lower().startswith("catalyst-radar "):
+        return ()
+    items: list[tuple[str, object]] = []
+    if include_command:
+        items.append(("PowerShell command", shell_command.strip()))
+    items.extend(
+        [
+            ("Where to run", _POWERSHELL_RUN_LOCATION),
+            ("Command boundary", _powershell_command_boundary(shell_command)),
+        ]
+    )
+    return tuple(items)
+
+
 def _powershell_command_guidance(raw: str) -> str:
     text = raw.strip()
     if not text:
         return ""
-    command, _, rest = text.partition(" ")
+    command, _, _rest = text.partition(" ")
     command_name = command.strip().lower()
     if command_name == "catalyst-radar":
         shell_command = text
-        child_command = (
-            rest.strip().split(maxsplit=1)[0].lower() if rest.strip() else ""
-        )
     elif command_name in _POWERSHELL_COMMANDS_SHOWN_IN_TUI:
-        if command_name == "market-bars" and not rest.strip():
+        if command_name == "market-bars" and not _rest.strip():
             return ""
         shell_command = f"catalyst-radar {text}"
-        child_command = command_name
     else:
         return ""
 
-    shell_command_lower = shell_command.lower()
-    if " market-bars residual-review " in f" {shell_command_lower} ":
-        boundary = (
-            "Read-only market-bar review; no provider, OpenAI, broker, order, "
-            "or DB write calls."
-        )
-    elif child_command in {"build-packets", "build-decision-cards"}:
-        boundary = _candidate_case_command_boundary(f"catalyst-radar {child_command} ")
-    else:
-        boundary = "Run it only after accepting the command's call/write boundary."
+    boundary = _powershell_command_boundary(shell_command)
     return _command_no_side_effects(
         "PowerShell command, not a dashboard command. "
         f"Run this in a normal PowerShell prompt: {shell_command}. {boundary}"
@@ -9654,6 +9724,71 @@ def _decision_gap_filter_summary(queue: Mapping[str, object]) -> str:
     return f"decision gaps {', '.join(normalized)}"
 
 
+def _readiness_modern_table_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    rows: list[Mapping[str, object]] = []
+    first_gap = _readiness_first_work_item(payload)
+    action = str(
+        first_gap.get("next_action") or first_gap.get("action") or ""
+    ).strip()
+    command = _first_catalyst_radar_command(action)
+    if command:
+        rows.extend(
+            [
+                {
+                    "area": "PowerShell command",
+                    "status": "review",
+                    "finding": command,
+                    "next_action": _POWERSHELL_RUN_LOCATION,
+                },
+                {
+                    "area": "Command boundary",
+                    "status": "zero call",
+                    "finding": _powershell_command_boundary(command),
+                    "next_action": "Review only; no dashboard execution.",
+                },
+            ]
+        )
+    rows.extend(_rows(_mapping(payload.get("readiness")).get("readiness_checklist")))
+    return rows
+
+
+def _run_modern_table_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    rows: list[Mapping[str, object]] = []
+    command = str(
+        _priced_in_operator_step(payload).get("tui_command")
+        or _priced_in_operator_step(payload).get("command")
+        or ""
+    ).strip()
+    if command.startswith("catalyst-radar"):
+        rows.extend(
+            [
+                {
+                    "layer": "PowerShell command",
+                    "provider": "local",
+                    "status": "review",
+                    "external_call_count_max": 0,
+                    "next_action": command,
+                },
+                {
+                    "layer": "Where to run",
+                    "provider": "PowerShell",
+                    "status": "local",
+                    "external_call_count_max": 0,
+                    "next_action": _POWERSHELL_RUN_LOCATION,
+                },
+                {
+                    "layer": "Command boundary",
+                    "provider": "local",
+                    "status": "zero call",
+                    "external_call_count_max": 0,
+                    "next_action": _powershell_command_boundary(command),
+                },
+            ]
+        )
+    rows.extend(_rows(_mapping(payload.get("call_plan")).get("rows")))
+    return rows
+
+
 def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     readiness = _mapping(payload.get("readiness"))
     shadow = _mapping(payload.get("shadow_readiness"))
@@ -9703,6 +9838,13 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                         "dashboard command box.",
                     ),
                 ]
+            )
+        elif action_command := _first_catalyst_radar_command(display_action):
+            top_items.extend(
+                _powershell_command_context_items(
+                    action_command,
+                    include_command=True,
+                )
             )
         lines.extend(
             _kv_lines(
@@ -10359,23 +10501,17 @@ def _run_mission_brief_items(
         )
         if operator_step_text:
             items.append(("Do now", operator_step_text))
-    command = ""
+    command = str(
+        operator_step.get("tui_command") or operator_step.get("command") or ""
+    ).strip()
     if separate_setup_command:
-        command = _first_scan_setup_command(payload) or str(
-            operator_step.get("tui_command") or operator_step.get("command") or ""
-        ).strip()
+        command = _first_scan_setup_command(payload) or command
     if command:
         items.extend(
-            [
-                ("PowerShell command", command),
-                (
-                    "Where to run",
-                    (
-                        "Run it in a normal PowerShell prompt, not in the "
-                        "dashboard command box."
-                    ),
-                ),
-            ]
+            _powershell_command_context_items(
+                command,
+                include_command=separate_setup_command,
+            )
         )
     if trust_gate:
         gate_text = (
