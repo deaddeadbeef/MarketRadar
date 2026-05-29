@@ -5321,7 +5321,12 @@ def test_evidence_gaps_footer_names_first_must_fix_gap() -> None:
                     "priority": "must_fix",
                     "area": "Live market scan",
                     "item": "Market bars are incomplete.",
-                    "next_action": "Fill market bars or open Ops for the source plan.",
+                    "next_action": (
+                        "Review residual market-bar rows first with "
+                        "`catalyst-radar market-bars residual-review "
+                        "--expected-as-of 2026-05-15`. Fill market bars "
+                        "only after the residual rows are confirmed tradable."
+                    ),
                 },
             ],
         },
@@ -5337,6 +5342,13 @@ def test_evidence_gaps_footer_names_first_must_fix_gap() -> None:
     assert "0 calls, 0 orders" in readiness
     assert "Research-only" in readiness
     assert "Use the workflow navigation or open the highlighted row" not in readiness
+    footer = readiness.split("Next Safe Action", 1)[1]
+    assert (
+        "NEXT SAFE ACTION: Use `catalyst-radar market-bars residual-review "
+        "--expected-as-of 2026-05-15`."
+    ) in footer
+    assert "with the command above" in footer
+    assert "--expected-as-..." not in footer
 
 
 def test_evidence_gaps_setup_blocker_preserves_exact_setup_command() -> None:

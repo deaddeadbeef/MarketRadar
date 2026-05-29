@@ -1886,7 +1886,10 @@ class MarketRadarDashboardApp(App[int]):
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
             "overview": f"{inbox_action}{page_text}",
-            "readiness": _readiness_next_safe_action(self.payload),
+            "readiness": _readiness_next_safe_action(
+                self.payload,
+                command_first=False,
+            ),
             "review": (
                 "Review decision-ready priced-in rows. Press Enter to open the "
                 f"candidate and Decision Card context.{page_text}"
@@ -7151,7 +7154,11 @@ def _readiness_setup_next_action(row: Mapping[str, object]) -> str:
     return row_action
 
 
-def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
+def _readiness_next_safe_action(
+    payload: Mapping[str, object],
+    *,
+    command_first: bool = True,
+) -> str:
     setup_footer = _setup_command_footer_action(payload)
     if setup_footer:
         return setup_footer
@@ -7160,19 +7167,54 @@ def _readiness_next_safe_action(payload: Mapping[str, object]) -> str:
         priority = str(row.get("priority") or "gap").replace("_", " ")
         area = str(row.get("area") or row.get("item") or "Evidence gap").strip()
         action = str(row.get("next_action") or row.get("action") or "").strip()
-        action_text = f" {_clip(action, 104)}" if action else ""
-        return (
+        command = _first_backticked_command(action)
+        action_text = _text_without_backticked_command(action, command)
+        lines = []
+        if command and command_first:
+            lines.append(f"Use `{command}`.")
+        suffix = f" {action_text}" if action_text else ""
+        lines.append(
             f"Research-only. First {priority}: "
-            f"{area}.{action_text}"
+            f"{area}.{suffix}"
         )
+        if command and not command_first:
+            lines.append(f"Use `{command}`.")
+        return "\n".join(lines)
     readiness = _mapping(payload.get("readiness"))
     next_action = str(readiness.get("next_action") or "").strip()
     if next_action:
-        return (
-            f"Research-only until clear. Clear readiness before acting: "
-            f"{_clip(next_action, 118)}"
+        command = _first_backticked_command(next_action)
+        action_text = _text_without_backticked_command(next_action, command)
+        lines = []
+        if command and command_first:
+            lines.append(f"Use `{command}`.")
+        suffix = f": {action_text}" if action_text else "."
+        lines.append(
+            "Research-only until clear. Clear readiness before acting"
+            f"{suffix}"
         )
+        if command and not command_first:
+            lines.append(f"Use `{command}`.")
+        return "\n".join(lines)
     return "No evidence gaps are listed. Return to Inbox or Decision Review."
+
+
+def _first_backticked_command(value: str) -> str:
+    _, separator, rest = value.partition("`")
+    if not separator:
+        return ""
+    command, closing, _ = rest.partition("`")
+    if not closing:
+        return ""
+    return command.strip()
+
+
+def _text_without_backticked_command(value: str, command: str) -> str:
+    text = value.strip()
+    if command:
+        text = text.replace(f"with `{command}`", "with the command above")
+        text = text.replace(f"`{command}`", "the command above").strip()
+    return " ".join(text.split())
 
 
 def _readiness_row_status_message(row: Mapping[str, object]) -> str:
