@@ -5020,8 +5020,9 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "What happened?" in case
     assert "What is missing?" in case
     assert "Next safe action" in case
-    assert "ACME: no trade decision yet" in case
-    assert "Fix source gaps first" in case
+    assert "ACME: Press 2 Evidence Gaps" in case
+    assert "Press 2 Evidence Gaps for options/broker" in case
+    assert "no packet until gaps clear" in case
     assert "Use the workflow navigation or open the highlighted row" not in case
 
     inbox_rows = _market_inbox_rows(payload)
@@ -5424,10 +5425,8 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
     assert "options: Sync point-in-time options." in case
     assert "broker context: Sync read-only broker context." in case
     assert "broker_context" not in case
-    assert (
-        "Fix source gaps first (options, broker context); then Build a Candidate "
-        "Packet."
-    ) in case
+    assert "Press 2 Evidence Gaps for options/broker" in case
+    assert "no packet until gaps clear" in case
     assert "Next command" in case
     assert "catalyst-radar build-packets --as-of 2026-05-10" in case
     assert "--ticker ACME --min-state ResearchOnly" in case
@@ -9132,12 +9131,13 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
             assert "No calls" in frame
-            assert "ACME: no trade decision yet" in frame
+            assert "ACME: Press 2 Evidence Gaps" in frame
             assert "Can I act now?" in frame
             assert "What happened?" in frame
             assert "What is missing?" in frame
             assert "Next safe action" in frame
-            assert "Fix source gaps" in frame
+            assert "Press 2 Evidence Gaps" in frame
+            assert "no packet until gaps clear" in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")
@@ -9157,7 +9157,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
             assert "No calls" in frame
-            assert "ACME: no trade decision yet" in frame
+            assert "ACME: Press 2 Evidence Gaps" in frame
             assert ">> 4  Candidate Review" in frame
 
             assert await pilot.click("#nav-alerts")
