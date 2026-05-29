@@ -1660,11 +1660,26 @@ def test_market_bars_residual_review_cli_flags_zero_liquidity_saved_gap(
 
     assert human_code == 0
     human_output = capsys.readouterr().out
-    assert "approval_required_unblock status=ready_to_execute" in human_output
-    assert "active_universe_repair" in human_output
+    assert "Market bar residual review" in human_output
+    assert "Review result: still blocked" in human_output
+    assert "Why blocked: 1 active securities are missing bars" in human_output
+    assert "Sample missing tickers: AACO" in human_output
+    assert "Evidence: 1 have zero market cap; 1 have zero 20d dollar volume" in (
+        human_output
+    )
+    assert "Safe default: Keep blocked until you approve a repair path" in human_output
+    assert "Recommended next step:" in human_output
+    assert "Option 1 - Preview local universe repair" in human_output
+    assert "Option 2 - Execute local universe repair" in human_output
+    assert "Approval required: yes" in human_output
+    assert "Boundary: 0 provider calls, 0 OpenAI calls, 0 broker/order calls" in (
+        human_output
+    )
     assert "--expect-missing-count 1 --expect-eligible-count 1 --execute --json" in (
         human_output
     )
+    assert "approval_required_unblock status=ready_to_execute" not in human_output
+    assert "decision_options=" not in human_output
 
 
 def test_market_bars_status_routes_zero_liquidity_gap_to_residual_review_without_saved_file(
