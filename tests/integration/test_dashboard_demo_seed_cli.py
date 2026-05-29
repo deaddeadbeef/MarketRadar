@@ -5530,6 +5530,8 @@ def test_market_inbox_distinguishes_visible_page_from_full_queue() -> None:
     assert "click works" in overview
     assert "Decision Review required before action" in overview
     assert "Evidence Gaps first" in overview
+    assert "Bullish not priced" in overview
+    assert "Bullish not priced - ..." not in overview
     assert "mood 80 vs price 25" in overview
     assert "Open case; verify gaps." in overview
     assert "Build a Candidate Packet" not in overview
