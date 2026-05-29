@@ -6878,9 +6878,7 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
     for row in overview_rows:
         ticker = str(row.get("ticker") or "").strip().upper()
         signal = str(row.get("signal") or "Market signal").strip()
-        gap = row.get("emotion_reaction_gap")
-        gap_text = "" if gap in (None, "") else f" - gap {gap}"
-        subject = _clip(f"{signal}{gap_text}", 80)
+        subject = _market_inbox_subject(signal)
         missing = str(row.get("data_coverage") or "unknown").strip() or "unknown"
         next_action = str(row.get("next_action") or "").strip()
         if next_action == "Open candidate detail and review the evidence.":
@@ -6920,6 +6918,22 @@ def _market_inbox_rows(payload: Mapping[str, object]) -> list[Mapping[str, objec
         )
         messages.append(message)
     return messages
+
+
+def _market_inbox_subject(signal: str) -> str:
+    text = " ".join(str(signal or "Market signal").split())
+    replacements = {
+        "bullish_not_priced_in": "Bullish not priced in",
+        "bearish_not_priced_in": "Bearish not priced in",
+        "fully_priced": "Fully priced",
+        "overextended_hype": "Overextended hype",
+        "no_mismatch": "No mismatch",
+    }
+    normalized = text.strip().lower().replace("-", "_").replace(" ", "_")
+    text = replacements.get(normalized, text)
+    if " - gap " in text.lower():
+        text = text[: text.lower().find(" - gap ")].strip()
+    return _clip(text, 40)
 
 
 def _market_inbox_why(row: Mapping[str, object]) -> str:
