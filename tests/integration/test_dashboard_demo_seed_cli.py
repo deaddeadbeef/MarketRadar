@@ -1490,11 +1490,14 @@ def test_dashboard_broker_setup_state_defers_auth_on_empty_database(
     assert output.err == ""
     assert "Page: Broker" in output.out
     assert "Broker / Portfolio" in output.out
-    assert "No real result yet" in output.out
+    assert "Broker is optional" in output.out
+    assert "you do not need Schwab connected" in output.out
+    assert "No broker action needed yet" in output.out
+    assert "No market scan has run yet" in output.out
     assert "Set up Active universe first" in output.out
-    assert "Why this page is blank" in output.out
-    assert "Broker context is optional later" in output.out
-    assert "Browsing this page still makes 0 Schwab calls" in output.out
+    assert "Why this page is blank" not in output.out
+    assert "Schwab status" in output.out
+    assert "0 Schwab calls while browsing this page" in output.out
     assert "NEXT SAFE ACTION: Set up Active universe first" in output.out
     assert "Authenticate only when you want portfolio context" not in output.out
     assert "Local Watch Actions" not in output.out
