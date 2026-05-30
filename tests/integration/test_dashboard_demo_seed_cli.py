@@ -5082,7 +5082,7 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "market_bars" not in candidates
     assert "broker_context" not in candidates
     assert "Fix Evidence Gaps first." in candidates
-    assert "NEXT SAFE ACTION: Research-only. Press 2 Evidence Gaps first" in candidates
+    assert "NEXT SAFE ACTION: Research-only: press 2 Evidence Gaps first." in candidates
     assert "Do next: open one candidate" not in candidates
     assert "not trade approval" in candidates
     default_width_candidates = render_dashboard_tui(payload, page="candidates", width=120)
