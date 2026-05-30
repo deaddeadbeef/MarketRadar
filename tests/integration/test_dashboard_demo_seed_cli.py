@@ -44,6 +44,7 @@ from catalyst_radar.dashboard.tui import (
     _market_bar_saved_capture_summary,
     _market_inbox_count_summary,
     _market_inbox_rows,
+    _overview_source_workflow_hint,
     _priced_in_overview_rows,
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
@@ -7775,6 +7776,30 @@ def test_dashboard_summary_surfaces_unscanned_full_scan_rows() -> None:
         "Full-scan coverage: 12087/12613 active all-instrument row(s) scanned; "
         "526 unscanned; 523 missing scan-date market bar(s); "
         "3 benchmark reference row(s) intentionally excluded: SPY, XLI, XLK."
+    )
+
+
+def test_overview_scan_coverage_hint_is_human_readable_for_partial_scan() -> None:
+    payload = {
+        "priced_in_answer": {
+            "full_scan": {
+                "instrument_filter": "all",
+                "active_securities": 12669,
+                "scanned_rows": 2429,
+                "unscanned_rows": 10240,
+            }
+        },
+        "priced_in_audit": {
+            "market_bars": {
+                "missing_as_of_bar": 579,
+                "repair": {"diagnostic": {"missing_count": 579}},
+            }
+        },
+    }
+
+    assert _overview_source_workflow_hint(payload) == (
+        "Current scan coverage: not full-market yet; "
+        "2,429/12,669 active scanned; 10,240 unscanned; 579 missing bars."
     )
 
 

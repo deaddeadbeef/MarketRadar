@@ -2344,6 +2344,10 @@ class MarketRadarDashboardApp(App[int]):
                 or scan_yield.get("requested_securities")
                 or "n/a"
             )
+            scanned_count = int(_number_or_zero(scanned_rows))
+            active_count = int(_number_or_zero(active_rows))
+            scanned_text = f"{scanned_count:,}" if scanned_count else str(scanned_rows)
+            active_text = f"{active_count:,}" if active_count else str(active_rows)
             return "\n".join(
                 [
                     (
@@ -2356,9 +2360,9 @@ class MarketRadarDashboardApp(App[int]):
                     ),
                     (
                         f"[bold]Can I act?[/] {_decision_label(readiness)}. "
-                        f"[bold]Coverage:[/] scanned "
-                        f"{scanned_rows} row(s) from {active_rows} "
-                        f"active securities; ranked {total}; visible page {count}."
+                        f"[bold]Coverage:[/] scanned {scanned_text} of "
+                        f"{active_text} active securities; {total:,} ranked; "
+                        f"showing {count:,}."
                     ),
                     (
                         "[bold]Mailboxes:[/] Urgent = decision-ready; Worth Reading = "
@@ -9593,18 +9597,42 @@ def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
     return summary
 
 
+def _full_scan_scope_label(full_scan: Mapping[str, object]) -> str:
+    scope = str(full_scan.get("instrument_filter") or "full").strip()
+    return {
+        "all": "all-instrument",
+        "stocks_only": "stock-like",
+    }.get(scope, scope)
+
+
+def _current_scan_coverage_hint(payload: Mapping[str, object]) -> str:
+    answer = _mapping(payload.get("priced_in_answer"))
+    full_scan = _mapping(answer.get("full_scan"))
+    active = int(_number_or_zero(full_scan.get("active_securities")))
+    scanned = int(_number_or_zero(full_scan.get("scanned_rows")))
+    unscanned = int(_number_or_zero(full_scan.get("unscanned_rows")))
+    if active <= 0 or unscanned <= 0:
+        return ""
+    missing = _market_bar_missing_count(payload)
+    parts = [
+        "not full-market yet",
+        f"{scanned:,}/{active:,} active scanned",
+        f"{unscanned:,} unscanned",
+    ]
+    if missing:
+        parts.append(f"{missing:,} missing bars")
+    return f"Current scan coverage: {'; '.join(parts)}."
+
+
 def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
     full_scan_summary = _answer_full_scan_scope_summary(payload)
     if full_scan_summary:
         if _priced_in_scan_scope_is_partial(payload):
-            current_summary = full_scan_summary.replace(
+            return _current_scan_coverage_hint(payload) or full_scan_summary.replace(
                 "Full-scan coverage:",
                 "Current scan coverage:",
                 1,
             )
-            if "not full-market yet" not in current_summary:
-                current_summary = f"{current_summary}; not full-market yet"
-            return current_summary
         return full_scan_summary
 
     preflight = _mapping(payload.get("priced_in_preflight"))
@@ -9696,10 +9724,7 @@ def _answer_full_scan_scope_summary(payload: Mapping[str, object]) -> str:
     if unscanned_blockers <= 0 and unscanned:
         unscanned_blockers = max(0, unscanned - excluded)
     scope = str(full_scan.get("instrument_filter") or "full").strip()
-    scope_label = {
-        "all": "all-instrument",
-        "stocks_only": "stock-like",
-    }.get(scope, scope)
+    scope_label = _full_scan_scope_label(full_scan)
     suffixes: list[str] = []
     if scope == "stocks_only":
         audit = _mapping(payload.get("priced_in_audit"))
