@@ -590,7 +590,9 @@ launcher skip auto-update.
 The launcher prints a startup line immediately. The interactive TUI opens on
 latest scan results before the local snapshot finishes loading, and
 `radar --once` is the fastest smoke test for the same data path. Use
-`radar --page tutorial` only when you want the walkthrough.
+`radar --page tutorial` only when you want the walkthrough. The interactive TUI
+and `dashboard-tui --once` use a fast local browsing snapshot; the heavier
+`dashboard-snapshot --json` command remains the full diagnostic/export surface.
 For a fuller zero-provider-call launcher check, run:
 
 ```powershell
