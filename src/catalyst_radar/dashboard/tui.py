@@ -7494,8 +7494,8 @@ def _candidate_case_next_safe_action(payload: Mapping[str, object], ticker: str)
             gap_label = f"{gap_label}, +{len(gap_labels) - 4} more"
         action_gap_label = _candidate_case_source_gap_action_label(gap_labels)
         return (
-            f"{ticker}: Press 2 Evidence Gaps for global blockers; this case also needs "
-            f"{action_gap_label or gap_label}. No packet yet."
+            f"{ticker}: Open 2 Evidence Gaps for global blockers; add "
+            f"{action_gap_label or gap_label} evidence. No packet yet."
         )
     if next_step:
         return (
@@ -12108,7 +12108,7 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
             else _candidate_usefulness_summary(brief)
         )
         next_step = (
-            "Press 2 Evidence Gaps for global blockers before building packets."
+            "Open 2 Evidence Gaps for global blockers before packets."
             if blocked_by_source_gaps
             else brief.get("next_step")
         )

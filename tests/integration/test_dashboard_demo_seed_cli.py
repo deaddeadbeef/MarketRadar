@@ -5223,9 +5223,9 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "What happened?" in case
     assert "What is missing?" in case
     assert "Next safe action" in case
-    assert "ACME: Press 2 Evidence Gaps" in case
+    assert "ACME: Open 2 Evidence Gaps" in case
     assert "global blockers" in case
-    assert "this case also needs options/broker" in case
+    assert "add options/broker evidence" in case
     assert "No packet yet" in case
     assert "Next command" not in case
     assert "build-packets" not in case
@@ -5632,8 +5632,8 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
     assert "options: Sync point-in-time options." in case
     assert "broker context: Sync read-only broker context." in case
     assert "broker_context" not in case
-    assert "Press 2 Evidence Gaps for global blockers" in case
-    assert "this case also needs options/broker" in case
+    assert "Open 2 Evidence Gaps for global blockers" in case
+    assert "add options/broker evidence" in case
     assert "No packet yet" in case
     assert "Next command" not in case
     assert "catalyst-radar build-packets --as-of 2026-05-10" not in case
@@ -5643,7 +5643,7 @@ def test_candidate_detail_distinguishes_source_gaps_from_hard_blockers() -> None
     assert "Command boundary" not in case
     assert "Local DB write; no provider, OpenAI, broker, or order calls." not in case
     assert "blocked until Evidence Gaps clear" in case
-    assert "Press 2 Evidence Gaps for global blockers before building packets." in case
+    assert "Open 2 Evidence Gaps for global blockers before packets." in case
     assert "Evidence to verify:" not in case
     assert "Gaps:" not in case
     assert "Hard blocker" in case
@@ -9466,14 +9466,14 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
             assert "No calls" in frame
-            assert "ACME: Press 2 Evidence Gaps" in frame
+            assert "ACME: Open 2 Evidence Gaps" in frame
             assert "Can I act now?" in frame
             assert "What happened?" in frame
             assert "What is missing?" in frame
             assert "Next safe action" in frame
-            assert "Press 2 Evidence Gaps" in frame
+            assert "Open 2 Evidence Gaps" in frame
             assert "global blockers" in frame
-            assert "this case also needs options/broker" in frame
+            assert "add options/broker evidence" in frame
             assert "No packet yet" in frame
             assert "tickets wait for Decision Review" in frame
             assert "trigger, ticket, or dismiss" not in frame
@@ -9496,7 +9496,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Opened Market Inbox case" in frame
             assert "No calls" in frame
-            assert "ACME: Press 2 Evidence Gaps" in frame
+            assert "ACME: Open 2 Evidence Gaps" in frame
             assert ">> 4  Candidate Review" in frame
 
             assert await pilot.click("#nav-alerts")
