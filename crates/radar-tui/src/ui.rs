@@ -522,9 +522,10 @@ fn render_keys(frame: &mut Frame<'_>, area: Rect) {
         Paragraph::new(vec![
             Line::from("q / Esc     quit"),
             Line::from("r / F5      refresh"),
-            Line::from("Tab / ->    next page"),
-            Line::from("<-          previous page"),
-            Line::from("0-9, f, ?   jump"),
+            Line::from("Up/Down     workflow"),
+            Line::from("Tab/Arrows  next/prev"),
+            Line::from("Home/End    first/help"),
+            Line::from("0-9 letters jump"),
             Line::from("Ctrl+A      agent"),
         ])
         .block(dashboard_block(" KEYS ", BLUE).padding(Padding::new(1, 0, 0, 0))),
@@ -747,9 +748,11 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
             )),
             Line::from("q / Esc: quit"),
             Line::from("r / F5: refresh snapshot"),
-            Line::from("Tab or Right: next page"),
-            Line::from("Shift+Tab or Left: previous page"),
-            Line::from("0-9, f, ?, Ctrl+A: jump to a workflow page"),
+            Line::from("Up/Down, j/k, PageUp/PageDown: move through workflow pages"),
+            Line::from("Tab/Shift+Tab or Left/Right: previous/next page"),
+            Line::from("Home/End: start/help"),
+            Line::from("0-9, A/B/C/D/E/F/G/H/I/O/S/T/?: jump to a workflow page"),
+            Line::from("Ctrl+A: agent brief"),
             Line::from(""),
             Line::from("Snapshot reads are zero provider-call dashboard reads."),
         ])
