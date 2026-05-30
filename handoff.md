@@ -1,6 +1,222 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-26 21:28:00 +08:00
+Last updated: 2026-05-30 11:20:52 +08:00
+
+## 2026-05-30 Pause Handoff: Dashboard Polishing Goal
+
+User instruction at pause:
+
+- "Update the handoff.md and pause everything."
+- Stop feature work. Do not continue autonomous dashboard polishing until the
+  user explicitly resumes.
+- The goal tool has no `paused` status, so do not mark the active goal complete
+  or blocked just to represent a pause.
+
+Resume update:
+
+- The user resumed the active dashboard-polishing goal after this pause.
+- The pause restriction is lifted for PR #990 only after the resume checklist
+  below is re-run and the visual result is rechecked.
+- The branch now has a verified final screenshot where partial/selected scan
+  wording no longer uses the misleading "Full Scan" label.
+
+Current product goal:
+
+- MarketRadar should help a non-expert human scan market results and decide
+  whether market emotion has already been priced into a stock's price action.
+- The dashboard is the human-facing operating surface. It should feel like an
+  inbox/control desk, not a raw database browser.
+- Browsing, clicking, filtering, screenshots, and dashboard smoke tests must
+  make 0 provider calls, 0 OpenAI calls, 0 Schwab calls, and 0 broker/order
+  submissions.
+
+Repository state at pause:
+
+```text
+root: C:\Users\fpan1\MarketRadar
+root branch: main
+root status: clean except untracked catalyst_radar.db
+latest merged main commit: eeade6c Speed up dashboard startup snapshot
+active worktree: C:\Users\fpan1\MarketRadar\.worktrees\tui-broker-actions-fit
+active worktree branch: codex/tui-scan-scope-copy
+active worktree status: uncommitted TUI scan-scope copy changes plus this handoff update
+```
+
+Do not delete or overwrite the root `catalyst_radar.db`; it is the local live
+SQLite state used for dashboard verification.
+
+Merged today before pause:
+
+- PR #987: `https://github.com/deaddeadbeef/MarketRadar/pull/987`
+  - Merged commit: `63648afc61822acf74e6914ec97c0bdd68cbe185`
+  - Purpose: dashboard launcher recovery and `.venv` repair ergonomics.
+  - Main verification included local-script tests, TUI mouse-navigation test,
+    screenshots, and final dashboard process audit with `process_count=0`.
+- PR #989: `https://github.com/deaddeadbeef/MarketRadar/pull/989`
+  - Merged commit: `eeade6c45ee18bf5d2859a85418d22b34efbe86d`
+  - Purpose: speed up interactive dashboard startup and `dashboard-tui --once`.
+  - Project board status: Done.
+  - Milestone: M4 Novice-safe decision support.
+
+PR #989 behavior now on `main`:
+
+- Interactive Textual TUI and `dashboard-tui --once` use
+  `dashboard_snapshot_payload(..., fast_view=True)`.
+- The fast browsing snapshot:
+  - reuses one briefless full-universe candidate load;
+  - passes preloaded rows into the priced-in queue and discovery snapshot;
+  - skips deep approval-preview packets during normal dashboard browsing;
+  - keeps the full diagnostic/export `dashboard-snapshot --json` path as the
+    full payload.
+- Stored universe filtering was pushed into the candidate load query when a
+  universe snapshot exists, avoiding the old load-everything-then-filter path.
+- The inbox detail strip is taller so the "Next data step" explanation is
+  visible instead of clipped.
+- README now states that the TUI and `dashboard-tui --once` use a fast local
+  browsing snapshot, while `dashboard-snapshot --json` remains the heavier
+  diagnostic/export surface.
+
+PR #989 verification already completed on merged `main`:
+
+```powershell
+$env:PYTHONPATH='src'
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -k "dashboard_tui_once or dashboard_snapshot_fast_view_skips_deep_approval_preview or dashboard_snapshot_reuses_priced_in_queue_preflight or modern_dashboard_tui_supports_mouse_navigation" -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py -k "priced_in_queue_payload_respects_latest_run_universe_scope or radar_run_rows_can_include_post_run_local_artifacts" -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m compileall -q src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\scripts\debug-dashboard-e2e.ps1 -Page overview -TimeoutSeconds 120
+```
+
+Main E2E result after PR #989:
+
+```text
+launcher exit code: 0
+elapsed seconds: 19.6
+external calls made: 0
+dashboard-tui processes before: 0
+dashboard-tui processes after: 0
+Dashboard E2E debug passed.
+```
+
+Main screenshot after PR #989:
+
+```text
+.state\goal-pass15-main-overview.svg
+.state\goal-pass15-main-overview.png
+dashboard screenshot command elapsed about 16.8s
+external_calls=0
+```
+
+Current unmerged branch at pause: `codex/tui-scan-scope-copy`
+
+Why this branch exists:
+
+- After PR #989, the real local dashboard still mixed "Full Scan" copy with
+  selected/partial-universe evidence.
+- The live screenshot showed 2,429 scanned/ranked rows out of 12,669 active
+  securities, so calling the sidebar action "ALL Full scan rows" was misleading.
+- The paused branch changes that partial/selected scan state to "All Scanned
+  Rows" while preserving "Full Scan" when coverage is genuinely complete.
+
+Unmerged changes on `codex/tui-scan-scope-copy`:
+
+- `src/catalyst_radar/dashboard/tui.py`
+  - Adds `_priced_in_scan_scope_is_partial(...)`.
+  - Adds `_all_scan_rows_mode_message(...)`.
+  - Shows `View: All scanned rows` when status is `all` but the scan is
+    selected/partial/incomplete.
+  - Changes the sidebar label to `ALL Scanned rows` for partial scope.
+  - Keeps `ALL Full scan rows` and `Full Scan mode` for genuine full coverage.
+  - Adjusts overview guide copy to say "All Scanned Rows" when the current scan
+    is partial/selected.
+- `tests/integration/test_dashboard_demo_seed_cli.py`
+  - Updates the demo fixture expectations to the new partial-scope wording.
+
+Verification already run for the unmerged scope-copy branch:
+
+```powershell
+$env:PYTHONPATH='src'
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -k "dashboard_tui_once_can_show_full_scan_mode or modern_dashboard_tui_supports_mouse_navigation" -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m compileall -q src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Screenshot already rendered for the unmerged scope-copy branch:
+
+```text
+.state\goal-pass16-scope-overview.svg
+.state\goal-pass16-scope-overview.png
+dashboard screenshot command elapsed about 11.3s
+external_calls=0
+```
+
+Final resumed screenshot:
+
+```text
+.state\goal-pass16-scope-overview-final2.svg
+.state\goal-pass16-scope-overview-final2.png
+dashboard screenshot command elapsed about 13.5s
+external_calls=0
+```
+
+Visual result from the final resumed screenshot:
+
+- Header guide says `All Scanned Rows is showing rows from the current
+  partial/selected scan`.
+- Sidebar shows `ALL Scanned rows`.
+- Detail strip says `Current scan coverage: 2429/12669 active all-instrument
+  row(s) scanned; 10240 unscanned`.
+- The visible copy no longer calls the current partial local scan a full-market
+  scan.
+
+Pause-safe resume instructions:
+
+1. Start from the existing worktree:
+
+   ```powershell
+   cd C:\Users\fpan1\MarketRadar\.worktrees\tui-broker-actions-fit
+   git status --short --branch
+   ```
+
+2. Re-run the scope-copy verification after this handoff edit:
+
+   ```powershell
+   $env:PYTHONPATH='src'
+   C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -k "dashboard_tui_once_can_show_full_scan_mode or modern_dashboard_tui_supports_mouse_navigation" -q
+   C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+   C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m compileall -q src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+   git diff --check
+   ```
+
+3. Re-render the overview screenshot from the root DB using the branch code:
+
+   ```powershell
+   cd C:\Users\fpan1\MarketRadar
+   $env:PYTHONPATH='C:\Users\fpan1\MarketRadar\.worktrees\tui-broker-actions-fit\src'
+   .\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --page overview --screenshot-out .state\goal-pass16-scope-overview-final.svg --screenshot-width 150 --screenshot-height 44
+   ```
+
+4. Confirm:
+   - `View: All scanned rows` appears for the current partial scan.
+   - `ALL Scanned rows` appears in the sidebar.
+   - The guide no longer says the partial scan is a "Full Scan".
+   - `external_calls=0`.
+   - A final dashboard process audit returns `process_count=0`.
+
+5. If the user resumes and approves continuing normal PR flow:
+   - Commit the branch.
+   - Push it.
+   - Open a PR to `main`.
+   - Link milestone `M4 Novice-safe decision support`.
+   - Add it to `MarketRadar Priced-In Scan Roadmap`.
+   - Merge by rebase only after verification.
+
+The user has explicitly resumed. Before merging PR #990, re-check process
+cleanup and PR state, then rebase-merge only if the branch remains clean and
+verified.
 
 ## Latest Agents SDK Model Split Slice
 

@@ -1310,7 +1310,7 @@ class MarketRadarDashboardApp(App[int]):
                     id="action-scan-mismatches",
                     classes="side-action",
                 )
-                yield FocusRow("ALL Full scan rows", id="action-scan-all", classes="side-action")
+                yield FocusRow("ALL Scan rows", id="action-scan-all", classes="side-action")
             with Vertical(id="main"):
                 yield Static(id="hero")
                 yield Static(id="nav-helpbar")
@@ -1591,7 +1591,7 @@ class MarketRadarDashboardApp(App[int]):
         ).normalized()
         self.page = "overview"
         self.status_message = (
-            "Full Scan mode: showing review page 1; coverage line shows the scan universe."
+            _all_scan_rows_mode_message(self.payload)
             if resolved == "all"
             else "Mismatches mode: showing only bullish/bearish not-priced-in rows."
         )
@@ -1798,7 +1798,12 @@ class MarketRadarDashboardApp(App[int]):
             (">> " if status == "actionable" and not ready_active else "   ")
             + "M  Mismatches only"
         )
-        full.update((">> " if status == "all" else "   ") + "ALL Full scan rows")
+        all_rows_label = (
+            "ALL Scanned rows"
+            if _priced_in_scan_scope_is_partial(self.payload)
+            else "ALL Full scan rows"
+        )
+        full.update((">> " if status == "all" else "   ") + all_rows_label)
 
     def _nav_label(self, page_key: str, shortcut: str, label: str) -> str:
         active = self._active_nav_page() == page_key
@@ -2303,16 +2308,26 @@ class MarketRadarDashboardApp(App[int]):
             answer = _mapping(self.payload.get("priced_in_answer"))
             full_scan = _mapping(answer.get("full_scan"))
             status_filter = _priced_in_status_filter(queue)
-            mode = "Full Scan" if status_filter == "all" else "Mismatches"
+            partial_scan = _priced_in_scan_scope_is_partial(self.payload)
+            mode = (
+                "All Scanned Rows"
+                if status_filter == "all" and partial_scan
+                else "Full Scan"
+                if status_filter == "all"
+                else "Mismatches"
+            )
             offset = int(_number_or_zero(queue.get("offset")))
             count = int(_number_or_zero(queue.get("count")))
             total = int(_number_or_zero(queue.get("total_count")))
             if status_filter == "all":
-                mode_help = (
-                    "showing review page 1 from the ranked scan"
-                    if offset == 0
-                    else "showing a later review page from the ranked scan"
-                )
+                if partial_scan:
+                    mode_help = "showing rows from the current partial/selected scan"
+                else:
+                    mode_help = (
+                        "showing review page 1 from the ranked scan"
+                        if offset == 0
+                        else "showing a later review page from the ranked scan"
+                    )
             else:
                 mode_help = (
                     "showing only bullish/bearish not-priced-in rows"
@@ -3609,9 +3624,7 @@ def _apply_command(
                 priced_in_stocks_only=False,
                 priced_in_offset=0,
             ).normalized(),
-            message=(
-                "Full Scan mode: showing review page 1; coverage line shows the scan universe."
-            ),
+            message=_all_scan_rows_mode_message(payload),
         )
     if command in {"stock", "stocks", "stocks-only", "stocks_only"}:
         return _CommandUpdate(
@@ -3664,7 +3677,7 @@ def _apply_command(
                 priced_in_offset=0,
             ).normalized(),
             message=(
-                "Full Scan mode: showing review page 1; coverage line shows the scan universe."
+                _all_scan_rows_mode_message(payload)
                 if scan_status == "all"
                 else f"Scan filter updated: {scan_status}."
             ),
@@ -6770,12 +6783,36 @@ def _priced_in_view_label(payload: Mapping[str, object]) -> str:
     status = str(filters.get("status") or "all").strip().lower()
     usefulness = str(filters.get("usefulness") or "").strip().lower()
     if status in {"", "all"}:
-        return "Full scan"
+        return "All scanned rows" if _priced_in_scan_scope_is_partial(payload) else "Full scan"
     if status == "actionable" and usefulness == "decision_useful":
         return "Decision-ready filter"
     if status == "actionable":
         return "Mismatches filter"
     return f"{_human_label(status)} filter"
+
+
+def _all_scan_rows_mode_message(payload: Mapping[str, object]) -> str:
+    if _priced_in_scan_scope_is_partial(payload):
+        return (
+            "All Scanned Rows mode: showing the current scan page; coverage line "
+            "shows this is not full-market coverage yet."
+        )
+    return "Full Scan mode: showing review page 1; coverage line shows the scan universe."
+
+
+def _priced_in_scan_scope_is_partial(payload: Mapping[str, object]) -> bool:
+    answer = _mapping(payload.get("priced_in_answer"))
+    full_scan = _mapping(answer.get("full_scan"))
+    active = int(_number_or_zero(full_scan.get("active_securities")))
+    scanned = int(_number_or_zero(full_scan.get("scanned_rows")))
+    if active > 0 and scanned > 0 and scanned < active:
+        return True
+    queue = _mapping(payload.get("priced_in_queue"))
+    return str(queue.get("status") or "").strip() in {
+        "selected_universe",
+        "partial_scan",
+        "universe_too_small",
+    }
 
 
 def _tutorial_mission_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
@@ -9559,6 +9596,15 @@ def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
 def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
     full_scan_summary = _answer_full_scan_scope_summary(payload)
     if full_scan_summary:
+        if _priced_in_scan_scope_is_partial(payload):
+            current_summary = full_scan_summary.replace(
+                "Full-scan coverage:",
+                "Current scan coverage:",
+                1,
+            )
+            if "not full-market yet" not in current_summary:
+                current_summary = f"{current_summary}; not full-market yet"
+            return current_summary
         return full_scan_summary
 
     preflight = _mapping(payload.get("priced_in_preflight"))
@@ -9610,6 +9656,11 @@ def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
     decision_source = str(decision_step.get("source") or "").strip()
     decision_source_label = _human_source_name(decision_source)
     decision_rows = int(_number_or_zero(decision_step.get("decision_useful_gap_rows")))
+    coverage_label = (
+        "Current scan coverage"
+        if _priced_in_scan_scope_is_partial(payload)
+        else "Full-scan coverage"
+    )
     if coverage_source and decision_source:
         decision_text = (
             f"{decision_source_label} ({decision_rows} decision-ready row(s))"
@@ -9617,15 +9668,15 @@ def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
             else decision_source_label
         )
         return (
-            f"Full-scan coverage: {coverage_text}. "
+            f"{coverage_label}: {coverage_text}. "
             f"Shortlist context: {decision_text}."
         )
     if coverage_source:
-        return f"Full-scan coverage: {coverage_text}."
+        return f"{coverage_label}: {coverage_text}."
     if decision_source:
         return f"Shortlist context: {decision_source_label}."
     if coverage:
-        return f"Full-scan coverage: {_clip(coverage, 140)}"
+        return f"{coverage_label}: {_clip(coverage, 140)}"
     return "Open Ops or run batch all to inspect source gaps."
 
 
