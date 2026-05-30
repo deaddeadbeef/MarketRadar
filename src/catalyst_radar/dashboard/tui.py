@@ -10206,10 +10206,22 @@ def _run_modern_table_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
         rows.append(
             {
                 **dict(row),
+                "status": _run_plan_status_label(row),
                 "next_action": _run_plan_next_action_label(row),
             }
         )
     return rows
+
+
+def _run_plan_status_label(row: Mapping[str, object]) -> str:
+    status = str(row.get("status") or "unknown").strip().lower()
+    if status == "live_call_planned":
+        return "live call"
+    if status == "live_calls_planned":
+        return "live calls"
+    if status == "local_or_dry_run_only":
+        return "local/dry"
+    return _human_status_label(status)
 
 
 def _run_plan_next_action_label(row: Mapping[str, object]) -> str:
@@ -10847,7 +10859,7 @@ def _call_plan_table_rows(call_plan: Mapping[str, object]) -> list[Mapping[str, 
         rows.append(
             {
                 **dict(row),
-                "status": _human_status_label(row.get("status") or "unknown"),
+                "status": _run_plan_status_label(row),
                 "next_action": _run_plan_next_action_label(row),
             }
         )
