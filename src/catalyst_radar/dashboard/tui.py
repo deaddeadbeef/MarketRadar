@@ -2731,10 +2731,10 @@ class MarketRadarDashboardApp(App[int]):
             return (
                 "Broker safety and Schwab sync status",
                 [
-                    ("area", "Area", 22),
-                    ("status", "Status", 16),
-                    ("meaning", "Meaning", 46),
-                    ("next_action", "Next safe action", 52),
+                    ("area", "Area", 20),
+                    ("status", "Status", 12),
+                    ("meaning", "Meaning", 38),
+                    ("next_action", "Next safe action", 34),
                 ],
                 _broker_status_rows(broker),
                 "Rows are local broker status only. Selecting a row makes no Schwab call.",
@@ -12950,13 +12950,13 @@ def _broker_status_rows(broker: Mapping[str, object]) -> list[Mapping[str, objec
             "area": "Schwab connection",
             "status": connection_status,
             "meaning": (
-                f"{broker_name}; accounts {account_count}; positions {position_count}; "
-                f"last sync {last_sync}"
+                f"{broker_name}; acct {account_count}; pos {position_count}; "
+                f"sync {last_sync}"
             ),
             "next_action": (
-                "Authenticate Schwab before relying on portfolio context."
+                "Auth Schwab first."
                 if not connected
-                else "Use read-only sync; browsing this dashboard makes no broker call."
+                else "Use read-only sync only."
             ),
         },
         {
@@ -12964,32 +12964,32 @@ def _broker_status_rows(broker: Mapping[str, object]) -> list[Mapping[str, objec
             "area": "Order safety",
             "status": "disabled" if not orders_enabled else "enabled",
             "meaning": (
-                "Real order submission is disabled; tickets are local previews only."
+                "Orders disabled; local tickets only."
                 if not orders_enabled
-                else "Real order submission appears enabled; review policy before use."
+                else "Orders enabled; review policy first."
             ),
-            "next_action": "Use ticket commands only for blocked local previews.",
+            "next_action": "Use local ticket previews.",
         },
         {
             "_row_key": "broker-readonly",
             "area": "Broker tools",
             "status": "read-only" if read_only else "write-capable",
             "meaning": (
-                "Read-only broker context can inform research; it is not trade approval."
+                "Research context only; not approval."
                 if read_only
-                else "Broker context may write; confirm every action before proceeding."
+                else "Write-capable; confirm every action."
             ),
-            "next_action": "Keep broker context separate from trade decisions.",
+            "next_action": "Keep separate from decisions.",
         },
         {
             "_row_key": "broker-freshness",
             "area": "Portfolio freshness",
             "status": "stale" if stale else "fresh",
-            "meaning": f"open orders {open_orders}; last successful sync {last_sync}",
+            "meaning": f"orders {open_orders}; sync {last_sync}",
             "next_action": (
-                "Run broker sync only when intentionally updating context."
+                "Sync only by intent."
                 if stale
-                else "Continue review; no sync is needed just to browse."
+                else "No sync needed to browse."
             ),
         },
     ]
@@ -13001,13 +13001,13 @@ def _broker_status_rows(broker: Mapping[str, object]) -> list[Mapping[str, objec
         rows.append(
             {
                 "_row_key": f"broker-rate-{operation}",
-                "area": f"Rate limit: {operation}",
+                "area": f"Limit: {operation}",
                 "status": "allowed" if allowed else "cooldown",
-                "meaning": f"min interval {interval}s; retry after {retry}s",
+                "meaning": f"min {interval}s; retry {retry}s",
                 "next_action": (
-                    "A sync is allowed, but browsing this page still makes no call."
+                    "Allowed; browsing calls 0."
                     if allowed
-                    else "Wait for the cooldown before any explicit broker sync."
+                    else "Wait for cooldown."
                 ),
             }
         )

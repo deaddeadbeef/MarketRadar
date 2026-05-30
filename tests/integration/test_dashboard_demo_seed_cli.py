@@ -9468,6 +9468,11 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Schwab connection" in frame
             assert "Order safety" in frame
             assert "Broker " in frame
+            assert "Auth Schwab first." in frame
+            assert "Keep separate from decisions." in frame
+            assert "Allowed; browsing calls 0." in frame
+            assert "Authenticate Schwab befor" not in frame
+            assert "Keep broker context separ" not in frame
             assert "Browsing makes 0 Schwab calls." in frame
             assert "Use action, trigger, eval-triggers" not in frame
             assert "No Schwab call made" not in frame
@@ -9478,7 +9483,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Broker row selected:" in frame
             assert "No Schwab call made" in frame
-            assert "Authenticate Schwab" in frame
+            assert "Auth Schwab first." in frame
 
             assert await pilot.click("#nav-ops")
             await pilot.pause()
