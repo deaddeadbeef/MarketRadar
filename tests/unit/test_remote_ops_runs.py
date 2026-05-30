@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from catalyst_radar.ops import remote_runs as remote_runs_module
 from catalyst_radar.ops.remote_runs import (
     OpsRunError,
     create_ops_run,
@@ -114,3 +115,33 @@ def test_copy_to_onedrive_records_destination(tmp_path: Path, monkeypatch) -> No
     onedrive_dir = Path(result["onedrive"]["path"])
     assert onedrive_dir.name == result["run_id"]
     assert (onedrive_dir / "terminal.png").exists()
+
+
+def test_rust_renderer_decodes_subprocess_output_as_utf8(tmp_path: Path, monkeypatch) -> None:
+    exe = tmp_path / "target" / "release" / "radar-tui.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class Completed:
+        returncode = 0
+        stdout = "┌ MARKETRADAR ┐\n"
+        stderr = ""
+
+    def fake_run(*_args, **kwargs):
+        captured.update(kwargs)
+        return Completed()
+
+    monkeypatch.setattr(remote_runs_module, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(remote_runs_module.subprocess, "run", fake_run)
+
+    result = remote_runs_module._render_with_rust(
+        page="overview",
+        frame_width=100,
+        frame_height=30,
+        database_url="sqlite:///:memory:",
+    )
+
+    assert result.text == "┌ MARKETRADAR ┐\n"
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"
