@@ -1939,7 +1939,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     output = capsys.readouterr()
 
     assert output.err == ""
-    assert "View: Full scan" in output.out
+    assert "View: All scanned rows" in output.out
     assert "Answer:" in output.out
     assert "Trade status:" in output.out
     assert "Trade safe:" in output.out
@@ -1954,7 +1954,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Mailbox" in output.out
     assert "Missing" in output.out
     assert "Next data step:" in output.out
-    assert "Full-scan coverage:" in output.out
+    assert "Current scan coverage:" in output.out
     assert "Shortlist context:" in output.out
     assert "page, not the full scan universe" in output.out
 
@@ -9246,7 +9246,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "market emotion" in frame
             assert "price reaction" in frame
             assert "M  Mismatches only" in frame
-            assert "ALL Full scan rows" in frame
+            assert "ALL Scanned rows" in frame
             assert "Candidate Review" in frame
             assert "TRADE SAFETY" in frame
             assert "INBOX" in frame
@@ -9370,7 +9370,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await wait_for_payload()
             assert app.filters.priced_in_status == "all"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Full Scan mode" in frame
+            assert "All Scanned Rows mode" in frame
             assert "Latest scan results - rows" in frame
 
             app.query_one("#data-table").focus()
