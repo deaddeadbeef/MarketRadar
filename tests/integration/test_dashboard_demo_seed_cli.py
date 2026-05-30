@@ -44,6 +44,7 @@ from catalyst_radar.dashboard.tui import (
     _market_bar_saved_capture_summary,
     _market_inbox_caption,
     _market_inbox_count_summary,
+    _market_inbox_metric_summary,
     _market_inbox_rows,
     _overview_source_workflow_hint,
     _priced_in_overview_rows,
@@ -2096,6 +2097,27 @@ def test_market_inbox_caption_leads_with_partial_scan_warning() -> None:
     assert "10,240 unscanned" in caption
     assert "579 missing bars" in caption
     assert caption.index("not full-market yet") < caption.index("Inbox triage")
+
+
+def test_market_inbox_metric_uses_loaded_not_screen_visible() -> None:
+    payload = {
+        "priced_in_queue": {
+            "count": 50,
+            "returned_count": 50,
+            "total_count": 2429,
+            "filters": {"status": "all"},
+            "rows": [
+                {"usefulness": {"status": "research_useful"}},
+                {"usefulness": {"status": "blocked"}},
+            ],
+        }
+    }
+
+    value, detail = _market_inbox_metric_summary(payload)
+
+    assert value == "50 loaded / 2,429 total"
+    assert "visible" not in value
+    assert "visible" not in detail
 
 
 def test_dashboard_tui_once_defaults_to_latest_scan_results(
