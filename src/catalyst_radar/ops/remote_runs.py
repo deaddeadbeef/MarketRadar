@@ -22,12 +22,24 @@ from catalyst_radar.dashboard.tui import (
     dashboard_snapshot_payload,
     render_dashboard_tui,
 )
+from catalyst_radar.ops.reports import (
+    build_ops_run_report_payload,
+    render_ops_run_report_html,
+)
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
 RUN_SCHEMA_VERSION = "ops-run-v1"
 SUPPORTED_ACTIONS = frozenset({"radar-dashboard"})
 SUPPORTED_RENDERERS = frozenset({"auto", "rust", "python"})
-ARTIFACT_NAMES = frozenset({"result.json", "snapshot.json", "terminal.txt", "terminal.png"})
+ARTIFACT_ORDER = (
+    "result.json",
+    "report.json",
+    "report.html",
+    "snapshot.json",
+    "terminal.txt",
+    "terminal.png",
+)
+ARTIFACT_NAMES = frozenset(ARTIFACT_ORDER)
 _RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z-[a-f0-9]{8}$")
 
 
@@ -117,9 +129,22 @@ def create_ops_run(
         result["renderer_error"] = render.error
 
     result_path = run_dir / "result.json"
-    result["artifacts"] = _artifact_metadata(run_id, run_dir)
     _write_json(result_path, result)
-    result["artifacts"] = _artifact_metadata(run_id, run_dir)
+    for _ in range(2):
+        result["artifacts"] = _artifact_metadata(run_id, run_dir)
+        report_payload = build_ops_run_report_payload(
+            result=result,
+            snapshot=snapshot,
+            terminal_text=render.text,
+        )
+        _write_json(run_dir / "report.json", report_payload)
+        (run_dir / "report.html").write_text(
+            render_ops_run_report_html(report_payload),
+            encoding="utf-8",
+            newline="\n",
+        )
+        result["artifacts"] = _artifact_metadata(run_id, run_dir)
+        _write_json(result_path, result)
     if copy_to_onedrive:
         result["onedrive"] = _copy_to_onedrive(run_dir, run_id)
     _write_json(result_path, result)
@@ -406,12 +431,14 @@ def _mapping(value: object) -> dict[str, object]:
 def _artifact_metadata(run_id: str, run_dir: Path) -> list[dict[str, object]]:
     kinds = {
         "result.json": "ops-run-result",
+        "report.json": "ops-run-report-json",
+        "report.html": "ops-run-report-html",
         "snapshot.json": "dashboard-snapshot-json",
         "terminal.txt": "terminal-transcript",
         "terminal.png": "terminal-image",
     }
     artifacts: list[dict[str, object]] = []
-    for name in ("result.json", "snapshot.json", "terminal.txt", "terminal.png"):
+    for name in ARTIFACT_ORDER:
         path = run_dir / name
         artifacts.append(
             {

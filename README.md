@@ -588,9 +588,9 @@ The API exposes a consolidated operations surface for agents and remote sessions
 Start with the capability catalog, then run only allowlisted actions:
 
 ```powershell
-catalyst-radar ops capabilities --json
-catalyst-radar ops run radar-dashboard --page overview --renderer auto --copy-to-onedrive --json
-catalyst-radar ops show <run-id> --json
+catalyst-radar ops capabilities
+catalyst-radar ops run radar-dashboard --page overview --renderer auto --copy-to-onedrive
+catalyst-radar ops show <run-id>
 ```
 
 The same contract is available through FastAPI:
@@ -614,11 +614,13 @@ Invoke-RestMethod `
 ```
 
 Ops runs write durable artifacts under `CATALYST_OPS_RUN_DIR` or
-`.state\ops-runs`: `result.json` for machine parsing, `snapshot.json` for the
-dashboard state, `terminal.txt` for transcript review, and `terminal.png` for a
-shareable visual. `terminal.png` is a headless render of the real dashboard
-frame, not a desktop screenshot, so remote sessions can return honest artifacts
-without automating a local terminal window.
+`.state\ops-runs`: `report.json` for aggregation, `report.html` for human
+review, `result.json` for run metadata, `snapshot.json` for raw dashboard state,
+`terminal.txt` for transcript review, and `terminal.png` for a shareable visual.
+The headless CLI commands return JSON by default; pass `--human` only when you
+want the compact text summary. `terminal.png` is a headless render of the real
+dashboard frame, not a desktop screenshot, so remote sessions can return honest
+artifacts without automating a local terminal window.
 
 For a one-command PowerShell launcher, install the profile alias:
 

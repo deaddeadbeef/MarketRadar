@@ -893,7 +893,8 @@ def build_parser() -> argparse.ArgumentParser:
     ops = subparsers.add_parser("ops")
     ops_sub = ops.add_subparsers(dest="ops_command", required=True)
     ops_capabilities = ops_sub.add_parser("capabilities")
-    ops_capabilities.add_argument("--json", action="store_true")
+    ops_capabilities.add_argument("--json", action="store_true", help="Compatibility no-op.")
+    ops_capabilities.add_argument("--human", action="store_true")
     ops_run = ops_sub.add_parser("run")
     ops_run.add_argument("action", choices=["radar-dashboard"])
     ops_run.add_argument("--page", default="overview")
@@ -901,10 +902,12 @@ def build_parser() -> argparse.ArgumentParser:
     ops_run.add_argument("--frame-width", type=int, default=140)
     ops_run.add_argument("--frame-height", type=int, default=42)
     ops_run.add_argument("--copy-to-onedrive", action="store_true")
-    ops_run.add_argument("--json", action="store_true")
+    ops_run.add_argument("--json", action="store_true", help="Compatibility no-op.")
+    ops_run.add_argument("--human", action="store_true")
     ops_show = ops_sub.add_parser("show")
     ops_show.add_argument("run_id")
-    ops_show.add_argument("--json", action="store_true")
+    ops_show.add_argument("--json", action="store_true", help="Compatibility no-op.")
+    ops_show.add_argument("--human", action="store_true")
 
     dashboard_snapshot = subparsers.add_parser("dashboard-snapshot")
     dashboard_snapshot.add_argument("--database-url")
@@ -1430,10 +1433,10 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if args.ops_command == "capabilities":
                 payload = ops_capability_catalog()
-                if args.json:
-                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
-                else:
+                if args.human:
                     _print_ops_capabilities(payload)
+                else:
+                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
                 return 0
             if args.ops_command == "run":
                 payload = create_ops_run(
@@ -1445,17 +1448,17 @@ def main(argv: list[str] | None = None) -> int:
                     copy_to_onedrive=args.copy_to_onedrive,
                     database_url=database_url,
                 )
-                if args.json:
-                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
-                else:
+                if args.human:
                     _print_ops_run_summary(payload)
+                else:
+                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
                 return 0 if payload.get("status") == "completed" else 1
             if args.ops_command == "show":
                 payload = load_ops_run(args.run_id)
-                if args.json:
-                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
-                else:
+                if args.human:
                     _print_ops_run_summary(payload)
+                else:
+                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
                 return 0
         except OpsRunError as exc:
             print(str(exc), file=sys.stderr)
