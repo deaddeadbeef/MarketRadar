@@ -4434,6 +4434,10 @@ def test_run_page_uses_human_status_labels() -> None:
     assert "live calls planned" in screen
     assert "live call planned" in screen
     assert "expected gate" in screen
+    assert "Keep cooldown; inspect rejected count." in screen
+    assert "Use after live data quality is acceptable." in screen
+    assert "Keep the manual cooldown active." not in screen
+    assert "Use per-candidate LLM review later." not in screen
     assert "partial_success" not in screen
     assert "live_calls_planned" not in screen
     assert "live_call_planned" not in screen
@@ -5927,9 +5931,12 @@ def test_modern_run_and_evidence_pages_show_command_run_location() -> None:
                 assert "Read-only market-bar review" in frame
                 if page == "run":
                     assert "Review command" in frame
+                    assert "Use command above; run outside dashboard." in frame
+                    assert "catalyst-radar market-bars residual-review --expected-as-of" in frame
                     assert "Run location" in frame
-                    assert "Copy into PowerShell; do not enter below." in frame
+                    assert "Copy to PowerShell; do not enter below." in frame
                     assert "Safety boundary" in frame
+                    assert "Read-only review; no provider/broker/DB calls." in frame
                 if page == "readiness":
                     assert "Run in PowerShell" in frame
                     assert "Copy into PowerShell; do not enter below." in frame
