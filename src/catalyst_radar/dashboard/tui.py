@@ -14,7 +14,7 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical
-from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.widgets import DataTable, Header, Input, Static
 from textual.worker import Worker, WorkerState
 
 from catalyst_radar.agents.sdk_orchestrator import run_market_radar_agents
@@ -1186,6 +1186,13 @@ class MarketRadarDashboardApp(App[int]):
         height: 3;
         margin-top: 0;
     }
+
+    #shortcut-footer {
+        height: 1;
+        background: #05080c;
+        color: #aeb8c6;
+        padding: 0 1;
+    }
     """
 
     BINDINGS = [
@@ -1296,7 +1303,7 @@ class MarketRadarDashboardApp(App[int]):
                     ),
                     id="command",
                 )
-        yield Footer()
+        yield Static(id="shortcut-footer")
 
     def on_mount(self) -> None:
         self.status_message = "Loading local dashboard snapshot..."
@@ -1397,6 +1404,7 @@ class MarketRadarDashboardApp(App[int]):
         self.query_one("#operator-action", Static).update(self._action_text())
         self.query_one("#operator-response", Static).update(self._response_text())
         self.query_one("#command", Input).placeholder = self._command_placeholder()
+        self.query_one("#shortcut-footer", Static).update(self._shortcut_footer_text())
 
     def action_refresh(self) -> None:
         self._start_snapshot_reload(
@@ -1766,6 +1774,25 @@ class MarketRadarDashboardApp(App[int]):
         counts = self._nav_count_suffix(page_key)
         return f"{marker} {shortcut:<2} {label}{counts}"
 
+    def _shortcut_footer_text(self) -> str:
+        return (
+            "[bold #f0a500]q[/] Quit  "
+            "[bold #f0a500]r[/] Refresh  "
+            "[bold #f0a500]0[/] Start  "
+            "[bold #f0a500]1[/] Inbox  "
+            "[bold #f0a500]2[/] Gaps  "
+            "[bold #f0a500]3[/] Run  "
+            "[bold #f0a500]4[/] Review  "
+            "[bold #f0a500]5[/] Alerts  "
+            "[bold #f0a500]6[/] IPO  "
+            "[bold #f0a500]7[/] Broker  "
+            "[bold #f0a500]8[/] Ops  "
+            "[bold #f0a500]9[/] Log  "
+            "[bold #f0a500]^A[/] Agent  "
+            "[bold #f0a500]^N/^P[/] Page  "
+            "[bold #f0a500]?[/] Help"
+        )
+
     def _refresh_setup_action(self) -> None:
         setup = self.query_one("#action-setup", FocusRow)
         active = _real_results_empty(self.payload)
@@ -1962,7 +1989,7 @@ class MarketRadarDashboardApp(App[int]):
             else ""
         )
         page_action = {
-            "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
+            "tutorial": "Tutorial: press 1 for Inbox.",
             "overview": inbox_action,
             "readiness": _readiness_next_safe_action(
                 self.payload,
