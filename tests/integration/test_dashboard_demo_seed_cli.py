@@ -1428,6 +1428,7 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
 ) -> None:
     database_url = f"sqlite:///{(tmp_path / 'empty-agent.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("COLUMNS", "88")
 
     assert main(["dashboard-tui", "--once", "--page", "agent"]) == 0
     output = capsys.readouterr()
@@ -1446,6 +1447,7 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "GitHub Copilot not used" in output.out
     assert "scan evidence blocked" in output.out
     assert "OpenAI spend blocked" in output.out
+    assert "Disabled tools" in output.out
     assert "market, broker, shell, and web" in normalized
     assert "tools disabled" in normalized
     assert "NEXT SAFE ACTION:" in output.out
@@ -1457,8 +1459,8 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "normal PowerShell prompt" in normalized
     assert "Why this page is blank" not in output.out
     assert "Do not run agent execute while this page says locked" in output.out
-    assert "Run the PowerShell setup command first" in output.out
-    assert "after real scan evidence exists" in output.out
+    assert "Run the PowerShell setup command first" in normalized
+    assert "after real scan evidence exists" in normalized
     assert "Detailed agent roles" in output.out
     assert "Real results: missing" not in output.out
     assert "Kind      | Item" not in output.out
