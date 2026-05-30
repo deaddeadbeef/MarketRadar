@@ -3411,10 +3411,7 @@ def _candidates_next_safe_action(payload: Mapping[str, object]) -> str:
     readiness = _mapping(payload.get("readiness"))
     if readiness.get("safe_to_make_investment_decision") is True:
         return "Open a candidate, then verify evidence before any manual decision."
-    return (
-        "Research-only. Press 2 Evidence Gaps first; candidate rows are not trade "
-        "ideas yet."
-    )
+    return "Research-only: press 2 Evidence Gaps first."
 
 
 def _minimum_product_stop_line_summary(payload: Mapping[str, object]) -> str:
