@@ -674,8 +674,8 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert "priced-in-source-batches --source all" in output.out
     assert "Examples are sample tickers only" in output.out
     assert "`batch all` shows this source map without provider calls" in output.out
-    assert "batch <source>" in output.out
-    assert "batch <source> execute 3" in output.out
+    assert "batch SOURCE" in output.out
+    assert "batch SOURCE execute 3" in output.out
     assert "ACME" in output.out
 
     assert (
@@ -1598,8 +1598,8 @@ def test_dashboard_broker_setup_state_defers_auth_on_empty_database(
     assert "Local Watch Actions" not in output.out
     assert "Local Trigger Rules" not in output.out
     assert "Blocked Order Tickets" not in output.out
-    assert "trigger <ticker>" not in output.out
-    assert "ticket <ticker>" not in output.out
+    assert "trigger TICKER" not in output.out
+    assert "ticket TICKER" not in output.out
     assert "External calls made: 0" in output.out
 
 
@@ -1892,8 +1892,8 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
         "run": ("Safe Run.", "Do not paste PowerShell", "run execute waits"),
         "candidates": ("Candidate Review.", "Evidence first", "2 Evidence Gaps"),
         "candidate:ACME": ("Candidate ACME.", "2 Evidence Gaps", "action ACME watch"),
-        "broker": ("Broker.", "ticket <ticker>"),
-        "ops": ("Source workbench.", "batch <source> execute"),
+        "broker": ("Broker.", "ticket TICKER"),
+        "ops": ("Source workbench.", "batch SOURCE execute"),
         "agent": ("Agent Coach.", "agent execute only with budget"),
         "alerts": ("Alerts.", "feedback 1"),
         "alert:demo-alert-acme": ("Alert ACME.", "feedback 1"),
@@ -1920,11 +1920,11 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
         assert "Evidence Gaps." in placeholder
         assert "Do not paste PowerShell here" in placeholder
         assert "first-blocker command outside dashboard" in placeholder
-        assert "batch <source>" not in placeholder
+        assert "batch SOURCE" not in placeholder
         assert "bars manual import" not in placeholder
     else:
         assert "Evidence Gaps." in placeholder
-        assert "batch <source>" in placeholder
+        assert "batch SOURCE" in placeholder
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(
@@ -2423,7 +2423,7 @@ def test_dashboard_footer_separates_browsing_cost_from_guarded_budget(
     assert "Guarded command budget: provider calls" in output.out
     assert "estimated OpenAI cost $0.00" in output.out
     assert "Cost before execute" not in output.out
-    assert "Use `open <#>`" not in output.out
+    assert "Use `open #`" not in output.out
     assert "No rows." not in output.out
     assert "External calls made: 0" in output.out
 
@@ -2461,7 +2461,7 @@ def test_dashboard_ops_empty_state_names_empty_sections_and_setup_first(
     assert "above after accepting call/write" in output.out
     assert "Source Fill Workflow" not in output.out
     assert "Visible Review Page Source Gaps" not in output.out
-    assert "batch <source>" not in output.out
+    assert "batch SOURCE" not in output.out
     assert "Coverage-first: market bars" not in output.out
     assert "Next                     : Type batch market_bars" not in output.out
     assert "No rows." not in output.out
@@ -4235,7 +4235,7 @@ def test_dashboard_help_starts_with_first_commands() -> None:
     assert "Command Reference" in screen
     assert "candidate review" in normalized.lower()
     assert "Open a candidate from Candidate Review" in screen
-    assert "batch <source> execute" in screen
+    assert "batch SOURCE execute" in screen
 
 
 def test_dashboard_tutorial_footer_points_to_first_real_step() -> None:
@@ -5938,7 +5938,7 @@ def test_modern_run_and_evidence_pages_show_command_run_location() -> None:
                     placeholder = app._command_placeholder()
                     assert "Do not paste PowerShell here" in placeholder
                     assert "first-blocker command outside dashboard" in placeholder
-                    assert "batch <source>" not in placeholder
+                    assert "batch SOURCE" not in placeholder
                     assert "bars manual import" not in placeholder
 
     asyncio.run(run_app())
@@ -8982,7 +8982,7 @@ def test_tui_rejected_operator_commands_report_no_side_effects():
     assert "Alert feedback rejected" in feedback_update.message
     assert "No feedback row was saved" in feedback_update.message
     assert "external_calls=0 db_writes=0" in feedback_update.message
-    assert "open <alert-id>" in feedback_update.message
+    assert "open ALERT_ID" in feedback_update.message
 
 
 def test_tui_invalid_commands_report_no_side_effects():
@@ -9340,7 +9340,12 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "ORDERS" in frame
             assert "research" in frame
             assert "KEYS" in frame
-            assert "MOUSE" in frame
+            assert "MORE" in frame
+            assert "5 Alerts" in frame
+            assert "6 IPO" in frame
+            assert "7 Broker" in frame
+            assert "8 Ops" in frame
+            assert "9 Log" in frame
             assert "NEXT SAFE ACTION" in frame
             assert "Open first Urgent message" in frame
             assert "Open 1 Urgent" not in frame
@@ -9355,11 +9360,10 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "^A Agent Coach" in frame
             assert "10 Agent Coach" not in frame
             assert "11 Decision Review" not in frame
-            assert "D decision-ready" in frame
-            assert "M mismatches/all" in frame
+            assert "D Ready" in frame
+            assert "M All" in frame
             assert "D urgent" not in frame
             assert "all/worth-reading" not in frame
-            assert "Up/Down sidebar" in frame
 
             await pilot.press("ctrl+a")
             await pilot.pause()
@@ -9971,7 +9975,7 @@ def test_modern_dashboard_open_command_accepts_global_text_identifiers(
         assert app.page == "readiness"
         assert "No row 1 is openable on Evidence Gaps" in app.status_message
         assert "No calls made" in app.status_message
-        assert "open <ticker>" in app.status_message
+        assert "open TICKER" in app.status_message
 
         app = await run_command("agent", "open NOPE")
         assert app.page == "agent"

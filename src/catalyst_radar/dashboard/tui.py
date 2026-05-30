@@ -559,25 +559,27 @@ def dashboard_snapshot_payload(
         discovery_snapshot=discovery_snapshot,
         candidate_rows=candidate_rows,
     )
+    priced_in_queue_kwargs: dict[str, object] = {
+        "limit": filters.priced_in_limit,
+        "offset": filters.priced_in_offset,
+        "available_at": filters.available_at,
+        "status": filters.priced_in_status,
+        "usefulness": filters.priced_in_usefulness,
+        "source_gap": filters.priced_in_source_gap,
+        "decision_gap": filters.priced_in_decision_gap,
+        "stocks_only": filters.priced_in_stocks_only,
+        "include_planning_rows": True,
+        "latest_run_summary": latest_run,
+        "broker_summary": broker_summary,
+        "discovery_snapshot": discovery_snapshot,
+    }
+    if priced_in_candidate_rows is not None:
+        priced_in_queue_kwargs["candidate_rows"] = priced_in_candidate_rows
+        priced_in_queue_kwargs["total_count"] = len(priced_in_candidate_rows)
     priced_in_queue = dashboard_data.priced_in_queue_payload(
         engine,
         config,
-        limit=filters.priced_in_limit,
-        offset=filters.priced_in_offset,
-        available_at=filters.available_at,
-        status=filters.priced_in_status,
-        usefulness=filters.priced_in_usefulness,
-        source_gap=filters.priced_in_source_gap,
-        decision_gap=filters.priced_in_decision_gap,
-        stocks_only=filters.priced_in_stocks_only,
-        include_planning_rows=True,
-        latest_run_summary=latest_run,
-        broker_summary=broker_summary,
-        discovery_snapshot=discovery_snapshot,
-        candidate_rows=priced_in_candidate_rows if fast_view else None,
-        total_count=len(priced_in_candidate_rows)
-        if priced_in_candidate_rows is not None
-        else None,
+        **priced_in_queue_kwargs,
     )
     priced_in_source_coverage = (
         priced_in_queue.get("source_coverage")
@@ -1846,7 +1848,7 @@ class MarketRadarDashboardApp(App[int]):
         page_parts = self.page.split(":", 1)
         page = page_parts[0]
         page_ref = page_parts[1] if len(page_parts) > 1 else ""
-        ticker = page_ref.upper() if page_ref else "<ticker>"
+        ticker = page_ref.upper() if page_ref else "TICKER"
         if page == "tutorial":
             return "Tutorial. Press 1 for Inbox, 2 for Gaps, 3 for Run, or q to quit."
         if page == "overview":
@@ -1862,7 +1864,7 @@ class MarketRadarDashboardApp(App[int]):
                     "first-blocker command outside dashboard; refresh when done. "
                     "3, inbox, help, q"
                 )
-            return "Evidence Gaps. Try: batch <source>, bars manual import, 3, refresh, help, q"
+            return "Evidence Gaps. Try: batch SOURCE, bars manual import, 3, refresh, help, q"
         if page == "run":
             step = _priced_in_operator_step(self.payload)
             command = (
@@ -1903,7 +1905,7 @@ class MarketRadarDashboardApp(App[int]):
         if page == "alerts":
             return "Alerts. Try: open 1, feedback 1 useful/noisy/acted, inbox, help, q"
         if page == "alert":
-            alert_ref = page_ref or "<alert-id>"
+            alert_ref = page_ref or "ALERT_ID"
             alert_label, feedback_ref = _alert_feedback_prompt_parts(
                 self.payload, alert_ref
             )
@@ -1913,13 +1915,13 @@ class MarketRadarDashboardApp(App[int]):
             )
         if page == "broker":
             return (
-                "Broker. Try: action <ticker> watch, trigger <ticker> ..., "
-                "ticket <ticker> ..., help, q"
+                "Broker. Try: action TICKER watch, trigger TICKER ..., "
+                "ticket TICKER ..., help, q"
             )
         if page == "ops":
             return (
-                "Source workbench. Try: batch <source>, "
-                "batch <source> execute, source-gap <source>, help, q"
+                "Source workbench. Try: batch SOURCE, "
+                "batch SOURCE execute, source-gap SOURCE, help, q"
             )
         if page == "agent":
             return "Agent Coach. Try: agent, agent execute only with budget, inbox, 2, help, q"
@@ -1996,10 +1998,9 @@ class MarketRadarDashboardApp(App[int]):
 
     def _navigation_text(self) -> str:
         return (
-            "[bold #58a6ff]KEYS[/] 0 start | 1 inbox | 2 gaps | "
-            "3 run plan | 4 review | D decision-ready | M mismatches/all\n"
-            "[bold #58a6ff]MOUSE[/] click sidebar/table | Tab focus | "
-            "Up/Down sidebar | Enter open | Esc command | q quit\n"
+            "[bold #58a6ff]KEYS[/] 0 Start  1 Inbox  2 Gaps  3 Run  4 Review  5 Alerts\n"
+            "[bold #58a6ff]MORE[/] 6 IPO 7 Broker 8 Ops 9 Log ^A "
+            "D Ready M All F ? q\n"
         )
 
     def _response_text(self) -> str:
@@ -2014,7 +2015,7 @@ class MarketRadarDashboardApp(App[int]):
         total = int(_number_or_zero(queue.get("total_count")))
         page_text = (
             f" Visible rows {offset + 1}-{offset + count} of {total}; "
-            "type next, prev, offset <row>, or limit <rows>."
+            "type next, prev, offset ROW, or limit ROWS."
             if total and count
             else ""
         )
@@ -2528,6 +2529,72 @@ class MarketRadarDashboardApp(App[int]):
                     ),
                 ]
             )
+        if page == "ipo":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Inspect SEC catalyst evidence only.",
+                    (
+                        "[bold]Do next:[/] open Inbox or Candidate Review before "
+                        "treating a filing as actionable."
+                    ),
+                    "[bold]Reminder:[/] browsing IPO/S-1 rows makes 0 SEC calls.",
+                ]
+            )
+        if page == "telemetry":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Audit what the dashboard already did.",
+                    (
+                        "[bold]Do next:[/] check recent failures, then use Run or Ops "
+                        "only after the call boundary is clear."
+                    ),
+                    "[bold]Reminder:[/] telemetry is local history; browsing makes 0 calls.",
+                ]
+            )
+        if page == "themes":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Spot research clusters, not trade ideas.",
+                    (
+                        "[bold]Do next:[/] return to Inbox or Candidate Review for "
+                        "ticker-level evidence before acting."
+                    ),
+                    "[bold]Reminder:[/] theme browsing makes 0 provider calls.",
+                ]
+            )
+        if page == "validation":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Check whether alerts proved useful.",
+                    (
+                        "[bold]Do next:[/] run validation replay/report only after "
+                        "stored evidence and outcomes exist."
+                    ),
+                    "[bold]Boundary:[/] keep decisions research-only until validation exists.",
+                ]
+            )
+        if page == "costs":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Prove value before expanding spend.",
+                    (
+                        "[bold]Do next:[/] record feedback, value-ledger rows, and "
+                        "outcomes before counting wins."
+                    ),
+                    "[bold]Boundary:[/] value rows are local; writes require explicit commands.",
+                ]
+            )
+        if page == "features":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Use this as the dashboard map.",
+                    (
+                        "[bold]Do next:[/] open the page listed for the feature you "
+                        "want, then follow that page's Next Safe Action."
+                    ),
+                    "[bold]Reminder:[/] the inventory is local and makes 0 provider calls.",
+                ]
+            )
         if page == "agent":
             brief = _mapping(self.payload.get("agent_brief"))
             calls = _mapping(brief.get("external_calls_made"))
@@ -2597,7 +2664,7 @@ class MarketRadarDashboardApp(App[int]):
                         "This is plan-only and makes 0 provider calls."
                     ),
                     (
-                        "[bold]Execute:[/] type batch <source> execute only when "
+                        "[bold]Execute:[/] type batch SOURCE execute only when "
                         "the provider and call budget are intentional."
                     ),
                 ]
@@ -2975,7 +3042,7 @@ class MarketRadarDashboardApp(App[int]):
                 row,
                 feedback_ref=_alert_feedback_prompt_parts(self.payload, alert_id)[1],
             ),
-            "Use feedback <row-number|alert-id> <label> [notes] to record alert usefulness.",
+            "Use feedback ROW|ALERT_ID LABEL [notes] to record alert usefulness.",
         )
 
     def _help_model(
@@ -3001,28 +3068,28 @@ class MarketRadarDashboardApp(App[int]):
                 ),
             },
             {
-                "command": "next / prev / offset <row>",
+                "command": "next / prev / offset ROW",
                 "meaning": "Page through the full ranked scan without provider calls.",
             },
             {
                 "command": "export full",
                 "meaning": "Print the full-scan JSON export command.",
             },
-            {"command": "limit <1-200>", "meaning": "Change loaded Inbox rows per page."},
+            {"command": "limit 1-200", "meaning": "Change loaded Inbox rows per page."},
             {
-                "command": "source-gap <source|all>",
+                "command": "source-gap SOURCE|all",
                 "meaning": "Show scan rows missing options, text, events, bars, or broker context.",
             },
             {
-                "command": "batch <source>",
+                "command": "batch SOURCE",
                 "meaning": "Plan full-scan source fill and show the next safe chunk.",
             },
             {
-                "command": "batch <source> execute",
+                "command": "batch SOURCE execute",
                 "meaning": "Run only the next guarded chunk; refresh and repeat deliberately.",
             },
             {
-                "command": "batch <source> execute 3",
+                "command": "batch SOURCE execute 3",
                 "meaning": "Run a capped source-fill batch set and stop on blockers.",
             },
             {
@@ -3055,14 +3122,14 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "cik template / validate / import",
                 "meaning": "Create, check, or explicitly import local SEC CIK overrides.",
             },
-            {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
+            {"command": "ticker SYMBOL|all", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
                 "command": "action / trigger / ticket",
                 "meaning": "Save local broker-context artifacts only.",
             },
             {
-                "command": "feedback <row-number|alert-id> <label>",
+                "command": "feedback ROW|ALERT_ID LABEL",
                 "meaning": "Record useful/noisy/acted alert feedback.",
             },
             {
@@ -3747,7 +3814,7 @@ def _apply_command(
             return _CommandUpdate(
                 page=page,
                 filters=filters,
-                message=_command_no_side_effects("Usage: offset <row>."),
+                message=_command_no_side_effects("Usage: offset ROW."),
             )
         offset = max(0, int(value) - 1)
         return _CommandUpdate(
@@ -3760,7 +3827,7 @@ def _apply_command(
             return _CommandUpdate(
                 page=page,
                 filters=filters,
-                message=_command_no_side_effects("Usage: limit <1-200>."),
+                message=_command_no_side_effects("Usage: limit 1-200."),
             )
         limit = min(200, max(1, int(value)))
         return _CommandUpdate(
@@ -4077,7 +4144,7 @@ def _priced_in_source_batch_message(
 ) -> str:
     if not source.strip():
         return _command_no_side_effects(
-            "Usage: batch <source>. Try: batch catalyst_events, batch local_text, "
+            "Usage: batch SOURCE. Try: batch catalyst_events, batch local_text, "
             "batch options. Add all to summarize the full chunk plan, execute "
             "to run one guarded chunk, or execute 3 for a capped run."
         )
@@ -4579,7 +4646,7 @@ def _priced_in_all_source_batch_message(
 
 
 def _unsupported_source_batch_message(source: str, detail: str) -> str:
-    source_text = source.strip() or "<blank>"
+    source_text = source.strip() or "blank"
     allowed = ", ".join(dashboard_data.PRICED_IN_SOURCE_CLASSES)
     detail_text = f" Detail: {_clip(detail, 120)}" if detail else ""
     return (
@@ -5927,7 +5994,7 @@ def _execute_priced_in_source_batch(
 ) -> str:
     if not source.strip():
         return (
-            "Usage: batch <source> execute. Try: batch catalyst_events execute, "
+            "Usage: batch SOURCE execute. Try: batch catalyst_events execute, "
             "batch local_text execute, batch options execute, or "
             "batch catalyst_events execute 3."
         )
@@ -6021,7 +6088,7 @@ def _execute_guarded_radar_run(
 def _save_opportunity_action(engine: Engine, value: str) -> str:
     parts = value.split(maxsplit=2)
     if len(parts) < 2:
-        return "Usage: action <ticker> <watch|ready|simulate_entry|dismiss> [notes]"
+        return "Usage: action TICKER watch|ready|simulate_entry|dismiss [notes]"
     ticker, action = parts[0].upper(), parts[1]
     notes = parts[2] if len(parts) > 2 else None
     try:
@@ -6049,8 +6116,8 @@ def _save_market_trigger(engine: Engine, value: str) -> str:
     parts = value.split(maxsplit=4)
     if len(parts) < 4:
         return (
-            "Usage: trigger <ticker> <price_above|price_below|volume_above|"
-            "relative_volume_above|call_put_ratio_above> <gte|lte|gt|lt> <threshold> [notes]"
+            "Usage: trigger TICKER price_above|price_below|volume_above|"
+            "relative_volume_above|call_put_ratio_above gte|lte|gt|lt THRESHOLD [notes]"
         )
     ticker, trigger_type, operator, threshold_text = (
         parts[0].upper(),
@@ -6105,7 +6172,7 @@ def _save_blocked_order_ticket(
     parts = value.split(maxsplit=5)
     if len(parts) < 4:
         return (
-            "Usage: ticket <ticker> <buy|sell> <entry_price> <invalidation_price> "
+            "Usage: ticket TICKER buy|sell ENTRY_PRICE INVALIDATION_PRICE "
             "[risk_pct] [notes]"
         )
     ticker, side, entry_text, invalidation_text = (
@@ -6155,8 +6222,8 @@ def _record_alert_feedback(
     parts = value.split(maxsplit=2)
     if len(parts) < 2:
         return (
-            "Usage: feedback <row-number|alert-id> "
-            "<useful|noisy|too_late|too_early|ignored|acted> [notes]"
+            "Usage: feedback ROW|ALERT_ID "
+            "useful|noisy|too_late|too_early|ignored|acted [notes]"
         )
     alert_rows = _rows(_mapping(payload.get("alerts")).get("rows"))
     alert = _row_by_index_or_key(alert_rows, parts[0], key="id")
@@ -6164,7 +6231,7 @@ def _record_alert_feedback(
         return (
             "No feedback row was saved; external_calls=0 db_writes=0. "
             "Alert feedback rejected: alert not found in current alert rows. "
-            "Use open <alert-id> or refresh if you expected the alert here."
+            "Use open ALERT_ID or refresh if you expected the alert here."
         )
     label = parts[1]
     notes = parts[2] if len(parts) > 2 else None
@@ -6228,7 +6295,7 @@ def _execute_value_ledger_command(
         return _value_ledger_list_message(entries)
     if subcommand == "show":
         if not args:
-            return "Usage: ledger show <value-ledger-id>"
+            return "Usage: ledger show VALUE_LEDGER_ID"
         try:
             entry = load_value_ledger_entry_payload(engine, entry_id=args[0])
         except ValueError as exc:
@@ -6278,7 +6345,7 @@ def _execute_value_outcome_command(
         return _value_outcome_list_message(outcomes)
     if subcommand == "show":
         if not args:
-            return "Usage: outcome show <value-outcome-id>"
+            return "Usage: outcome show VALUE_OUTCOME_ID"
         try:
             outcome = load_value_outcome_payload(engine, outcome_id=args[0])
         except ValueError as exc:
@@ -6303,10 +6370,10 @@ def _record_value_ledger_from_tui(
     args, execute = _strip_flag(args, "--execute")
     if len(args) < 6:
         return (
-            "Usage: ledger record <candidate-id|ticker|#> <label> "
-            "<watch|research|avoid|paper_trade|reject|live_review|no_action> "
-            "<accepted|rejected|wait|ignored|paper-only|avoided|unknown> "
-            "<value-usd> <confidence> [--execute] [notes]"
+            "Usage: ledger record CANDIDATE_ID|TICKER|# LABEL "
+            "watch|research|avoid|paper_trade|reject|live_review|no_action "
+            "accepted|rejected|wait|ignored|paper-only|avoided|unknown "
+            "VALUE_USD CONFIDENCE [--execute] [notes]"
         )
     selector, label, supported_action, user_decision, value_text, confidence_text = (
         args[0],
@@ -6373,9 +6440,9 @@ def _update_value_outcome_from_tui(
     args, execute = _strip_flag(args, "--execute")
     if not args:
         return (
-            "Usage: outcome update <value-ledger-id> "
-            "<outcome-available-at|filter> [--execute] [sector <ETF>] "
-            "[invalidation <price>]"
+            "Usage: outcome update VALUE_LEDGER_ID "
+            "OUTCOME_AVAILABLE_AT|filter [--execute] [sector ETF] "
+            "[invalidation PRICE]"
         )
     ledger_id = args[0]
     remainder = list(args[1:])
@@ -6584,8 +6651,8 @@ def _first_positive_int(args: Sequence[str], *, default: int) -> int:
 def _value_ledger_usage() -> str:
     return (
         "Usage: ledger coverage | ledger summary | ledger list [limit] | "
-        "ledger show <id> | ledger record <candidate-id|ticker|#> <label> "
-        "<supported-action> <user-decision> <value-usd> <confidence> "
+        "ledger show ID | ledger record CANDIDATE_ID|TICKER|# LABEL "
+        "SUPPORTED_ACTION USER_DECISION VALUE_USD CONFIDENCE "
         "[--execute] [notes]"
     )
 
@@ -6593,8 +6660,8 @@ def _value_ledger_usage() -> str:
 def _value_outcome_usage() -> str:
     return (
         "Usage: outcome coverage | outcome list [ledger-id|all] [limit] | "
-        "outcome show <id> | outcome update <ledger-id> "
-        "<outcome-available-at|filter> [--execute]"
+        "outcome show ID | outcome update LEDGER_ID "
+        "OUTCOME_AVAILABLE_AT|filter [--execute]"
     )
 
 
@@ -6651,19 +6718,19 @@ def _open_command_no_match_message(page: str, value: str) -> str:
     token = value.strip()
     if not token:
         return (
-            "Open command needs a target. No calls made. Type open <ticker>, "
-            "open <alert-id>, or use row numbers on Inbox, Candidate Review, or Alerts."
+            "Open command needs a target. No calls made. Type open TICKER, "
+            "open ALERT_ID, or use row numbers on Inbox, Candidate Review, or Alerts."
         )
     if token.isdigit():
         page_label = _page_display_label(page) or "this page"
         return (
             f"No row {token} is openable on {page_label}. No calls made. "
             "Use row numbers on Inbox, Candidate Review, or Alerts; from any page "
-            "type open <ticker> or open <alert-id>."
+            "type open TICKER or open ALERT_ID."
         )
     return (
-        f"No local candidate or alert matched {token}. No calls made. Try open <ticker>, "
-        "open <alert-id>, or refresh if you expected it in the latest scan."
+        f"No local candidate or alert matched {token}. No calls made. Try open TICKER, "
+        "open ALERT_ID, or refresh if you expected it in the latest scan."
     )
 
 
@@ -9840,6 +9907,8 @@ def _latest_scan_results_title(payload: Mapping[str, object]) -> str:
 
 def _market_inbox_caption(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
+    total = int(_number_or_zero(queue.get("total_count")))
+    returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
     source_hint = _overview_source_workflow_hint(payload)
     source_hint_text = f" Next data step: {source_hint}" if source_hint else ""
     source_gap = _source_gap_filter_summary(queue)
@@ -9852,10 +9921,19 @@ def _market_inbox_caption(payload: Mapping[str, object]) -> str:
     )
     if source_hint.startswith("Current scan coverage:"):
         compact_hint = source_hint.removeprefix("Current scan coverage:").strip()
+        source_gap_prefix = f"{source_gap_text.strip()} " if source_gap_text else ""
         return (
+            f"{source_gap_prefix}"
             f"Next data step: {compact_hint} "
-            "Inbox triage: open the top row; Waiting Evidence means data repair."
-            f"{answer_text}{source_gap_text} Browsing makes 0 provider calls."
+            "Inbox triage: open the top row; this is one review page, "
+            "not the full scan universe. Waiting Evidence means data repair."
+            f"{answer_text} Browsing makes 0 provider calls."
+        )
+    detailed_scope = _overview_caption(payload)
+    if total and returned < total and detailed_scope:
+        return (
+            "Inbox triage: open the top row; Waiting Evidence means data repair. "
+            f"{detailed_scope}"
         )
     return (
         "Inbox triage: open the top row; this is one review page, not the full "
@@ -9965,8 +10043,8 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
             "Use priced-in-queue --status all --limit/--offset or the API offset "
             "parameter to page deeper; use priced-in-queue --full-scan --all --json "
-            "for the full export. In the TUI type next, prev, offset <row>, "
-            f"or limit <rows>.{usefulness_text}{source_gap_text}{decision_gap_text} "
+            "for the full export. In the TUI type next, prev, offset ROW, "
+            f"or limit ROWS.{usefulness_text}{source_gap_text}{decision_gap_text} "
             f"{source_hint_text}"
             "Browsing makes 0 provider calls."
         )
@@ -11820,7 +11898,7 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
     )
     lines.extend(
         _wrap(
-            "Use `open <#|ticker>` to inspect a candidate; this is not trade approval.",
+            "Use `open #|TICKER` to inspect a candidate; this is not trade approval.",
             width,
         )
     )
@@ -12036,9 +12114,9 @@ def _candidate_case_next_command(row: Mapping[str, object], ticker: str) -> str:
     ).lower()
     command_ticker = (
         ticker.strip().upper()
-        or str(row.get("ticker") or "<TICKER>").strip().upper()
+        or str(row.get("ticker") or "TICKER").strip().upper()
     )
-    command_ticker = command_ticker or "<TICKER>"
+    command_ticker = command_ticker or "TICKER"
     command_as_of = _candidate_case_command_as_of(row)
     if "candidate packet" in next_step and not str(row.get("candidate_packet_id") or "").strip():
         return (
@@ -12070,7 +12148,7 @@ def _candidate_case_has_source_gaps(
 def _candidate_case_command_as_of(row: Mapping[str, object]) -> str:
     parsed = _datetime_or_none(row.get("as_of"))
     if parsed is None:
-        return "<LATEST_TRADING_DATE>"
+        return "LATEST_TRADING_DATE"
     return parsed.date().isoformat()
 
 
@@ -12231,7 +12309,7 @@ def _alert_feedback_prompt_parts(
     payload: Mapping[str, object],
     alert_id: str,
 ) -> tuple[str, str]:
-    alert_ref = str(alert_id or "<alert-id>").strip()
+    alert_ref = str(alert_id or "ALERT_ID").strip()
     rows = _rows(_mapping(payload.get("alerts")).get("rows"))
     for index, row in enumerate(rows, start=1):
         if str(row.get("id") or "").strip() == alert_ref:
@@ -12259,7 +12337,7 @@ def _alert_case_summary_kv_pairs(
     *,
     feedback_ref: str | None = None,
 ) -> tuple[tuple[str, object], ...]:
-    alert_id = str(row.get("id") or "<alert-id>").strip()
+    alert_id = str(row.get("id") or "ALERT_ID").strip()
     ticker = str(row.get("ticker") or "n/a").strip().upper()
     reason = (
         row.get("summary")
@@ -12400,7 +12478,7 @@ def _alerts_lines(payload: Mapping[str, object], width: int) -> list[str]:
     )
     lines.extend(
         _wrap(
-            "Use `open <#>` to review; the detail view shows the exact feedback "
+            "Use `open #` to review; the detail view shows the exact feedback "
             "command and records local review only.",
             width,
         )
@@ -13375,7 +13453,7 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
     else:
         lines.extend(
             _wrap(
-                "No saved watch/ready/dismiss actions yet. Use `action <ticker> watch` "
+                "No saved watch/ready/dismiss actions yet. Use `action TICKER watch` "
                 "after reviewing a candidate.",
                 width,
             )
@@ -13402,8 +13480,8 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
     else:
         lines.extend(
             _wrap(
-                "No saved local trigger rules yet. Use `trigger <ticker> <type> <op> "
-                "<threshold>` only after research review.",
+                "No saved local trigger rules yet. Use `trigger TICKER TYPE OP "
+                "THRESHOLD` only after research review.",
                 width,
             )
         )
@@ -13436,9 +13514,9 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     lines.extend(
         _wrap(
-            "Commands: action <ticker> <watch|ready|simulate_entry|dismiss>, "
-            "trigger <ticker> <type> <op> <threshold>, eval-triggers [ticker], "
-            "ticket <ticker> <buy|sell> <entry> <stop>.",
+            "Commands: action TICKER watch|ready|simulate_entry|dismiss, "
+            "trigger TICKER TYPE OP THRESHOLD, eval-triggers [ticker], "
+            "ticket TICKER buy|sell ENTRY STOP.",
             width,
         )
     )
@@ -13705,7 +13783,7 @@ def _source_workflow_goal_alignment(
         if market_bar_blocker
         else (
             "Browsing, clicking, filtering, and refresh are zero-call. Only "
-            "batch <source> execute runs a reviewed provider chunk."
+            "batch SOURCE execute runs a reviewed provider chunk."
         )
     )
     return {
@@ -13993,9 +14071,9 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     lines.extend(
         _wrap(
             "`batch all` shows this source map without provider calls; "
-            "`batch <source> all` summarizes the full chunk plan; "
-            "`batch <source> execute` runs one guarded chunk; "
-            "`batch <source> execute 3` runs a capped set.",
+            "`batch SOURCE all` summarizes the full chunk plan; "
+            "`batch SOURCE execute` runs one guarded chunk; "
+            "`batch SOURCE execute 3` runs a capped set.",
             width,
         )
     )
@@ -14158,7 +14236,7 @@ def _source_coverage_workbench_detail(
     return (
         f"{row_count} source row(s). Coverage-first: {coverage_first}"
         f"{shortcut_text} Enter/click is plan-only; execute requires "
-        "batch <source> execute."
+        "batch SOURCE execute."
     )
 
 
@@ -14364,9 +14442,9 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 "This table is source coverage for the visible review page, not the "
                 "full scan universe. The Source Fill Workflow below shows full-scan "
                 "gaps and guarded batch plans. Examples are sample tickers only. "
-                "Type `batch <source>` to show the full-scan plan; type "
-                "`batch <source> execute` to run only the next guarded chunk, or "
-                "`batch <source> execute 3` for a capped run.",
+                "Type `batch SOURCE` to show the full-scan plan; type "
+                "`batch SOURCE execute` to run only the next guarded chunk, or "
+                "`batch SOURCE execute 3` for a capped run.",
                 width,
             )
         )
@@ -14824,17 +14902,17 @@ def _help_lines(width: int) -> list[str]:
         ),
         ("features", "List current Market Radar features and where they live in the TUI."),
         ("setup / first", "Show the first setup command and where to run it."),
-        ("open <#|ticker>", "Open a candidate from Candidate Review."),
-        ("open <#|alert-id>", "Open an alert from the alerts page."),
-        ("ticker <SYMBOL|all>", "Filter candidate-adjacent pages by ticker where supported."),
-        ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),
+        ("open #|TICKER", "Open a candidate from Candidate Review."),
+        ("open #|ALERT_ID", "Open an alert from the alerts page."),
+        ("ticker SYMBOL|all", "Filter candidate-adjacent pages by ticker where supported."),
+        ("available-at ISO|latest", "Set or clear the point-in-time data cutoff."),
         ("ready", "Show only decision-useful not-priced-in rows from the full scan."),
         ("now", "Show the single next priced-in action, response, and cost."),
-        ("usefulness <status|all>", "Filter Inbox by usefulness verdict."),
-        ("source-gap <source|all>", "Filter Inbox by missing/stale data source."),
-        ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),
-        ("batch <source> execute", "Run only the next guarded source-fill chunk."),
-        ("batch <source> execute 3", "Run a capped source-fill batch set."),
+        ("usefulness STATUS|all", "Filter Inbox by usefulness verdict."),
+        ("source-gap SOURCE|all", "Filter Inbox by missing/stale data source."),
+        ("batch SOURCE", "Plan full-scan source fill and show the next safe chunk."),
+        ("batch SOURCE execute", "Run only the next guarded source-fill chunk."),
+        ("batch SOURCE execute 3", "Run a capped source-fill batch set."),
         ("bars", "Show market-bar blocker status and safe next actions."),
         ("bars manual template", "Generate the full-universe missing-bar CSV."),
         ("bars manual import", "Preview or execute complete-row manual import."),
@@ -14849,32 +14927,32 @@ def _help_lines(width: int) -> list[str]:
         ("options import", "Preview or explicitly execute options fixture import."),
         ("agent", "Preview real Agents SDK gates with zero OpenAI calls."),
         ("agent execute", "Run one credit-gated OpenAI Agents SDK brief."),
-        ("decision-gap <gap|all>", "Filter Inbox by missing decision evidence."),
+        ("decision-gap GAP|all", "Filter Inbox by missing decision evidence."),
         ("next / prev", "Page through the current Inbox scan rows."),
-        ("offset <row>", "Jump to a 1-based full-scan row number."),
-        ("limit <1-200>", "Change Inbox rows per page."),
-        ("alert-status <status|all>", "Filter alerts by status."),
-        ("alert-route <route|all>", "Filter alerts by route."),
+        ("offset ROW", "Jump to a 1-based full-scan row number."),
+        ("limit 1-200", "Change Inbox rows per page."),
+        ("alert-status STATUS|all", "Filter alerts by status."),
+        ("alert-route ROUTE|all", "Filter alerts by route."),
         ("refresh", "Reload the local database snapshot."),
         ("run", "Show the guarded run instruction on the run page."),
         ("run execute", "Start one capped radar cycle after reviewing the call plan."),
         ("json", "Print the redacted JSON snapshot used by the TUI."),
-        ("action <ticker> <action> [notes]", "Save watch/ready/simulate_entry/dismiss."),
-        ("trigger <ticker> <type> <op> <threshold>", "Save a market trigger."),
+        ("action TICKER ACTION [notes]", "Save watch/ready/simulate_entry/dismiss."),
+        ("trigger TICKER TYPE OP THRESHOLD", "Save a market trigger."),
         ("eval-triggers [ticker]", "Evaluate saved triggers against stored market context."),
-        ("ticket <ticker> <side> <entry> <stop>", "Save a blocked order-preview ticket."),
+        ("ticket TICKER SIDE ENTRY STOP", "Save a blocked order-preview ticket."),
         (
-            "feedback <row-number|alert-id> <label>",
+            "feedback ROW|ALERT_ID LABEL",
             "Record alert feedback from current alert rows.",
         ),
         ("ledger coverage", "Show Warning/manual-review rows missing value-ledger entries."),
         (
-            "ledger record <#|id|ticker> <label> <action> <decision> <value> <confidence>",
+            "ledger record #|id|TICKER LABEL ACTION DECISION VALUE CONFIDENCE",
             "Preview a value-ledger entry; add --execute to write it.",
         ),
         ("outcome coverage", "Show value-ledger rows missing forward outcomes."),
         (
-            "outcome update <ledger-id> <available-at|filter>",
+            "outcome update LEDGER_ID AVAILABLE_AT|filter",
             "Preview a deterministic outcome; add --execute to write it.",
         ),
         ("clear-filters", "Reset filters."),
