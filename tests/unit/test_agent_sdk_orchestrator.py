@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import create_engine
 
+from catalyst_radar.agents.models import LLMCallStatus, LLMTaskName
 from catalyst_radar.agents.sdk_orchestrator import (
     agent_sdk_gate_payload,
     real_results_gate_payload,
@@ -340,6 +342,45 @@ def test_agent_sdk_execute_records_budget_and_run_audit(monkeypatch) -> None:
     assert events[0].metadata["external_calls_made"]["openai"] == 1
 
 
+def test_agent_sdk_pre_call_failure_does_not_consume_budget_or_daily_cap(
+    monkeypatch,
+) -> None:
+    config = _openai_config()
+    repo = _budget_repo()
+
+    def fake_run(*args, **kwargs):
+        raise RuntimeError("schema setup failed before provider call")
+
+    monkeypatch.setattr(
+        "catalyst_radar.agents.sdk_orchestrator._run_agent_sdk_real",
+        fake_run,
+    )
+
+    brief = run_market_radar_agents(
+        _live_partial_real_results_payload(),
+        config,
+        real=True,
+        execute=True,
+        max_openai_calls=1,
+        ledger_repo=repo,
+    )
+
+    now = datetime.now(UTC)
+    entries = repo.list_entries(limit=10)
+    assert brief["status"] == "blocked"
+    assert brief["external_calls_made"]["openai"] == 0
+    assert entries[0].status == LLMCallStatus.SKIPPED
+    assert entries[0].actual_cost == 0.0
+    assert (
+        repo.task_count_between(
+            task=LLMTaskName.AGENT_BRIEF.value,
+            start=now - timedelta(minutes=5),
+            end=now + timedelta(minutes=5),
+        )
+        == 0
+    )
+
+
 def test_agent_sdk_execute_blocks_when_real_results_are_missing() -> None:
     config = _openai_config()
     repo = _budget_repo()
@@ -355,6 +396,62 @@ def test_agent_sdk_execute_blocks_when_real_results_are_missing() -> None:
     assert brief["mode"] == "blocked"
     assert brief["status"] == "blocked"
     assert brief["external_calls_made"]["openai"] == 0
+    assert any(
+        check["name"] == "Real results gate" and check["status"] == "blocked"
+        for check in brief["security_checks"]
+    )
+
+
+def test_agent_sdk_execute_allows_live_partial_run_blocker_analysis(monkeypatch) -> None:
+    config = _openai_config()
+    repo = _budget_repo()
+    payload = _live_partial_real_results_payload()
+
+    def fake_run(snapshot, gate, _config, **kwargs):
+        assert gate["real_results_gate"]["status"] == "blocked"
+        assert gate["real_results_gate"]["agent_execution_allowed"] is True
+        return {
+            "schema_version": "market-radar-agent-brief-v1",
+            "mode": "real",
+            "status": "completed",
+            "decision_boundary": "research_ready; research/manual triage only",
+            "runtime": {
+                "schema_version": "market-radar-agent-runtime-v1",
+                "real_results_gate_status": "blocked",
+            },
+            "real_results": snapshot["real_results"],
+            "credit_gate": gate["credit_gate"],
+            "agents": [],
+            "insights": ["Reviewed the live partial run blockers."],
+            "next_actions": ["Clear catalyst event coverage before relying on the scan."],
+            "security_checks": [
+                {"name": "Snapshot boundary", "status": "pass"},
+                {"name": "Real results gate", "status": "blocked"},
+            ],
+            "allowed_operations": [],
+            "blocked_operations": [],
+            "external_calls_planned": {"openai": 1, "market_data": 0, "broker": 0},
+            "external_calls_made": {"openai": 1, "market_data": 0, "broker": 0},
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.agents.sdk_orchestrator._run_agent_sdk_real",
+        fake_run,
+    )
+
+    brief = run_market_radar_agents(
+        payload,
+        config,
+        real=True,
+        execute=True,
+        max_openai_calls=1,
+        ledger_repo=repo,
+    )
+
+    assert brief["status"] == "completed"
+    assert brief["external_calls_made"]["openai"] == 1
+    assert brief["runtime"]["real_results_gate_status"] == "blocked"
+    assert brief["real_results"]["latest_run_status"] == "partial_success"
     assert any(
         check["name"] == "Real results gate" and check["status"] == "blocked"
         for check in brief["security_checks"]
@@ -378,6 +475,47 @@ def test_real_results_gate_blocks_fixture_source_modes() -> None:
     assert gate["status"] == "blocked"
     assert "live market data source" in gate["missing"]
     assert gate["source_modes"]["market"] == "fixture"
+
+
+def test_agent_sdk_execute_blocks_fixture_source_modes(monkeypatch) -> None:
+    config = _openai_config()
+    repo = _budget_repo()
+    payload = _real_results_payload()
+    payload["real_results"] = {
+        **payload["real_results"],
+        "source_modes": {
+            "market": "fixture",
+            "market_provider": "csv",
+            "events": "live",
+            "event_provider": "sec",
+        },
+    }
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("fixture source modes must not call OpenAI")
+
+    monkeypatch.setattr(
+        "catalyst_radar.agents.sdk_orchestrator._run_agent_sdk_real",
+        fail_if_called,
+    )
+
+    brief = run_market_radar_agents(
+        payload,
+        config,
+        real=True,
+        execute=True,
+        max_openai_calls=1,
+        ledger_repo=repo,
+    )
+
+    assert brief["status"] == "blocked"
+    assert brief["external_calls_made"]["openai"] == 0
+    assert brief["runtime"]["real_results_gate_status"] == "blocked"
+    assert any(
+        check["name"] == "Real results gate"
+        and "live market data source" in check["detail"]
+        for check in brief["security_checks"]
+    )
 
 
 def test_agent_sdk_execute_blocks_when_budget_is_zero() -> None:
@@ -815,6 +953,21 @@ def _real_results_payload() -> dict[str, object]:
             "events": "live",
             "event_provider": "sec",
         },
+    }
+    return payload
+
+
+def _live_partial_real_results_payload() -> dict[str, object]:
+    payload = _real_results_payload()
+    payload["real_results"] = {
+        **payload["real_results"],
+        "status": "missing",
+        "headline": "No trusted result yet.",
+        "next_action": "Clear evidence blockers, then rerun priced-in-answer.",
+        "source": "none",
+        "latest_run_id": None,
+        "latest_run_status": "partial_success",
+        "missing": ["successful latest radar run"],
     }
     return payload
 

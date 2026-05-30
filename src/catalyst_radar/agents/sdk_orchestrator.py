@@ -12,6 +12,7 @@ from catalyst_radar.agents.budget import BudgetController
 from catalyst_radar.agents.models import (
     BudgetLedgerEntry,
     LLMCallStatus,
+    LLMSkipReason,
     LLMTaskName,
     TokenUsage,
     budget_ledger_id,
@@ -238,6 +239,11 @@ def real_results_gate_payload(snapshot: Mapping[str, object]) -> dict[str, objec
     missing.extend(source_mode_missing)
     missing = list(dict.fromkeys(missing))
     ready = status == "ready" and not missing
+    blocker_analysis_allowed = _real_results_blocker_analysis_allowed(
+        real_results=real_results,
+        missing=missing,
+        source_mode_missing=source_mode_missing,
+    )
     return {
         "schema_version": "agent-real-results-gate-v1",
         "status": "ready" if ready else "blocked",
@@ -265,6 +271,14 @@ def real_results_gate_payload(snapshot: Mapping[str, object]) -> dict[str, objec
         "latest_run_status": _text(real_results.get("latest_run_status")) or None,
         "as_of": _text(real_results.get("as_of")) or None,
         "cutoff": _text(real_results.get("cutoff")) or None,
+        "agent_execution_allowed": ready or blocker_analysis_allowed,
+        "execution_boundary": (
+            "ready_real_results"
+            if ready
+            else "live_blocker_analysis_only"
+            if blocker_analysis_allowed
+            else "blocked"
+        ),
     }
 
 
@@ -279,6 +293,41 @@ def _real_results_source_mode_blockers(
     if event_mode != "live":
         missing.append("live catalyst event source")
     return missing
+
+
+def _real_results_blocker_analysis_allowed(
+    *,
+    real_results: Mapping[str, object],
+    missing: Sequence[str],
+    source_mode_missing: Sequence[str],
+) -> bool:
+    """Allow read-only OpenAI blocker analysis for live, partial real runs.
+
+    A partial latest run is not trade-ready, but it is still useful input for an
+    AI-first operations brief when all source modes are live and the snapshot has
+    rows. Fixture/demo/canned or structurally missing snapshots remain hard
+    blocks.
+    """
+    if source_mode_missing:
+        return False
+    if bool(real_results.get("canned_data_allowed")) or bool(
+        real_results.get("canned_data_detected")
+    ):
+        return False
+    if int(_number(real_results.get("row_count"))) <= 0:
+        return False
+    if not _text(real_results.get("status")):
+        return False
+    if not _text(real_results.get("as_of")) or not _text(real_results.get("cutoff")):
+        return False
+
+    soft_missing = {"successful latest radar run"}
+    hard_missing = {
+        item
+        for item in _texts(missing)
+        if item and item not in soft_missing
+    }
+    return not hard_missing
 
 
 def redacted_operator_snapshot(payload: Mapping[str, object]) -> dict[str, object]:
@@ -580,16 +629,20 @@ def _run_agent_sdk_real(
 
     model = config.agent_sdk_model
     fast_model = config.agent_sdk_fast_model or model
-    read_only_tools = build_market_radar_agent_tools(snapshot)
-    specialist_tools = _build_specialist_agent_tools(
-        Agent,
-        analytical_model=model,
-        fast_model=fast_model,
+    tools_enabled = max_openai_calls > 1
+    read_only_tools = build_market_radar_agent_tools(snapshot) if tools_enabled else []
+    specialist_tools = (
+        _build_specialist_agent_tools(
+            Agent,
+            analytical_model=model,
+            fast_model=fast_model,
+        )
+        if tools_enabled
+        else []
     )
     operator_agent = Agent(
         name="MarketRadar Operator",
         model=model,
-        output_type=MarketRadarAgentBrief,
         instructions=(
             "You are the MarketRadar manager agent. You may use only the four read-only "
             "snapshot tools provided to you: get_visible_scan_rows, get_candidate_detail, "
@@ -598,6 +651,9 @@ def _run_agent_sdk_real(
             "Use the supplied redacted snapshot as the only market evidence. Return a "
             "structured brief for a human operator with separate Data Sentinel, Catalyst "
             "Analyst, Risk Officer, and Operator contributions. "
+            "When no tools are available, answer directly from the supplied snapshot. "
+            "Return only a JSON object compatible with the MarketRadarAgentBrief fields; "
+            "do not wrap it in Markdown. "
             "Do not provide investment advice, do not say buy/sell/hold, and do not imply "
             "that stale or blocked data is actionable."
         ),
@@ -610,6 +666,7 @@ def _run_agent_sdk_real(
                 "allowed_operations": ALLOWED_OPERATIONS,
                 "blocked_operations": BLOCKED_OPERATIONS,
                 "max_agent_turns": min(AGENT_SDK_MAX_TURNS, max_openai_calls),
+                "snapshot_tools_available": tools_enabled,
                 "external_market_calls_allowed": False,
                 "broker_calls_allowed": False,
             },
@@ -624,7 +681,7 @@ def _run_agent_sdk_real(
         prompt,
         max_turns=min(AGENT_SDK_MAX_TURNS, max_openai_calls),
     )
-    brief = _coerce_brief(result.final_output)
+    brief = _coerce_brief(result.final_output, snapshot=snapshot)
     openai_calls = max(1, len(getattr(result, "raw_responses", []) or []))
     payload = _model_dump(brief)
     payload.update(
@@ -650,6 +707,15 @@ def _run_agent_sdk_real(
             },
         }
     )
+    fallback = deterministic_agent_brief(
+        snapshot,
+        gate,
+        mode="preview",
+        operator_goal=operator_goal,
+    )
+    for key in ("agents", "insights", "next_actions"):
+        if not payload.get(key):
+            payload[key] = fallback.get(key, [])
     checks = [
         SecurityCheck(**row)
         if isinstance(row, Mapping)
@@ -725,14 +791,68 @@ def _build_specialist_agent_tools(
     ]
 
 
-def _coerce_brief(value: object) -> MarketRadarAgentBrief:
+def _coerce_brief(
+    value: object,
+    *,
+    snapshot: Mapping[str, object] | None = None,
+) -> MarketRadarAgentBrief:
     if isinstance(value, MarketRadarAgentBrief):
         return value
     if isinstance(value, Mapping):
-        return MarketRadarAgentBrief.model_validate(value)
+        return MarketRadarAgentBrief.model_validate(
+            _normalize_agent_brief_payload(value, snapshot=snapshot)
+        )
     if isinstance(value, str):
-        return MarketRadarAgentBrief.model_validate_json(value)
+        parsed = json.loads(_strip_json_fence(value))
+        if not isinstance(parsed, Mapping):
+            raise TypeError("Agents SDK final output JSON must be an object")
+        return MarketRadarAgentBrief.model_validate(
+            _normalize_agent_brief_payload(parsed, snapshot=snapshot)
+        )
     raise TypeError(f"Unsupported Agents SDK final output: {type(value).__name__}")
+
+
+def _strip_json_fence(value: str) -> str:
+    text = value.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
+def _normalize_agent_brief_payload(
+    value: Mapping[str, object],
+    *,
+    snapshot: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    payload = dict(value)
+    payload.setdefault("mode", "real")
+    payload.setdefault("status", "completed")
+    payload.setdefault(
+        "decision_boundary",
+        _decision_boundary(snapshot or {})
+        if snapshot is not None
+        else "manual research triage only; no autonomous trading.",
+    )
+    payload["external_calls_planned"] = _agent_call_counts(
+        _mapping(payload.get("external_calls_planned"))
+    )
+    payload["external_calls_made"] = _agent_call_counts(
+        _mapping(payload.get("external_calls_made"))
+    )
+    return payload
+
+
+def _agent_call_counts(value: Mapping[str, object]) -> dict[str, int]:
+    return {
+        "openai": int(_number(value.get("openai"))),
+        "market_data": int(_number(value.get("market_data"))),
+        "broker": int(_number(value.get("broker"))),
+    }
 
 
 def _agent_runtime_payload(gate: Mapping[str, object], *, mode: str) -> dict[str, object]:
@@ -776,7 +896,7 @@ def _agent_execute_block_reason(gate: Mapping[str, object]) -> str | None:
         missing_env = ", ".join(_texts(gate.get("missing_env"))) or "unknown"
         reasons.append(f"OpenAI runtime gate blocked: {missing_env}")
     real_results_gate = _mapping(gate.get("real_results_gate"))
-    if real_results_gate.get("status") != "ready":
+    if not bool(real_results_gate.get("agent_execution_allowed")):
         missing = ", ".join(_texts(real_results_gate.get("missing"))) or "real scan rows"
         reasons.append(f"Real results gate blocked: {missing}")
     credit_gate = _mapping(gate.get("credit_gate"))
@@ -806,14 +926,19 @@ def _record_agent_ledger_entry(
     )
     estimated_cost = float(_number(credit_gate.get("estimated_cost_usd")))
     openai_calls = int(_number(_mapping(brief.get("external_calls_made")).get("openai")))
-    actual_cost = estimated_cost if openai_calls > 0 or status == LLMCallStatus.FAILED else 0.0
+    ledger_status = (
+        LLMCallStatus.SKIPPED
+        if status == LLMCallStatus.FAILED and openai_calls == 0
+        else status
+    )
+    actual_cost = estimated_cost if openai_calls > 0 else 0.0
     ticker = _text(_mapping(snapshot.get("controls")).get("ticker")) or None
     entry = BudgetLedgerEntry(
         id=budget_ledger_id(
             task=LLMTaskName.AGENT_BRIEF.value,
             ticker=ticker,
             candidate_packet_id=None,
-            status=status.value,
+            status=ledger_status.value,
             available_at=available_at,
             prompt_version=AGENT_BRIEF_PROMPT_VERSION,
             attempted_at=now,
@@ -821,9 +946,12 @@ def _record_agent_ledger_entry(
         ts=now,
         available_at=available_at,
         task=LLMTaskName.AGENT_BRIEF,
-        status=status,
+        status=ledger_status,
         estimated_cost=estimated_cost,
         actual_cost=actual_cost,
+        skip_reason=(
+            LLMSkipReason.CLIENT_ERROR if ledger_status == LLMCallStatus.SKIPPED else None
+        ),
         ticker=ticker,
         model=config.agent_sdk_model,
         provider="openai",
