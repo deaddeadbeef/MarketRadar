@@ -1984,7 +1984,7 @@ class MarketRadarDashboardApp(App[int]):
             "alerts": "Click or focus a row and press Enter to open an alert.",
             "ipo": _footer_next_action(self.payload, "ipo"),
             "agent": _modern_agent_next_safe_action(self.payload),
-            "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
+            "broker": _modern_broker_next_safe_action(self.payload),
             "ops": _ops_next_safe_action(self.payload),
             "telemetry": _telemetry_next_safe_action(self.payload),
             "features": _footer_next_action(self.payload, "features"),
@@ -3412,6 +3412,27 @@ def _candidates_next_safe_action(payload: Mapping[str, object]) -> str:
     if readiness.get("safe_to_make_investment_decision") is True:
         return "Open a candidate, then verify evidence before any manual decision."
     return "Research-only: press 2 Evidence Gaps first."
+
+
+def _modern_broker_next_safe_action(payload: Mapping[str, object]) -> str:
+    if _real_results_empty(payload):
+        return "No real results yet. Set up data sources first."
+    broker = _mapping(payload.get("broker"))
+    snapshot = _mapping(broker.get("snapshot"))
+    exposure = _mapping(broker.get("exposure"))
+    connected = bool(exposure.get("broker_connected"))
+    connection_status = str(
+        snapshot.get("connection_status")
+        or exposure.get("connection_status")
+        or ("connected" if connected else "missing")
+    ).strip()
+    orders_enabled = bool(exposure.get("order_submission_enabled"))
+    if orders_enabled:
+        return "Orders enabled: verify broker policy first."
+    if not connected or connection_status.lower() not in {"connected", "ready"}:
+        connection_label = _human_status_label(connection_status or "missing")
+        return f"Broker {connection_label}. Browsing makes 0 Schwab calls."
+    return "Broker read-only. Use local tickets/watch; orders disabled."
 
 
 def _minimum_product_stop_line_summary(payload: Mapping[str, object]) -> str:
