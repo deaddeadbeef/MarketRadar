@@ -6,6 +6,7 @@ from catalyst_radar.api.routes.agents import router as agents_router
 from catalyst_radar.api.routes.alerts import router as alerts_router
 from catalyst_radar.api.routes.brokers import router as brokers_router
 from catalyst_radar.api.routes.costs import router as costs_router
+from catalyst_radar.api.routes.dashboard import router as dashboard_router
 from catalyst_radar.api.routes.feedback import router as feedback_router
 from catalyst_radar.api.routes.ops import router as ops_router
 from catalyst_radar.api.routes.radar import router as radar_router
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(radar_router)
     app.include_router(ops_router)
     app.include_router(costs_router)
+    app.include_router(dashboard_router)
     app.include_router(feedback_router)
     app.include_router(value_ledger_router)
     app.include_router(value_outcomes_router)

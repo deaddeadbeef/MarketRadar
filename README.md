@@ -560,6 +560,20 @@ catalyst-radar dashboard-tui --once --page features
 catalyst-radar dashboard-tui --page overview --screenshot-out .state\dashboard-overview-latest.svg
 ```
 
+The Rust terminal dashboard is the smooth-rendering migration path. It keeps
+MarketRadar's Python API and database helpers as the source of truth, then
+renders the read-only dashboard snapshot with `ratatui`:
+
+```powershell
+cargo run -p radar-tui -- --api-base-url http://127.0.0.1:8000
+cargo run -p radar-tui -- --snapshot-command "catalyst-radar dashboard-snapshot --json --fast"
+cargo run -p radar-tui -- --snapshot-command "catalyst-radar dashboard-snapshot --json --fast" --once
+```
+
+The API source reads `GET /api/dashboard/snapshot?fast=true&page=overview` by
+default. Use `--api-role viewer` when API auth is header-based, and
+`--allow-invalid-certs` only for local HTTPS development certificates.
+
 For a one-command PowerShell launcher, install the profile alias:
 
 ```powershell
@@ -715,6 +729,7 @@ renders:
 
 ```powershell
 catalyst-radar dashboard-snapshot --json
+catalyst-radar dashboard-snapshot --json --fast
 catalyst-radar dashboard-snapshot --ticker ACME --available-at 2026-05-10T21:06:00Z
 catalyst-radar priced-in-preflight --json
 catalyst-radar priced-in-preflight --stocks-only --json
@@ -733,6 +748,9 @@ without parsing nested dashboard sections. If the underlying shadow or trial
 readiness gate has an approval-only local unblock packet, such as guarded
 market-bar residual repair, `dashboard-snapshot --json` also exposes it as
 top-level `approval_required_unblock` without executing it.
+API clients use the same contract through
+`GET /api/dashboard/snapshot?fast=true&page=overview`; set `fast=false` only for
+diagnostic export paths that need the heavier full snapshot.
 
 `priced-in-queue` is the scriptable replacement for the TUI insight table. It
 returns the same full-scan boundary and ranked emotion-vs-reaction rows used by
