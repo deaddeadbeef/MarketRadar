@@ -13180,10 +13180,7 @@ def _telemetry_next_safe_action(payload: Mapping[str, object]) -> str:
             "coverage rows before trusting run diagnosis."
         )
     if attention:
-        return (
-            f"Telemetry core ready; inspect {attention} attention item(s), then "
-            "use the audit tape after runs."
-        )
+        return f"Telemetry: inspect {attention} attention item(s)."
     if waiting_domains:
         return (
             "Telemetry core ready; optional waiting domains fill after universe "
