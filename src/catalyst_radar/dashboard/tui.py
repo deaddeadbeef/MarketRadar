@@ -9850,6 +9850,13 @@ def _market_inbox_caption(payload: Mapping[str, object]) -> str:
         if _is_decision_ready_filter(queue)
         else ""
     )
+    if source_hint.startswith("Current scan coverage:"):
+        compact_hint = source_hint.removeprefix("Current scan coverage:").strip()
+        return (
+            f"Next data step: {compact_hint} "
+            "Inbox triage: open the top row; Waiting Evidence means data repair."
+            f"{answer_text}{source_gap_text} Browsing makes 0 provider calls."
+        )
     return (
         "Inbox triage: open the top row; this is one review page, not the full "
         "scan universe. Waiting Evidence means data repair. "

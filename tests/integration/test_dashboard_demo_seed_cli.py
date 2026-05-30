@@ -42,6 +42,7 @@ from catalyst_radar.dashboard.tui import (
     _market_bar_operator_step_summary,
     _market_bar_provider_fill_summary,
     _market_bar_saved_capture_summary,
+    _market_inbox_caption,
     _market_inbox_count_summary,
     _market_inbox_rows,
     _overview_source_workflow_hint,
@@ -1955,9 +1956,9 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Mailbox" in output.out
     assert "Missing" in output.out
     assert "Next data step:" in output.out
-    assert "Current scan coverage:" in output.out
+    assert "Next data step: market bars" in output.out
     assert "Shortlist context:" in output.out
-    assert "page, not the full scan universe" in output.out
+    assert "Inbox triage: open the top row" in output.out
 
     assert (
         main(
@@ -2057,6 +2058,44 @@ def test_market_inbox_caption_humanizes_source_names() -> None:
     assert "market_bars" not in caption
     assert "local_text" not in caption
     assert "catalyst_events" not in caption
+
+
+def test_market_inbox_caption_leads_with_partial_scan_warning() -> None:
+    payload = {
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {"status": "research_only"},
+        "priced_in_answer": {
+            "status": "blocked",
+            "decision_ready": False,
+            "full_scan": {
+                "instrument_filter": "all",
+                "active_securities": 12669,
+                "scanned_rows": 2429,
+                "unscanned_rows": 10240,
+            },
+        },
+        "priced_in_audit": {
+            "market_bars": {
+                "missing_as_of_bar": 579,
+                "repair": {"diagnostic": {"missing_count": 579}},
+            }
+        },
+        "priced_in_queue": {
+            "filters": {"status": "all"},
+            "count": 50,
+            "rows": [],
+            "total_count": 2429,
+        },
+    }
+
+    caption = _market_inbox_caption(payload)
+
+    assert caption.startswith("Next data step: not full-market yet;")
+    assert "2,429/12,669 active scanned" in caption
+    assert "10,240 unscanned" in caption
+    assert "579 missing bars" in caption
+    assert caption.index("not full-market yet") < caption.index("Inbox triage")
 
 
 def test_dashboard_tui_once_defaults_to_latest_scan_results(
