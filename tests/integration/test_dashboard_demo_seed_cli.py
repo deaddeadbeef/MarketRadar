@@ -9156,6 +9156,12 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Tutorial - your first 90 seconds" in frame
             assert "Press 1 or click Inbox" in frame
             assert "0  Start" in frame
+            assert "Refresh" in frame
+            assert "^N/^P" in frame
+            assert " Log  " in frame
+            assert "Prev page" not in frame
+            assert "Tutorial: press 1 for Inbox." in frame
+            assert "Follow the numbered rows" not in frame
             assert "LEARN" in frame
             assert app.page == "tutorial"
 
