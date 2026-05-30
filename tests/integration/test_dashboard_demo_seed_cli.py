@@ -6173,7 +6173,7 @@ def test_telemetry_footer_uses_audit_status() -> None:
     assert "Needs attention" in telemetry
     assert "blocked input" in telemetry
     assert "Inspect the latest failed" in telemetry
-    assert "NEXT SAFE ACTION: Telemetry core ready; inspect 2 attention item(s)" in telemetry
+    assert "NEXT SAFE ACTION: Telemetry: inspect 2 attention item(s)." in telemetry
     assert "Use the workflow navigation or open the highlighted row" not in telemetry
 
 
