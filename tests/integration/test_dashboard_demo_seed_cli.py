@@ -1845,6 +1845,7 @@ def test_modern_dashboard_command_placeholder_matches_page_context(
     )
 
     expected = {
+        "tutorial": ("Tutorial.", "Press 1 for Inbox"),
         "overview": ("Inbox.", "open 1"),
         "run": ("Safe Run.", "Do not paste PowerShell", "run execute waits"),
         "candidates": ("Candidate Review.", "Evidence first", "2 Evidence Gaps"),
@@ -9223,7 +9224,11 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "^A Agent Coach" in frame
             assert "10 Agent Coach" not in frame
             assert "11 Decision Review" not in frame
-            assert "Up/Down on sidebar" in frame
+            assert "D decision-ready" in frame
+            assert "M mismatches/all" in frame
+            assert "D urgent" not in frame
+            assert "all/worth-reading" not in frame
+            assert "Up/Down sidebar" in frame
 
             await pilot.press("ctrl+a")
             await pilot.pause()

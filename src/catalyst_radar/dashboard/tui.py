@@ -1810,6 +1810,8 @@ class MarketRadarDashboardApp(App[int]):
         page = page_parts[0]
         page_ref = page_parts[1] if len(page_parts) > 1 else ""
         ticker = page_ref.upper() if page_ref else "<ticker>"
+        if page == "tutorial":
+            return "Tutorial. Press 1 for Inbox, 2 for Gaps, 3 for Run, or q to quit."
         if page == "overview":
             return "Inbox. Try: open 1, ready, full, mismatches, next, prev, 2, 3, help, q"
         if page == "readiness":
@@ -1957,10 +1959,10 @@ class MarketRadarDashboardApp(App[int]):
 
     def _navigation_text(self) -> str:
         return (
-            "[bold #58a6ff]KEYS[/] 0 tutorial | 1 inbox | 2 evidence gaps | "
-            "3 safe run | 4 candidates | D urgent | M all/worth-reading\n"
+            "[bold #58a6ff]KEYS[/] 0 start | 1 inbox | 2 gaps | "
+            "3 run plan | 4 review | D decision-ready | M mismatches/all\n"
             "[bold #58a6ff]MOUSE[/] click sidebar/table | Tab focus | "
-            "Up/Down on sidebar | Enter open | Esc command | q quit\n"
+            "Up/Down sidebar | Enter open | Esc command | q quit\n"
         )
 
     def _response_text(self) -> str:
