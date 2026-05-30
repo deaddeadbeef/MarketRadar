@@ -3419,9 +3419,9 @@ def _run_page_next_safe_action(payload: Mapping[str, object]) -> str:
     if command:
         return "\n".join(
             [
-                "Review command above; run in PowerShell only.",
-                f"Budget: {calls} provider call(s), {writes} DB write(s); {approval}.",
-                action,
+                "Run the PowerShell command shown above.",
+                f"Budget: {_count_text(calls, 'provider call')}, "
+                f"{_count_text(writes, 'DB write')}; {approval}.",
             ]
         )
     return " ".join(
