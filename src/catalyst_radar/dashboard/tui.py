@@ -2766,11 +2766,11 @@ class MarketRadarDashboardApp(App[int]):
             return (
                 "Run call plan",
                 [
-                    ("layer", "Layer", 18),
-                    ("provider", "Provider", 14),
-                    ("status", "Status", 16),
-                    ("external_call_count_max", "Calls", 8),
-                    ("next_action", "Next action", 66),
+                    ("layer", "Layer", 16),
+                    ("provider", "Provider", 12),
+                    ("status", "Status", 14),
+                    ("external_call_count_max", "Calls", 5),
+                    ("next_action", "Next action", 50),
                 ],
                 _run_modern_table_rows(self.payload),
                 f"{call_plan.get('headline') or ''} {call_plan.get('next_action') or ''}",
@@ -10184,26 +10184,49 @@ def _run_modern_table_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
                     "provider": "local",
                     "status": "manual",
                     "external_call_count_max": 0,
-                    "next_action": command,
+                    "next_action": "Use command above; run outside dashboard.",
                 },
                 {
                     "layer": "Run location",
                     "provider": "PowerShell",
                     "status": "local",
                     "external_call_count_max": 0,
-                    "next_action": "Copy into PowerShell; do not enter below.",
+                    "next_action": "Copy to PowerShell; do not enter below.",
                 },
                 {
                     "layer": "Safety boundary",
                     "provider": "local",
                     "status": "zero call",
                     "external_call_count_max": 0,
-                    "next_action": _powershell_command_boundary(command),
+                    "next_action": "Read-only review; no provider/broker/DB calls.",
                 },
             ]
         )
-    rows.extend(_rows(_mapping(payload.get("call_plan")).get("rows")))
+    for row in _rows(_mapping(payload.get("call_plan")).get("rows")):
+        rows.append(
+            {
+                **dict(row),
+                "next_action": _run_plan_next_action_label(row),
+            }
+        )
     return rows
+
+
+def _run_plan_next_action_label(row: Mapping[str, object]) -> str:
+    layer = str(row.get("layer") or "").strip().lower()
+    if layer == "scan provider":
+        return "No action unless changing scan scope."
+    if layer == "market data":
+        return "Keep cooldown; inspect rejected count."
+    if layer in {"news/events", "news events"}:
+        return "Run only if target count matches budget."
+    if layer == "llm review":
+        return "Use after live data quality is acceptable."
+    if layer == "alert delivery":
+        return "Use alert workflows after review."
+    if layer == "schwab":
+        return "Use broker sync controls separately."
+    return _humanize_dashboard_text(row.get("next_action"))
 
 
 def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
@@ -10825,7 +10848,7 @@ def _call_plan_table_rows(call_plan: Mapping[str, object]) -> list[Mapping[str, 
             {
                 **dict(row),
                 "status": _human_status_label(row.get("status") or "unknown"),
-                "next_action": _humanize_dashboard_text(row.get("next_action")),
+                "next_action": _run_plan_next_action_label(row),
             }
         )
     return rows
