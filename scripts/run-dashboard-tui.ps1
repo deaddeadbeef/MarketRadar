@@ -3,6 +3,7 @@ param()
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
+$venvDir = Join-Path $repoRoot ".venv"
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $dashboardExe = Join-Path $repoRoot ".venv\Scripts\catalyst-radar.exe"
 $stateDir = Join-Path $repoRoot ".state"
@@ -10,6 +11,7 @@ $stampPath = Join-Path $stateDir "dashboard-bootstrap.json"
 
 $noUpdate = $false
 $forceInstall = $false
+$repairVenv = $false
 $dashboardArgs = New-Object System.Collections.Generic.List[string]
 
 foreach ($arg in $args) {
@@ -19,6 +21,11 @@ foreach ($arg in $args) {
             continue
         }
         "--force-install" {
+            $forceInstall = $true
+            continue
+        }
+        "--repair-venv" {
+            $repairVenv = $true
             $forceInstall = $true
             continue
         }
@@ -38,6 +45,108 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) {
         throw "Command failed: $FilePath $($Arguments -join ' ')"
     }
+}
+
+function Get-PythonInstallHint {
+    return @(
+        "Install a stable Python 3.11+ first, then run radar again.",
+        "Recommended Windows install:",
+        "  winget install Python.Python.3.11",
+        "After install, open a new PowerShell session and run:",
+        "  radar --repair-venv",
+        "This only repairs MarketRadar's repo-local .venv."
+    ) -join [Environment]::NewLine
+}
+
+function Test-PythonLauncherHealthy {
+    if ($null -eq (Get-Command py -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+    try {
+        $null = & py @(
+            "-3.11",
+            "-c",
+            "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 2)"
+        ) 2>&1
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-VenvPythonHealthy {
+    if (-not (Test-Path -LiteralPath $venvPython)) {
+        return $false
+    }
+    try {
+        $null = & $venvPython @(
+            "-c",
+            "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 2)"
+        ) 2>&1
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-VenvPythonHome {
+    $cfg = Join-Path $venvDir "pyvenv.cfg"
+    if (-not (Test-Path -LiteralPath $cfg)) {
+        return ""
+    }
+    $homeLine = Get-Content -LiteralPath $cfg -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match "^home\s*=" } |
+        Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($homeLine)) {
+        return ""
+    }
+    return ($homeLine -replace "^home\s*=\s*", "").Trim()
+}
+
+function Get-BrokenVenvMessage {
+    $home = Get-VenvPythonHome
+    $homeDetail = if ([string]::IsNullOrWhiteSpace($home)) {
+        "Recorded Python home: not found in .venv\pyvenv.cfg"
+    }
+    else {
+        "Recorded Python home: $home"
+    }
+    return @(
+        "MarketRadar local Python environment is broken.",
+        "Venv python: $venvPython",
+        $homeDetail,
+        "This often happens when .venv was created from the Windows Store Python alias and that install moved or expired.",
+        "",
+        "Clean fix:",
+        "  1. Install a stable Python 3.11+ if needed: winget install Python.Python.3.11",
+        "  2. Open a new PowerShell session.",
+        "  3. Run: radar --repair-venv",
+        "",
+        "The repair flag only moves and recreates this repo's local .venv."
+    ) -join [Environment]::NewLine
+}
+
+function Move-BrokenVenvForRepair {
+    if (-not (Test-Path -LiteralPath $venvDir)) {
+        return
+    }
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $target = Join-Path $repoRoot ".venv.broken-$stamp"
+    Move-Item -LiteralPath $venvDir -Destination $target
+    Write-Warning "Moved broken .venv to $target"
+}
+
+function Get-EditableInstallFailureMessage {
+    return @(
+        "MarketRadar dependency bootstrap failed.",
+        "The dashboard did not start because the repo-local .venv is not fully installed.",
+        "If you were offline or package download was blocked, reconnect and run:",
+        "  radar --force-install",
+        "If Python itself is broken, run:",
+        "  radar --repair-venv"
+    ) -join [Environment]::NewLine
 }
 
 function Update-CleanMain {
@@ -70,15 +179,28 @@ function Update-CleanMain {
 }
 
 function Ensure-Venv {
-    if (Test-Path -LiteralPath $venvPython) {
+    if (Test-VenvPythonHealthy) {
         return
     }
 
+    if (Test-Path -LiteralPath $venvDir) {
+        if (-not $repairVenv) {
+            throw (Get-BrokenVenvMessage)
+        }
+        if (-not (Test-PythonLauncherHealthy)) {
+            throw (Get-PythonInstallHint)
+        }
+        Move-BrokenVenvForRepair
+    }
+
     Write-Output "Creating local Python environment at .venv"
-    if ($null -eq (Get-Command py -ErrorAction SilentlyContinue)) {
-        throw "Python launcher 'py' was not found. Install Python 3.11+ first."
+    if (-not (Test-PythonLauncherHealthy)) {
+        throw (Get-PythonInstallHint)
     }
     Invoke-Checked py @("-3.11", "-m", "venv", ".venv")
+    if (-not (Test-VenvPythonHealthy)) {
+        throw (Get-BrokenVenvMessage)
+    }
 }
 
 function Get-InstallStamp {
@@ -107,8 +229,25 @@ function Ensure-EditableInstall {
         return
     }
 
-    Write-Output "Installing MarketRadar into .venv"
-    Invoke-Checked $venvPython @("-m", "pip", "install", "-e", ".")
+    Write-Output "Installing MarketRadar into .venv; first install can take a few minutes."
+    try {
+        Invoke-Checked $venvPython @(
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-input",
+            "--timeout",
+            "30",
+            "--retries",
+            "1",
+            "-e",
+            "."
+        )
+    }
+    catch {
+        throw (Get-EditableInstallFailureMessage)
+    }
     New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
     [ordered]@{
         pyproject_hash = $pyprojectHash
