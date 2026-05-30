@@ -2621,8 +2621,10 @@ class MarketRadarDashboardApp(App[int]):
                 [
                     "[bold #7ee787]USE THIS PAGE[/] Read the multi-agent operator brief.",
                     (
-                        f"[bold]Mode:[/] {brief.get('mode') or 'dry_run'}; "
-                        f"[bold]Status:[/] {brief.get('status') or 'unknown'}; "
+                        f"[bold]Mode:[/] "
+                        f"{_human_status_label(brief.get('mode') or 'dry_run')}; "
+                        "[bold]Status:[/] "
+                        f"{_human_status_label(brief.get('status') or 'unknown')}; "
                         f"[bold]Calls:[/] OpenAI {calls.get('openai', 0)}, "
                         f"market {calls.get('market_data', 0)}, broker {calls.get('broker', 0)}."
                     ),
@@ -2936,6 +2938,10 @@ class MarketRadarDashboardApp(App[int]):
                         "Evidence Gaps before using agent execute."
                     ),
                 )
+            boundary = (
+                _human_agent_text(brief.get("decision_boundary") or "")
+                or "Manual research boundary."
+            )
             return (
                 "Agent brief - preview by default, execute spends OpenAI budget",
                 [
@@ -2944,10 +2950,7 @@ class MarketRadarDashboardApp(App[int]):
                     ("detail", "Detail", 98),
                 ],
                 _agent_brief_rows(brief, self.payload),
-                (
-                    f"{brief.get('decision_boundary') or 'Manual research boundary.'} "
-                    f"{_agent_runtime_label(runtime)}."
-                ),
+                f"{boundary} {_agent_runtime_label(runtime)}.",
             )
         if page == "features":
             return (
@@ -11768,7 +11771,7 @@ def _agent_coach_summary_rows(
     ):
         if runtime.get(key) is False:
             blocked_tools.append(label)
-    blocked = ", ".join(blocked_tools) or "none"
+    blocked = _agent_tool_list_label(blocked_tools)
     setup_action = (
         _no_real_result_next_action(payload, real_results)
         if payload is not None and _real_results_empty(payload)
@@ -11853,6 +11856,17 @@ def _agent_runtime_name(value: object) -> str:
     return str(value or "unknown")
 
 
+def _agent_tool_list_label(values: Sequence[str]) -> str:
+    labels = [str(value).strip() for value in values if str(value).strip()]
+    if not labels:
+        return "none"
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+
+
 def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
     orchestrator = _agent_runtime_name(runtime.get("orchestrator") or "openai_agents_sdk")
     assistant_dependency = str(runtime.get("co" + "pilot_dependency") or "absent").strip()
@@ -11877,11 +11891,16 @@ def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
         blocked_tools.append("shell")
     if runtime.get("web_tools") is False:
         blocked_tools.append("web")
-    blocked_summary = "/".join(blocked_tools) or "no"
+    blocked_summary = _agent_tool_list_label(blocked_tools)
+    blocked_text = (
+        f"{blocked_summary} tools disabled"
+        if blocked_tools
+        else "no tools disabled"
+    )
     return (
         f"{orchestrator}; {assistant_text}; tools use {tools}; "
         f"real-agent gate {gate}; scan evidence {real_results_gate}; "
-        f"OpenAI spend {credit_gate}; {blocked_summary} disabled"
+        f"OpenAI spend {credit_gate}; {blocked_text}"
     )
 
 
