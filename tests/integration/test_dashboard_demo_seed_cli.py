@@ -9450,6 +9450,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "0 Schwab calls" in frame
             assert "Schwab connection" in frame
             assert "Order safety" in frame
+            assert "Broker " in frame
+            assert "Browsing makes 0 Schwab calls." in frame
+            assert "Use action, trigger, eval-triggers" not in frame
             assert "No Schwab call made" not in frame
 
             app.query_one("#data-table").focus()
