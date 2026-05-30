@@ -7718,6 +7718,13 @@ def _readiness_next_safe_action(
         lines = []
         if command and command_first:
             lines.append(f"Use `{command}`.")
+        if command and not command_first:
+            return "\n".join(
+                [
+                    "Run the PowerShell command shown above; then refresh.",
+                    f"First {priority}: {area}.",
+                ]
+            )
         suffix = f" {action_text}" if action_text else ""
         lines.append(
             f"Research-only. First {priority}: "
