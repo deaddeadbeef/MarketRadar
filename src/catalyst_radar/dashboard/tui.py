@@ -11762,15 +11762,7 @@ def _agent_coach_summary_rows(
     real_results = _mapping(brief.get("real_results"))
     credit_gate = _mapping(brief.get("credit_gate"))
     next_actions = _texts(brief.get("next_actions"))
-    blocked_tools = []
-    for key, label in (
-        ("external_market_tools", "market"),
-        ("broker_tools", "broker"),
-        ("shell_tools", "shell"),
-        ("web_tools", "web"),
-    ):
-        if runtime.get(key) is False:
-            blocked_tools.append(label)
+    blocked_tools = _agent_blocked_tool_labels(runtime)
     blocked = _agent_tool_list_label(blocked_tools)
     setup_action = (
         _no_real_result_next_action(payload, real_results)
@@ -11867,14 +11859,54 @@ def _agent_tool_list_label(values: Sequence[str]) -> str:
     return f"{', '.join(labels[:-1])}, and {labels[-1]}"
 
 
-def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
-    orchestrator = _agent_runtime_name(runtime.get("orchestrator") or "openai_agents_sdk")
+def _agent_assistant_dependency_label(runtime: Mapping[str, object]) -> str:
     assistant_dependency = str(runtime.get("co" + "pilot_dependency") or "absent").strip()
-    assistant_text = (
+    return (
         "GitHub Copilot not used"
         if assistant_dependency in {"", "absent", "none", "false"}
         else f"assistant dependency {_human_status_label(assistant_dependency)}"
     )
+
+
+def _agent_blocked_tool_labels(runtime: Mapping[str, object]) -> list[str]:
+    blocked_tools: list[str] = []
+    for key, label in (
+        ("external_market_tools", "market"),
+        ("broker_tools", "broker"),
+        ("shell_tools", "shell"),
+        ("web_tools", "web"),
+    ):
+        if runtime.get(key) is False:
+            blocked_tools.append(label)
+    return blocked_tools
+
+
+def _agent_disabled_tools_text(blocked_tools: Sequence[str]) -> str:
+    if not blocked_tools:
+        return "no tools disabled"
+    return f"{_agent_tool_list_label(blocked_tools)} tools disabled"
+
+
+def _agent_runtime_setup_items(runtime: Mapping[str, object]) -> list[tuple[str, str]]:
+    gate = _human_status_label(runtime.get("real_mode_gate_status") or "unknown")
+    evidence = _human_status_label(runtime.get("real_results_gate_status") or "unknown")
+    credit = _human_status_label(runtime.get("credit_gate_status") or "unknown")
+    blocked_tools = _agent_blocked_tool_labels(runtime)
+    return [
+        (
+            "Runtime",
+            _agent_runtime_name(runtime.get("orchestrator") or "openai_agents_sdk"),
+        ),
+        ("Assistant", _agent_assistant_dependency_label(runtime)),
+        ("Agent gates", f"real-agent gate {gate}; scan evidence {evidence}"),
+        ("OpenAI spend", f"OpenAI spend {credit}"),
+        ("Disabled tools", _agent_disabled_tools_text(blocked_tools)),
+    ]
+
+
+def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
+    orchestrator = _agent_runtime_name(runtime.get("orchestrator") or "openai_agents_sdk")
+    assistant_text = _agent_assistant_dependency_label(runtime)
     tools = str(runtime.get("tool_surface") or "read_only_snapshot_tools").replace("_", "-")
     tools = tools.replace("read-only-snapshot-tools", "read-only snapshot tools")
     gate = _human_status_label(runtime.get("real_mode_gate_status") or "unknown")
@@ -11882,21 +11914,8 @@ def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
         runtime.get("real_results_gate_status") or "unknown"
     )
     credit_gate = _human_status_label(runtime.get("credit_gate_status") or "unknown")
-    blocked_tools: list[str] = []
-    if runtime.get("external_market_tools") is False:
-        blocked_tools.append("market")
-    if runtime.get("broker_tools") is False:
-        blocked_tools.append("broker")
-    if runtime.get("shell_tools") is False:
-        blocked_tools.append("shell")
-    if runtime.get("web_tools") is False:
-        blocked_tools.append("web")
-    blocked_summary = _agent_tool_list_label(blocked_tools)
-    blocked_text = (
-        f"{blocked_summary} tools disabled"
-        if blocked_tools
-        else "no tools disabled"
-    )
+    blocked_tools = _agent_blocked_tool_labels(runtime)
+    blocked_text = _agent_disabled_tools_text(blocked_tools)
     return (
         f"{orchestrator}; {assistant_text}; tools use {tools}; "
         f"real-agent gate {gate}; scan evidence {real_results_gate}; "
@@ -14827,7 +14846,7 @@ def _agent_setup_locked_lines(
         if row.get("kind") != "Runtime"
     ]
     if runtime:
-        items.append(("Runtime", _agent_runtime_label(runtime)))
+        items.extend(_agent_runtime_setup_items(runtime))
     lines.extend(_kv_lines(items, width=width))
     lines.append("")
     lines.extend(
