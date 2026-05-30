@@ -579,6 +579,11 @@ to this repo: it creates `.venv` if needed, installs the editable
 `main` to `origin/main`, and then starts the TUI. It does not set `PYTHONPATH`
 or mutate the caller's shell environment. Use `radar --no-update` to skip the
 Git update step and `radar --force-install` to refresh the editable install.
+If the repo-local Python environment was created from a Windows Store Python
+alias that no longer starts, the launcher fails fast with the recorded Python
+home and the clean repair command: `radar --repair-venv`. That repair command
+only moves and recreates this repo's `.venv`; it does not change your global
+Python setup.
 Runtime SQLite files such as `data/schwab-live.db` are ignored so local market
 data does not block the update check; tracked source edits still make the
 launcher skip auto-update.

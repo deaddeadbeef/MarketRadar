@@ -36,6 +36,9 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/run-worker-once.ps1" in readme
     assert "scripts/market-radar-status.ps1" in readme
     assert "scripts/market-radar-status.ps1 -Quick" in readme
+    assert "radar --repair-venv" in readme
+    assert "Windows Store Python" in readme
+    assert "does not change your global" in readme
     assert "catalyst-radar dashboard-tui" in readme
     assert "catalyst-radar dashboard-snapshot --json" in readme
     assert "docs/dashboard-feature-inventory.md" in readme
@@ -71,6 +74,23 @@ def test_dashboard_launcher_manages_child_process_tree() -> None:
     text = script.read_text(encoding="utf-8")
 
     assert script.is_file()
+    assert "--repair-venv" in text
+    assert "Test-VenvPythonHealthy" in text
+    assert "Test-PythonLauncherHealthy" in text
+    assert "MarketRadar local Python environment is broken." in text
+    assert "Windows Store Python alias" in text
+    assert "radar --repair-venv" in text
+    assert "Move-Item -LiteralPath $venvDir" in text
+    assert "Moved broken .venv" in text
+    assert "MarketRadar dependency bootstrap failed." in text
+    assert "radar --force-install" in text
+    assert "first install can take a few minutes" in text
+    assert "--disable-pip-version-check" in text
+    assert "--no-input" in text
+    assert '"--timeout",' in text
+    assert '"30",' in text
+    assert '"--retries",' in text
+    assert '"1",' in text
     assert "Get-ChildProcessIds" in text
     assert "Get-CimInstance Win32_Process" in text
     assert "Stop-ProcessTree" in text
