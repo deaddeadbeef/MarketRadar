@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::client::{SnapshotSource, fetch_snapshot};
+use crate::client::{SnapshotFilters, SnapshotRequest, SnapshotSource, fetch_snapshot};
 use crate::model::{Page, SnapshotView};
 
 #[derive(Debug)]
@@ -22,13 +22,19 @@ pub struct DashboardApp {
     pub should_quit: bool,
     pub last_refresh: Option<Instant>,
     pub refresh_every: Duration,
+    filters: SnapshotFilters,
     source: SnapshotSource,
     tx: Sender<RefreshMessage>,
     rx: Receiver<RefreshMessage>,
 }
 
 impl DashboardApp {
-    pub fn new(source: SnapshotSource, page: Page, refresh_every: Duration) -> Self {
+    pub fn new(
+        source: SnapshotSource,
+        page: Page,
+        filters: SnapshotFilters,
+        refresh_every: Duration,
+    ) -> Self {
         let source_label = source.label();
         let (tx, rx) = channel();
         Self {
@@ -41,6 +47,7 @@ impl DashboardApp {
             should_quit: false,
             last_refresh: None,
             refresh_every,
+            filters,
             source,
             tx,
             rx,
@@ -51,7 +58,12 @@ impl DashboardApp {
         let source = SnapshotSource::Command {
             command: "test".to_string(),
         };
-        let mut app = Self::new(source, page, Duration::from_secs(30));
+        let mut app = Self::new(
+            source,
+            page,
+            SnapshotFilters::default(),
+            Duration::from_secs(30),
+        );
         app.snapshot = Some(snapshot);
         app.last_refresh = Some(Instant::now());
         app
@@ -66,10 +78,13 @@ impl DashboardApp {
         self.pending_refresh = false;
         self.error = None;
         let source = self.source.clone();
-        let page = self.page;
+        let request = SnapshotRequest {
+            page: self.page,
+            filters: self.filters.clone(),
+        };
         let tx = self.tx.clone();
         thread::spawn(move || {
-            let result = fetch_snapshot(&source, page).map_err(|err| err.to_string());
+            let result = fetch_snapshot(&source, &request).map_err(|err| err.to_string());
             let _ = tx.send(RefreshMessage::Loaded(result));
         });
     }

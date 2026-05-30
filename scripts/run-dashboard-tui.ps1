@@ -6,12 +6,15 @@ $repoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
 $venvDir = Join-Path $repoRoot ".venv"
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $dashboardExe = Join-Path $repoRoot ".venv\Scripts\catalyst-radar.exe"
+$rustTuiExe = Join-Path $repoRoot "target\release\radar-tui.exe"
 $stateDir = Join-Path $repoRoot ".state"
 $stampPath = Join-Path $stateDir "dashboard-bootstrap.json"
 
 $noUpdate = $false
 $forceInstall = $false
 $repairVenv = $false
+$usePythonTui = $false
+$hasSnapshotCommand = $false
 $dashboardArgs = New-Object System.Collections.Generic.List[string]
 
 foreach ($arg in $args) {
@@ -27,6 +30,39 @@ foreach ($arg in $args) {
         "--repair-venv" {
             $repairVenv = $true
             $forceInstall = $true
+            continue
+        }
+        "--python-tui" {
+            $usePythonTui = $true
+            continue
+        }
+        "--legacy-python-tui" {
+            $usePythonTui = $true
+            continue
+        }
+        "--screenshot-out" {
+            $usePythonTui = $true
+            $dashboardArgs.Add($arg)
+            continue
+        }
+        "--screenshot-width" {
+            $usePythonTui = $true
+            $dashboardArgs.Add($arg)
+            continue
+        }
+        "--screenshot-height" {
+            $usePythonTui = $true
+            $dashboardArgs.Add($arg)
+            continue
+        }
+        "--no-clear" {
+            $usePythonTui = $true
+            $dashboardArgs.Add($arg)
+            continue
+        }
+        "--snapshot-command" {
+            $hasSnapshotCommand = $true
+            $dashboardArgs.Add($arg)
             continue
         }
         default {
@@ -149,6 +185,19 @@ function Get-EditableInstallFailureMessage {
     ) -join [Environment]::NewLine
 }
 
+function Get-RustInstallHint {
+    return @(
+        "MarketRadar's default terminal dashboard now uses the Rust TUI.",
+        "Install Rust/Cargo, then run radar again.",
+        "Recommended Windows install:",
+        "  winget install Rustlang.Rustup",
+        "After install, open a new PowerShell session.",
+        "",
+        "Temporary legacy fallback:",
+        "  radar --python-tui"
+    ) -join [Environment]::NewLine
+}
+
 function Update-CleanMain {
     if ($noUpdate) {
         return
@@ -253,6 +302,22 @@ function Ensure-EditableInstall {
         pyproject_hash = $pyprojectHash
         installed_at = (Get-Date).ToUniversalTime().ToString("o")
     } | ConvertTo-Json | Set-Content -LiteralPath $stampPath -Encoding utf8
+}
+
+function Ensure-RustTui {
+    if ($null -eq (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        throw (Get-RustInstallHint)
+    }
+    Invoke-Checked cargo @("build", "-p", "radar-tui", "--release", "--quiet")
+    if (-not (Test-Path -LiteralPath $rustTuiExe)) {
+        throw "Rust dashboard build finished but $rustTuiExe was not found."
+    }
+}
+
+function ConvertTo-PowerShellSingleQuotedLiteral {
+    param([string]$Value)
+
+    return "'" + ($Value -replace "'", "''") + "'"
 }
 
 function ConvertTo-ProcessArgument {
@@ -387,15 +452,41 @@ function Invoke-DashboardProcess {
 Push-Location $repoRoot
 try {
     Write-Host "Starting MarketRadar dashboard from $repoRoot"
-    Write-Host "The first screen should paint immediately; local data continues loading inside the TUI."
+    if ($usePythonTui) {
+        Write-Host "Using legacy Python/Textual dashboard."
+    }
+    else {
+        Write-Host "Using Rust terminal dashboard; local data refreshes through the read-only Python snapshot API."
+    }
 
     Update-CleanMain
     Ensure-Venv
     Ensure-EditableInstall
 
-    $exitCode = Invoke-DashboardProcess `
-        -FilePath $dashboardExe `
-        -Arguments (@("dashboard-tui") + $dashboardArgs.ToArray())
+    if ($usePythonTui) {
+        $exitCode = Invoke-DashboardProcess `
+            -FilePath $dashboardExe `
+            -Arguments (@("dashboard-tui") + $dashboardArgs.ToArray())
+    }
+    else {
+        Ensure-RustTui
+        $rustArgs = New-Object System.Collections.Generic.List[string]
+        if (-not $hasSnapshotCommand) {
+            $snapshotCommand = (
+                "& " +
+                (ConvertTo-PowerShellSingleQuotedLiteral -Value $venvPython) +
+                " -m catalyst_radar.cli dashboard-snapshot --json --fast"
+            )
+            $rustArgs.Add("--snapshot-command")
+            $rustArgs.Add($snapshotCommand)
+        }
+        foreach ($arg in $dashboardArgs.ToArray()) {
+            $rustArgs.Add($arg)
+        }
+        $exitCode = Invoke-DashboardProcess `
+            -FilePath $rustTuiExe `
+            -Arguments $rustArgs.ToArray()
+    }
     if ($exitCode -ne 0) {
         throw "MarketRadar dashboard exited with code $exitCode."
     }

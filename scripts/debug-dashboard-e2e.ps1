@@ -51,7 +51,10 @@ function Stop-ProcessTree {
 function Get-DashboardProcessSnapshot {
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object {
-            $_.CommandLine -like "*dashboard-tui*" -and
+            (
+                $_.CommandLine -like "*radar-tui*" -or
+                $_.CommandLine -like "*dashboard-tui*"
+            ) -and
             $_.CommandLine -like "*MarketRadar*" -and
             $_.CommandLine -notlike "*debug-dashboard-e2e.ps1*"
         } |
@@ -165,7 +168,7 @@ else {
 }
 
 $before = @(Get-DashboardProcessSnapshot)
-Write-Output "dashboard-tui processes before: $($before.Count)"
+Write-Output "dashboard processes before: $($before.Count)"
 
 $powerShellExe = Get-CurrentPowerShellPath
 $arguments = @(
@@ -238,6 +241,7 @@ if ($exitCode -ne 0) {
 }
 
 if (
+    $stdout -notmatch "MarketRadar" -and
     $stdout -notmatch "Market Radar Terminal Dashboard" -and
     $stdout -notmatch "Tutorial - your first 90 seconds" -and
     $stdout -notmatch "MARKET RADAR"
@@ -248,7 +252,10 @@ if (
     exit 3
 }
 
-if ($stdout -notmatch "External calls made:\s*0") {
+if (
+    $stdout -notmatch "provider_calls=0" -and
+    $stdout -notmatch "External calls made:\s*0"
+) {
     Write-Output "stdout:"
     Write-Output $stdout
     Write-Error "Dashboard debug smoke did not prove zero external calls."
@@ -257,7 +264,10 @@ if ($stdout -notmatch "External calls made:\s*0") {
 
 $expectedPageLabels = @(Get-DashboardExpectedPageLabels -Page $Page)
 $expectedPagePattern = ($expectedPageLabels | ForEach-Object { [regex]::Escape($_) }) -join "|"
-if ($stdout -notmatch ("Page:\s*({0})" -f $expectedPagePattern)) {
+if (
+    $stdout -notmatch ("page=({0})" -f $expectedPagePattern) -and
+    $stdout -notmatch ("Page:\s*({0})" -f $expectedPagePattern)
+) {
     Write-Output "stdout:"
     Write-Output $stdout
     Write-Error "Dashboard debug smoke did not open the expected page."
@@ -272,7 +282,7 @@ foreach ($row in $before) {
 $newLeftovers = @(
     $after | Where-Object { -not $beforeIds.ContainsKey([int]$_.ProcessId) }
 )
-Write-Output "dashboard-tui processes after: $($after.Count)"
+Write-Output "dashboard processes after: $($after.Count)"
 if ($newLeftovers.Count -gt 0) {
     Write-Output "leftover dashboard process(es):"
     $newLeftovers | Format-Table -AutoSize | Out-String | Write-Output

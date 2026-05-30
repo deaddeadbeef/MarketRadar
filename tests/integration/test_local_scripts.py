@@ -99,6 +99,12 @@ def test_dashboard_launcher_manages_child_process_tree() -> None:
     assert "[System.Console]::remove_CancelKeyPress" in text
     assert "[System.Diagnostics.Process]::Start" in text
     assert "WaitForExit(250)" in text
+    assert "--python-tui" in text
+    assert "Get-RustInstallHint" in text
+    assert '"radar-tui"' in text
+    assert '"--snapshot-command"' in text
+    assert "dashboard-snapshot --json --fast" in text
+    assert 'cargo @("build", "-p", "radar-tui", "--release", "--quiet")' in text
     assert "dashboard-tui" in text
 
 
@@ -110,8 +116,9 @@ def test_dashboard_e2e_debug_script_checks_render_and_orphans() -> None:
     assert "--no-update" in text
     assert "--once" in text
     assert "--page" in text
-    assert "dashboard-tui" in text
+    assert "radar-tui" in text
     assert "External calls made: 0" in text
+    assert "provider_calls=0" in text
     assert "External calls made:\\s*0" in text
     assert "Start-Process" in text
     assert "RedirectStandardOutput" in text
