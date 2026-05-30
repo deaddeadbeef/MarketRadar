@@ -1446,7 +1446,8 @@ def test_dashboard_empty_agent_gate_points_to_first_setup_blocker(
     assert "GitHub Copilot not used" in output.out
     assert "scan evidence blocked" in output.out
     assert "OpenAI spend blocked" in output.out
-    assert "market/broker/shell/web disabled" in normalized
+    assert "market, broker, shell, and web" in normalized
+    assert "tools disabled" in normalized
     assert "NEXT SAFE ACTION:" in output.out
     assert "Set up Active universe first" in output.out
     assert "PowerShell command" in output.out
@@ -1569,6 +1570,54 @@ def test_modern_agent_table_model_locks_before_setup() -> None:
     assert not any(row.get("kind") == "Insight" for row in rows)
     assert "clear Evidence Gaps" in status
     assert "agent execute is required to spend OpenAI budget" not in status
+
+
+def test_modern_agent_page_humanizes_runtime_boundary_labels() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    payload = _blocked_market_bar_payload_with_stale_real_results_action()
+    payload["agent_brief"] = {
+        **dict(payload["agent_brief"]),
+        "mode": "dry_run",
+        "status": "dry_run",
+        "decision_boundary": "setup_blocked; research/manual triage only",
+        "runtime": {
+            "orchestrator": "openai_agents_sdk",
+            "copilot_dependency": "absent",
+            "tool_surface": "read_only_snapshot_tools",
+            "real_mode_gate_status": "ready",
+            "real_results_gate_status": "blocked",
+            "credit_gate_status": "blocked",
+            "external_market_tools": False,
+            "broker_tools": False,
+            "shell_tools": False,
+            "web_tools": False,
+        },
+    }
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="agent",
+    )
+    app.payload = payload
+
+    _title, _columns, rows, caption = app._table_model()
+    guide = app._guide_text()
+
+    assert "[bold]Mode:[/] dry run" in guide
+    assert "[bold]Status:[/] dry run" in guide
+    assert "setup blocked; research/manual triage only" in caption
+    assert "market, broker, shell, and web tools disabled" in caption
+    assert any(
+        "blocked tools: market, broker, shell, and web" in row["detail"]
+        for row in rows
+    )
+    combined = f"{guide}\n{caption}\n{rows}"
+    assert "dry_run" not in combined
+    assert "setup_blocked" not in combined
+    assert "market/broker/shell/web" not in combined
 
 
 def test_dashboard_broker_setup_state_defers_auth_on_empty_database(
