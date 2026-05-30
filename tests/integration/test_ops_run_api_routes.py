@@ -68,6 +68,8 @@ def test_post_ops_run_creates_artifacts_and_downloads_them(
     assert payload["summary"]["external_calls_made"] == 0
     assert {artifact["name"] for artifact in payload["artifacts"]} >= {
         "result.json",
+        "report.json",
+        "report.html",
         "snapshot.json",
         "terminal.txt",
         "terminal.png",
@@ -84,6 +86,14 @@ def test_post_ops_run_creates_artifacts_and_downloads_them(
     png_artifact = client.get(f"/api/ops/runs/{payload['run_id']}/artifacts/terminal.png")
     assert png_artifact.status_code == 200
     assert png_artifact.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    report_json = client.get(f"/api/ops/runs/{payload['run_id']}/artifacts/report.json")
+    assert report_json.status_code == 200
+    assert report_json.json()["schema_version"] == "ops-run-report-v1"
+
+    report_html = client.get(f"/api/ops/runs/{payload['run_id']}/artifacts/report.html")
+    assert report_html.status_code == 200
+    assert "MarketRadar Ops Report" in report_html.text
 
 
 def test_post_ops_run_rejects_unapproved_action(tmp_path: Path, monkeypatch) -> None:

@@ -33,9 +33,10 @@ def ops_capability_catalog() -> dict[str, object]:
                 "Do not pass raw shell commands through the API."
             ),
             "evidence": (
-                "Prefer result.json for machine parsing, snapshot.json for dashboard "
-                "state, terminal.txt for transcript review, and terminal.png for a "
-                "shareable visual artifact."
+                "Prefer report.json for aggregation, result.json for run metadata, "
+                "snapshot.json for raw dashboard state, report.html for human review, "
+                "terminal.txt for transcript review, and terminal.png for a shareable "
+                "visual artifact."
             ),
             "roles": {
                 "viewer": "read-only status, telemetry, snapshots, and artifacts",
@@ -67,7 +68,7 @@ def _actions() -> list[dict[str, object]]:
             "external_calls_made": 0,
             "description": (
                 "Creates a headless dashboard run for an approved page and writes "
-                "JSON, terminal transcript, and PNG artifacts."
+                "aggregation JSON, report HTML, terminal transcript, and PNG artifacts."
             ),
             "input_schema": {
                 "type": "object",
@@ -91,7 +92,14 @@ def _actions() -> list[dict[str, object]]:
                     "copy_to_onedrive": {"type": "boolean", "default": False},
                 },
             },
-            "artifacts": ["result.json", "snapshot.json", "terminal.txt", "terminal.png"],
+            "artifacts": [
+                "result.json",
+                "report.json",
+                "report.html",
+                "snapshot.json",
+                "terminal.txt",
+                "terminal.png",
+            ],
             "next_step": "GET /api/ops/runs/{run_id} or download artifacts by name.",
         }
     ]

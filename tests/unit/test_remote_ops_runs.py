@@ -33,8 +33,23 @@ def test_run_allowlisted_dashboard_creates_artifacts(tmp_path: Path, monkeypatch
     assert result["page"] == "overview"
     assert result["summary"]["external_calls_made"] == 0
     artifact_names = {artifact["name"] for artifact in result["artifacts"]}
-    assert {"result.json", "snapshot.json", "terminal.txt", "terminal.png"} <= artifact_names
+    assert {
+        "result.json",
+        "report.json",
+        "report.html",
+        "snapshot.json",
+        "terminal.txt",
+        "terminal.png",
+    } <= artifact_names
     assert Path(result["run_dir"]).is_dir()
+    assert "MarketRadar Ops Report" in Path(result["run_dir"], "report.html").read_text(
+        encoding="utf-8"
+    )
+    report = json.loads(Path(result["run_dir"], "report.json").read_text(encoding="utf-8"))
+    assert report["schema_version"] == "ops-run-report-v1"
+    report_sizes = {artifact["name"]: artifact["size_bytes"] for artifact in report["artifacts"]}
+    assert report_sizes["report.html"] > 0
+    assert report_sizes["report.json"] > 0
     assert Path(result["run_dir"], "terminal.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
@@ -115,6 +130,7 @@ def test_copy_to_onedrive_records_destination(tmp_path: Path, monkeypatch) -> No
     onedrive_dir = Path(result["onedrive"]["path"])
     assert onedrive_dir.name == result["run_id"]
     assert (onedrive_dir / "terminal.png").exists()
+    assert (onedrive_dir / "report.html").exists()
 
 
 def test_rust_renderer_decodes_subprocess_output_as_utf8(tmp_path: Path, monkeypatch) -> None:
