@@ -219,6 +219,7 @@ def load_candidate_rows(
     artifact_available_at: datetime | None | object = _ARTIFACT_CUTOFF_UNSET,
     as_of_date: date | None = None,
     limit: int | None = 200,
+    tickers: Sequence[str] | None = None,
     include_artifacts: bool = True,
     include_briefs: bool = True,
 ) -> list[dict[str, object]]:
@@ -229,6 +230,15 @@ def load_candidate_rows(
         else _as_utc_datetime_or_none(artifact_available_at)
     )
     run_date = _parse_date(as_of_date)
+    ticker_filter = sorted(
+        {
+            str(ticker or "").strip().upper()
+            for ticker in (tickers or ())
+            if str(ticker or "").strip()
+        }
+    )
+    if tickers is not None and not ticker_filter:
+        return []
     ranked_state_stmt = select(
         candidate_states.c.id.label("candidate_state_id"),
         func.row_number()
@@ -254,6 +264,10 @@ def load_candidate_rows(
         )
     elif cutoff is not None:
         ranked_state_stmt = ranked_state_stmt.where(candidate_states.c.as_of <= cutoff)
+    if ticker_filter:
+        ranked_state_stmt = ranked_state_stmt.where(
+            candidate_states.c.ticker.in_(ticker_filter)
+        )
     ranked_states = ranked_state_stmt.subquery()
 
     stmt = (
@@ -380,6 +394,12 @@ def load_radar_run_candidate_rows(
         summary.get("decision_available_at")
     )
     run_has_universe = bool(str(summary.get("universe") or "").strip())
+    universe_tickers = (
+        _run_universe_ticker_set(engine, summary, cutoff=cutoff)
+        if run_has_universe
+        else None
+    )
+    query_limit = None if run_has_universe and universe_tickers is None else limit
     rows = load_candidate_rows(
         engine,
         available_at=cutoff,
@@ -387,10 +407,13 @@ def load_radar_run_candidate_rows(
         if include_post_run_artifacts
         else _ARTIFACT_CUTOFF_UNSET,
         as_of_date=_parse_date(summary.get("as_of")),
-        limit=None if run_has_universe else limit,
+        limit=query_limit,
+        tickers=sorted(universe_tickers) if universe_tickers is not None else None,
         include_artifacts=include_artifacts,
         include_briefs=include_briefs,
     )
+    if universe_tickers is not None:
+        return rows if limit is None else rows[: _positive_limit(limit)]
     filtered_rows = _filter_rows_to_run_universe(
         engine,
         rows,
@@ -488,21 +511,9 @@ def _filter_rows_to_run_universe(
     radar_run_summary: Mapping[str, object],
     cutoff: datetime | None,
 ) -> list[dict[str, object]]:
-    universe = str(radar_run_summary.get("universe") or "").strip()
-    run_date = _parse_date(radar_run_summary.get("as_of"))
-    if not universe or run_date is None or cutoff is None:
+    tickers = _run_universe_ticker_set(engine, radar_run_summary, cutoff=cutoff)
+    if tickers is None:
         return [_shallow_row_dict(row) for row in rows if isinstance(row, Mapping)]
-    snapshot = ProviderRepository(engine).latest_universe_snapshot(
-        name=universe,
-        as_of=datetime(run_date.year, run_date.month, run_date.day, 21, tzinfo=UTC),
-        available_at=cutoff,
-    )
-    if snapshot is None:
-        return [_shallow_row_dict(row) for row in rows if isinstance(row, Mapping)]
-    tickers = {
-        member.ticker.upper()
-        for member in ProviderRepository(engine).list_universe_member_rows(snapshot.id)
-    }
     if not tickers:
         return []
     return [
@@ -511,6 +522,31 @@ def _filter_rows_to_run_universe(
         if isinstance(row, Mapping)
         and str(row.get("ticker") or "").strip().upper() in tickers
     ]
+
+
+def _run_universe_ticker_set(
+    engine: Engine,
+    radar_run_summary: Mapping[str, object],
+    *,
+    cutoff: datetime | None,
+) -> set[str] | None:
+    universe = str(radar_run_summary.get("universe") or "").strip()
+    run_date = _parse_date(radar_run_summary.get("as_of"))
+    if not universe or run_date is None or cutoff is None:
+        return None
+    provider_repo = ProviderRepository(engine)
+    snapshot = provider_repo.latest_universe_snapshot(
+        name=universe,
+        as_of=datetime(run_date.year, run_date.month, run_date.day, 21, tzinfo=UTC),
+        available_at=cutoff,
+    )
+    if snapshot is None:
+        return None
+    return {
+        member.ticker.upper()
+        for member in provider_repo.list_universe_member_rows(snapshot.id)
+        if member.ticker
+    }
 
 
 def opportunity_focus_payload(
@@ -10310,6 +10346,7 @@ def shadow_readiness_payload(
     call_plan: Mapping[str, object] | None = None,
     ops_health: Mapping[str, object] | None = None,
     validation_summary: Mapping[str, object] | None = None,
+    include_approval_required_unblock: bool = True,
 ) -> dict[str, object]:
     """Return the local-only release gate for daily shadow-mode operation."""
     cutoff = _as_utc_datetime_or_none(available_at)
@@ -10416,11 +10453,15 @@ def shadow_readiness_payload(
         if isinstance(first_blocker.get("next_command"), str)
         else None
     ) or _shadow_readiness_command(canonical_next_action)
-    approval_required_unblock = _shadow_readiness_approval_required_unblock(
-        engine,
-        config,
-        priced_in_answer=answer,
-        first_blocker=first_blocker,
+    approval_required_unblock = (
+        _shadow_readiness_approval_required_unblock(
+            engine,
+            config,
+            priced_in_answer=answer,
+            first_blocker=first_blocker,
+        )
+        if include_approval_required_unblock
+        else None
     )
     return {
         "schema_version": "shadow-readiness-v1",
@@ -10482,6 +10523,7 @@ def trial_readiness_payload(
     priced_in_answer: Mapping[str, object] | None = None,
     shadow_readiness: Mapping[str, object] | None = None,
     value_report: Mapping[str, object] | None = None,
+    include_approval_required_unblock: bool = True,
 ) -> dict[str, object]:
     """Return the local-only gate for a read-only human trial."""
     cutoff = _as_utc_datetime_or_none(available_at) or datetime.now(UTC)
@@ -10549,6 +10591,7 @@ def trial_readiness_payload(
         priced_in_answer=answer,
         shadow_readiness=shadow,
         value_report=monthly_value,
+        include_approval_required_unblock=include_approval_required_unblock,
     )
     return {
         "schema_version": "trial-readiness-v1",
@@ -10677,6 +10720,7 @@ def _trial_minimum_useful_product_gate(
     priced_in_answer: Mapping[str, object],
     shadow_readiness: Mapping[str, object],
     value_report: Mapping[str, object],
+    include_approval_required_unblock: bool,
 ) -> dict[str, object]:
     trust_gate = _mapping_value(priced_in_answer, "full_market_trust_gate")
     full_scan = _mapping_value(priced_in_answer, "full_scan")
@@ -10766,12 +10810,16 @@ def _trial_minimum_useful_product_gate(
             or trust_gate.get("first_blocker")
             or approval_blocker
         )
-    approval_required_unblock = _trial_minimum_product_approval_required_unblock(
-        engine,
-        config,
-        shadow_readiness=shadow_readiness,
-        priced_in_answer=priced_in_answer,
-        first_blocker=approval_blocker,
+    approval_required_unblock = (
+        _trial_minimum_product_approval_required_unblock(
+            engine,
+            config,
+            shadow_readiness=shadow_readiness,
+            priced_in_answer=priced_in_answer,
+            first_blocker=approval_blocker,
+        )
+        if include_approval_required_unblock
+        else None
     )
     return {
         "schema_version": "trial-minimum-useful-product-v1",

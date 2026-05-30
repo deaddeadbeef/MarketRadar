@@ -544,6 +544,45 @@ def test_dashboard_snapshot_reuses_priced_in_queue_preflight(
     assert payload["priced_in_preflight"] == payload["priced_in_queue"]["preflight"]
 
 
+def test_dashboard_snapshot_fast_view_skips_deep_approval_preview(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    engine = create_engine(database_url, future=True)
+
+    def forbidden_approval_preview(*_args, **_kwargs) -> None:
+        raise AssertionError("fast dashboard browsing must not build approval previews")
+
+    monkeypatch.setattr(
+        dashboard_data_module,
+        "_shadow_readiness_approval_required_unblock",
+        forbidden_approval_preview,
+    )
+    monkeypatch.setattr(
+        dashboard_data_module,
+        "_trial_minimum_product_approval_required_unblock",
+        forbidden_approval_preview,
+    )
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=True,
+        filters=DashboardFilters(),
+        fast_view=True,
+    )
+
+    assert payload["snapshot_mode"] == "fast_view"
+    assert payload["external_calls_made"] == 0
+    assert payload["approval_required_unblock"] is None
+    assert payload["priced_in_queue"]["rows"]
+    assert len(payload["candidates"]["rows"]) <= 200
+
+
 def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
     tmp_path: Path,
     monkeypatch,

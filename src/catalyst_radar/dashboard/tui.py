@@ -101,6 +101,7 @@ from catalyst_radar.validation.value_outcomes import (
 )
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
+DASHBOARD_CANDIDATE_ROW_LIMIT = 200
 
 
 @dataclass(frozen=True)
@@ -467,6 +468,7 @@ def dashboard_snapshot_payload(
     config: AppConfig,
     dotenv_loaded: bool,
     filters: DashboardFilters,
+    fast_view: bool = False,
 ) -> dict[str, object]:
     filters = filters.normalized()
     latest_run = dashboard_data.load_radar_run_summary(engine)
@@ -474,15 +476,35 @@ def dashboard_snapshot_payload(
         latest_run.get("finished_at") or latest_run.get("decision_available_at")
     )
     data_available_at = filters.available_at or latest_run_cutoff
-    candidate_rows = (
-        dashboard_data.load_radar_run_candidate_rows(
-            engine,
-            latest_run,
-            include_post_run_artifacts=True,
+    priced_in_candidate_rows: list[dict[str, object]] | None = None
+    if fast_view:
+        priced_in_candidate_rows = (
+            dashboard_data.load_radar_run_candidate_rows(
+                engine,
+                latest_run,
+                limit=None,
+                include_post_run_artifacts=True,
+                include_briefs=False,
+            )
+            if filters.available_at is None and latest_run
+            else dashboard_data.load_candidate_rows(
+                engine,
+                available_at=data_available_at,
+                limit=None,
+                include_briefs=False,
+            )
         )
-        if filters.available_at is None and latest_run
-        else dashboard_data.load_candidate_rows(engine, available_at=data_available_at)
-    )
+        candidate_rows = priced_in_candidate_rows[:DASHBOARD_CANDIDATE_ROW_LIMIT]
+    else:
+        candidate_rows = (
+            dashboard_data.load_radar_run_candidate_rows(
+                engine,
+                latest_run,
+                include_post_run_artifacts=True,
+            )
+            if filters.available_at is None and latest_run
+            else dashboard_data.load_candidate_rows(engine, available_at=data_available_at)
+        )
     theme_rows = dashboard_data.load_theme_rows(engine, available_at=data_available_at)
     alert_rows = dashboard_data.load_alert_rows(
         engine,
@@ -517,6 +539,7 @@ def dashboard_snapshot_payload(
         config,
         radar_run_summary=latest_run,
         ops_health=ops_health,
+        candidate_rows=priced_in_candidate_rows if fast_view else None,
     )
     runtime_context = dashboard_data.runtime_context_payload(
         config,
@@ -551,6 +574,10 @@ def dashboard_snapshot_payload(
         latest_run_summary=latest_run,
         broker_summary=broker_summary,
         discovery_snapshot=discovery_snapshot,
+        candidate_rows=priced_in_candidate_rows if fast_view else None,
+        total_count=len(priced_in_candidate_rows)
+        if priced_in_candidate_rows is not None
+        else None,
     )
     priced_in_source_coverage = (
         priced_in_queue.get("source_coverage")
@@ -618,6 +645,7 @@ def dashboard_snapshot_payload(
         call_plan=call_plan,
         ops_health=ops_health,
         validation_summary=validation_summary,
+        include_approval_required_unblock=not fast_view,
     )
     shadow_status = shadow_mode_status_payload(
         engine,
@@ -632,6 +660,7 @@ def dashboard_snapshot_payload(
         priced_in_answer=priced_in_answer,
         shadow_readiness=shadow_readiness,
         value_report=value_report,
+        include_approval_required_unblock=not fast_view,
     )
     approval_required_unblock = _dashboard_approval_required_unblock(
         shadow_readiness=shadow_readiness,
@@ -652,6 +681,7 @@ def dashboard_snapshot_payload(
     )
     payload = {
         "schema_version": "dashboard-cli-snapshot-v1",
+        "snapshot_mode": "fast_view" if fast_view else "full",
         "status": top_level_blocker["status"],
         "first_blocker": top_level_blocker["first_blocker"],
         "first_gap_count": top_level_blocker["first_gap_count"],
@@ -1153,7 +1183,7 @@ class MarketRadarDashboardApp(App[int]):
     }
 
     #detail {
-        height: 3;
+        height: 4;
         border: round #26384d;
         background: #0b141d;
         padding: 0 1;
@@ -1329,6 +1359,7 @@ class MarketRadarDashboardApp(App[int]):
             config=self.config,
             dotenv_loaded=self.dotenv_loaded,
             filters=self.filters,
+            fast_view=True,
         )
 
     def _load_snapshot_payload(
@@ -1345,6 +1376,7 @@ class MarketRadarDashboardApp(App[int]):
                 config=self.config,
                 dotenv_loaded=self.dotenv_loaded,
                 filters=filters,
+                fast_view=True,
             ),
         )
 
@@ -9731,8 +9763,21 @@ def _latest_scan_results_title(payload: Mapping[str, object]) -> str:
 
 
 def _market_inbox_caption(payload: Mapping[str, object]) -> str:
+    queue = _mapping(payload.get("priced_in_queue"))
+    source_hint = _overview_source_workflow_hint(payload)
+    source_hint_text = f" Next data step: {source_hint}" if source_hint else ""
+    source_gap = _source_gap_filter_summary(queue)
+    source_gap_text = f" Active source gap filter: {source_gap}." if source_gap else ""
+    answer_text = (
+        " These are the actionable answers; type full to inspect the whole "
+        "ranked universe."
+        if _is_decision_ready_filter(queue)
+        else ""
+    )
     return (
-        "Inbox triage: open the top row; Waiting Evidence means data repair. "
+        "Inbox triage: open the top row; this is one review page, not the full "
+        "scan universe. Waiting Evidence means data repair. "
+        f"{answer_text}{source_gap_text}{source_hint_text} "
         "Browsing makes 0 provider calls."
     )
 

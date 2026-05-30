@@ -2230,6 +2230,7 @@ def main(argv: list[str] | None = None) -> int:
                 config=config,
                 dotenv_loaded=dotenv_loaded,
                 filters=filters,
+                fast_view=True,
             )
             print(render_dashboard_tui(payload, page=args.page))
             return 0
