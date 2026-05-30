@@ -1,5 +1,5 @@
 use std::io::{self, Stdout};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use clap::{ArgAction, Parser};
@@ -67,6 +67,28 @@ struct Args {
     refresh_seconds: u64,
     #[arg(long, help = "Fetch one snapshot, print a compact summary, and exit")]
     once: bool,
+    #[arg(
+        long,
+        help = "Fetch one snapshot, render a static terminal frame, and exit"
+    )]
+    render_frame: bool,
+    #[arg(
+        long,
+        default_value_t = 140,
+        help = "Static frame width for --render-frame"
+    )]
+    frame_width: u16,
+    #[arg(
+        long,
+        default_value_t = 42,
+        help = "Static frame height for --render-frame"
+    )]
+    frame_height: u16,
+    #[arg(
+        long,
+        help = "Render the initial loading dashboard instead of fetching data for --render-frame"
+    )]
+    loading_frame: bool,
 }
 
 fn main() -> Result<()> {
@@ -81,6 +103,21 @@ fn main() -> Result<()> {
             allow_invalid_certs: args.allow_invalid_certs,
         },
     };
+
+    if args.render_frame {
+        let app = static_frame_app(
+            &source,
+            page,
+            filters.clone(),
+            Duration::from_secs(args.refresh_seconds.max(1)),
+            args.loading_frame,
+        )?;
+        print!(
+            "{}",
+            radar_tui::ui::render_to_text(&app, args.frame_width, args.frame_height)?
+        );
+        return Ok(());
+    }
 
     if args.once {
         let request = SnapshotRequest { page, filters };
@@ -129,6 +166,26 @@ fn run_app(
         }
     }
     Ok(())
+}
+
+fn static_frame_app(
+    source: &SnapshotSource,
+    page: Page,
+    filters: SnapshotFilters,
+    refresh_every: Duration,
+    loading_frame: bool,
+) -> Result<DashboardApp> {
+    let mut app = DashboardApp::new(source.clone(), page, filters.clone(), refresh_every);
+    if loading_frame {
+        app.loading = true;
+        return Ok(app);
+    }
+
+    let request = SnapshotRequest { page, filters };
+    let value = fetch_snapshot(source, &request)?;
+    app.snapshot = Some(SnapshotView::from_value(value));
+    app.last_refresh = Some(Instant::now());
+    Ok(app)
 }
 
 fn handle_key(app: &mut DashboardApp, key: KeyEvent) {
