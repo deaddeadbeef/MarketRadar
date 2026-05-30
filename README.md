@@ -582,6 +582,44 @@ radar --python-tui --page overview --screenshot-out .state\dashboard-overview-la
 catalyst-radar dashboard-tui --once --page features
 ```
 
+### AI-first market radar operations API
+
+The API exposes a consolidated operations surface for agents and remote sessions.
+Start with the capability catalog, then run only allowlisted actions:
+
+```powershell
+catalyst-radar ops capabilities --json
+catalyst-radar ops run radar-dashboard --page overview --renderer auto --copy-to-onedrive --json
+catalyst-radar ops show <run-id> --json
+```
+
+The same contract is available through FastAPI:
+
+```powershell
+Invoke-RestMethod `
+  -Method Get `
+  -Uri http://127.0.0.1:8000/api/ops/capabilities
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8000/api/ops/runs `
+  -Headers @{"x-catalyst-role"="analyst"} `
+  -ContentType "application/json" `
+  -Body (@{
+    action = "radar-dashboard"
+    page = "overview"
+    renderer = "auto"
+    copy_to_onedrive = $true
+  } | ConvertTo-Json)
+```
+
+Ops runs write durable artifacts under `CATALYST_OPS_RUN_DIR` or
+`.state\ops-runs`: `result.json` for machine parsing, `snapshot.json` for the
+dashboard state, `terminal.txt` for transcript review, and `terminal.png` for a
+shareable visual. `terminal.png` is a headless render of the real dashboard
+frame, not a desktop screenshot, so remote sessions can return honest artifacts
+without automating a local terminal window.
+
 For a one-command PowerShell launcher, install the profile alias:
 
 ```powershell

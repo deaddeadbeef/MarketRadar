@@ -144,6 +144,8 @@ from catalyst_radar.market.status import (
     market_bars_residual_review_payload,
     market_bars_status_payload,
 )
+from catalyst_radar.ops.capabilities import ops_capability_catalog
+from catalyst_radar.ops.remote_runs import OpsRunError, create_ops_run, load_ops_run
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.security.audit import AuditLogRepository
@@ -888,6 +890,22 @@ def build_parser() -> argparse.ArgumentParser:
     shadow_list.add_argument("--limit", type=int, default=30)
     shadow_list.add_argument("--json", action="store_true")
 
+    ops = subparsers.add_parser("ops")
+    ops_sub = ops.add_subparsers(dest="ops_command", required=True)
+    ops_capabilities = ops_sub.add_parser("capabilities")
+    ops_capabilities.add_argument("--json", action="store_true")
+    ops_run = ops_sub.add_parser("run")
+    ops_run.add_argument("action", choices=["radar-dashboard"])
+    ops_run.add_argument("--page", default="overview")
+    ops_run.add_argument("--renderer", choices=["auto", "rust", "python"], default="auto")
+    ops_run.add_argument("--frame-width", type=int, default=140)
+    ops_run.add_argument("--frame-height", type=int, default=42)
+    ops_run.add_argument("--copy-to-onedrive", action="store_true")
+    ops_run.add_argument("--json", action="store_true")
+    ops_show = ops_sub.add_parser("show")
+    ops_show.add_argument("run_id")
+    ops_show.add_argument("--json", action="store_true")
+
     dashboard_snapshot = subparsers.add_parser("dashboard-snapshot")
     dashboard_snapshot.add_argument("--database-url")
     dashboard_snapshot.add_argument("--ticker")
@@ -1362,6 +1380,44 @@ def _write_dashboard_screenshot(
     return output_path
 
 
+def _print_ops_run_summary(payload: Mapping[str, object]) -> None:
+    summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
+    print(
+        "ops_run "
+        f"id={payload.get('run_id')} "
+        f"status={payload.get('status')} "
+        f"action={payload.get('action')} "
+        f"page={payload.get('page')} "
+        f"renderer={payload.get('renderer')} "
+        f"external_calls={summary.get('external_calls_made', 0)}"
+    )
+    print(f"run_dir={payload.get('run_dir')}")
+    for artifact in payload.get("artifacts") or []:
+        if isinstance(artifact, Mapping):
+            print(
+                "artifact "
+                f"name={artifact.get('name')} "
+                f"kind={artifact.get('kind')} "
+                f"path={artifact.get('path')}"
+            )
+    onedrive = payload.get("onedrive")
+    if isinstance(onedrive, Mapping) and onedrive.get("status") == "copied":
+        print(f"onedrive_dir={onedrive.get('path')}")
+
+
+def _print_ops_capabilities(payload: Mapping[str, object]) -> None:
+    print(f"ops_capabilities schema={payload.get('schema_version')} external_calls=0")
+    for action in payload.get("actions") or []:
+        if isinstance(action, Mapping):
+            print(
+                "action "
+                f"id={action.get('id')} "
+                f"endpoint={action.get('endpoint')} "
+                f"role={action.get('role')} "
+                f"safety={action.get('safety')}"
+            )
+
+
 def main(argv: list[str] | None = None) -> int:
     dotenv_loaded = load_app_dotenv()
     args = build_parser().parse_args(argv)
@@ -1369,6 +1425,41 @@ def main(argv: list[str] | None = None) -> int:
     database_url = getattr(args, "database_url", None) or config.database_url
     config = replace(config, database_url=database_url)
     engine = engine_from_url(database_url)
+
+    if args.command == "ops":
+        try:
+            if args.ops_command == "capabilities":
+                payload = ops_capability_catalog()
+                if args.json:
+                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+                else:
+                    _print_ops_capabilities(payload)
+                return 0
+            if args.ops_command == "run":
+                payload = create_ops_run(
+                    action=args.action,
+                    page=args.page,
+                    renderer=args.renderer,
+                    frame_width=args.frame_width,
+                    frame_height=args.frame_height,
+                    copy_to_onedrive=args.copy_to_onedrive,
+                    database_url=database_url,
+                )
+                if args.json:
+                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+                else:
+                    _print_ops_run_summary(payload)
+                return 0 if payload.get("status") == "completed" else 1
+            if args.ops_command == "show":
+                payload = load_ops_run(args.run_id)
+                if args.json:
+                    print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+                else:
+                    _print_ops_run_summary(payload)
+                return 0
+        except OpsRunError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
 
     if args.command == "init-db":
         create_schema(engine)
