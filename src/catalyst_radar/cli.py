@@ -943,6 +943,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show only common-stock and ADR rows from the ranked priced-in scan.",
     )
+    dashboard_snapshot.add_argument(
+        "--fast",
+        action="store_true",
+        help="Use the same fast local snapshot path as the interactive dashboard.",
+    )
     dashboard_snapshot.add_argument("--page", default="overview")
     dashboard_snapshot.add_argument("--json", action="store_true")
 
@@ -1943,6 +1948,7 @@ def main(argv: list[str] | None = None) -> int:
             config=config,
             dotenv_loaded=dotenv_loaded,
             filters=filters,
+            fast_view=args.fast,
         )
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))

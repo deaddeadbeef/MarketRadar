@@ -13,6 +13,7 @@ htmlcov/
 .coverage
 dist/
 build/
+target/
 *.egg-info/
 .streamlit/secrets.toml
 data/local/
