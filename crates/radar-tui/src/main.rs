@@ -2,14 +2,14 @@ use std::io::{self, Stdout};
 use std::time::Duration;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use radar_tui::app::DashboardApp;
-use radar_tui::client::{SnapshotSource, fetch_snapshot};
+use radar_tui::client::{SnapshotFilters, SnapshotRequest, SnapshotSource, fetch_snapshot};
 use radar_tui::model::{Page, SnapshotView};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -33,6 +33,36 @@ struct Args {
     snapshot_command: Option<String>,
     #[arg(long, default_value = "overview")]
     page: String,
+    #[arg(long)]
+    database_url: Option<String>,
+    #[arg(long)]
+    ticker: Option<String>,
+    #[arg(long)]
+    available_at: Option<String>,
+    #[arg(long)]
+    alert_status: Option<String>,
+    #[arg(long)]
+    alert_route: Option<String>,
+    #[arg(
+        long = "scan-mode",
+        visible_alias = "priced-in-status",
+        default_value = "all"
+    )]
+    priced_in_status: String,
+    #[arg(long)]
+    usefulness: Option<String>,
+    #[arg(long, action = ArgAction::Append)]
+    source_gap: Vec<String>,
+    #[arg(long, action = ArgAction::Append)]
+    decision_gap: Vec<String>,
+    #[arg(long)]
+    stocks_only: bool,
+    #[arg(long, default_value_t = 50)]
+    scan_limit: u16,
+    #[arg(long, default_value_t = 0)]
+    scan_offset: u32,
+    #[arg(long, default_value_t = 8)]
+    telemetry_limit: u16,
     #[arg(long, default_value_t = 10)]
     refresh_seconds: u64,
     #[arg(long, help = "Fetch one snapshot, print a compact summary, and exit")]
@@ -42,6 +72,7 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
     let page = Page::from_input(&args.page);
+    let filters = args.snapshot_filters();
     let source = match args.snapshot_command {
         Some(command) => SnapshotSource::Command { command },
         None => SnapshotSource::Api {
@@ -52,10 +83,12 @@ fn main() -> Result<()> {
     };
 
     if args.once {
-        let value = fetch_snapshot(&source, page)?;
+        let request = SnapshotRequest { page, filters };
+        let value = fetch_snapshot(&source, &request)?;
         let snapshot = SnapshotView::from_value(value);
         println!(
-            "MarketRadar {} status={} next_action={} next_command={} rows={} provider_calls={}",
+            "MarketRadar page={} mode={} status={} next_action={} next_command={} rows={} provider_calls={}",
+            page.key(),
             snapshot.snapshot_mode,
             snapshot.status,
             empty_as_dash(&snapshot.next_action),
@@ -70,6 +103,7 @@ fn main() -> Result<()> {
     let mut app = DashboardApp::new(
         source,
         page,
+        filters,
         Duration::from_secs(args.refresh_seconds.max(1)),
     );
     app.request_refresh();
@@ -134,4 +168,24 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
 
 fn empty_as_dash(value: &str) -> &str {
     if value.trim().is_empty() { "-" } else { value }
+}
+
+impl Args {
+    fn snapshot_filters(&self) -> SnapshotFilters {
+        SnapshotFilters {
+            database_url: self.database_url.clone(),
+            ticker: self.ticker.clone(),
+            available_at: self.available_at.clone(),
+            alert_status: self.alert_status.clone(),
+            alert_route: self.alert_route.clone(),
+            priced_in_status: self.priced_in_status.clone(),
+            usefulness: self.usefulness.clone(),
+            source_gap: self.source_gap.clone(),
+            decision_gap: self.decision_gap.clone(),
+            stocks_only: self.stocks_only,
+            scan_limit: self.scan_limit,
+            scan_offset: self.scan_offset,
+            telemetry_limit: self.telemetry_limit,
+        }
+    }
 }

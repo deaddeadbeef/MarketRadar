@@ -552,17 +552,18 @@ dashboard at `http://127.0.0.1:8514`, loading `.env.local` through the app
 startup path. Docker Compose runs the same command-center entry point at
 `http://localhost:8501`.
 
-The primary operator dashboard can also run entirely in the terminal:
+The primary operator dashboard can also run entirely in the terminal. The
+`radar` launcher uses the Rust `ratatui` dashboard by default:
 
 ```powershell
-catalyst-radar dashboard-tui
-catalyst-radar dashboard-tui --once --page features
-catalyst-radar dashboard-tui --page overview --screenshot-out .state\dashboard-overview-latest.svg
+radar
+radar --once --page features
+radar --page overview
 ```
 
-The Rust terminal dashboard is the smooth-rendering migration path. It keeps
-MarketRadar's Python API and database helpers as the source of truth, then
-renders the read-only dashboard snapshot with `ratatui`:
+The Rust dashboard keeps MarketRadar's Python API and database helpers as the
+source of truth, then renders the read-only dashboard snapshot with `ratatui`.
+Manual launch commands are also available:
 
 ```powershell
 cargo run -p radar-tui -- --api-base-url http://127.0.0.1:8000
@@ -573,6 +574,13 @@ cargo run -p radar-tui -- --snapshot-command "catalyst-radar dashboard-snapshot 
 The API source reads `GET /api/dashboard/snapshot?fast=true&page=overview` by
 default. Use `--api-role viewer` when API auth is header-based, and
 `--allow-invalid-certs` only for local HTTPS development certificates.
+The legacy Python/Textual dashboard remains available for compatibility and
+SVG screenshots:
+
+```powershell
+radar --python-tui --page overview --screenshot-out .state\dashboard-overview-latest.svg
+catalyst-radar dashboard-tui --once --page features
+```
 
 For a one-command PowerShell launcher, install the profile alias:
 
@@ -589,10 +597,12 @@ radar --once --page tutorial
 
 The alias calls `scripts/run-dashboard-tui.ps1`. That script keeps setup local
 to this repo: it creates `.venv` if needed, installs the editable
-`catalyst-radar` command when `pyproject.toml` changes, fast-forwards clean
-`main` to `origin/main`, and then starts the TUI. It does not set `PYTHONPATH`
-or mutate the caller's shell environment. Use `radar --no-update` to skip the
-Git update step and `radar --force-install` to refresh the editable install.
+`catalyst-radar` command when `pyproject.toml` changes, builds
+`target\release\radar-tui.exe`, fast-forwards clean `main` to `origin/main`,
+and then starts the Rust TUI. It does not set `PYTHONPATH` or mutate the
+caller's shell environment. Use `radar --no-update` to skip the Git update step,
+`radar --force-install` to refresh the editable install, and
+`radar --python-tui` to run the legacy Textual dashboard.
 If the repo-local Python environment was created from a Windows Store Python
 alias that no longer starts, the launcher fails fast with the recorded Python
 home and the clean repair command: `radar --repair-venv`. That repair command
@@ -601,11 +611,11 @@ Python setup.
 Runtime SQLite files such as `data/schwab-live.db` are ignored so local market
 data does not block the update check; tracked source edits still make the
 launcher skip auto-update.
-The launcher prints a startup line immediately. The interactive TUI opens on
-latest scan results before the local snapshot finishes loading, and
+The launcher prints a startup line immediately. The interactive Rust TUI opens
+on latest scan results before the local snapshot finishes loading, and
 `radar --once` is the fastest smoke test for the same data path. Use
-`radar --page tutorial` only when you want the walkthrough. The interactive TUI
-and `dashboard-tui --once` use a fast local browsing snapshot; the heavier
+`radar --page tutorial` only when you want the walkthrough. The Rust TUI and
+`dashboard-tui --once` use a fast local browsing snapshot; the heavier
 `dashboard-snapshot --json` command remains the full diagnostic/export surface.
 For a fuller zero-provider-call launcher check, run:
 
@@ -614,10 +624,11 @@ powershell -ExecutionPolicy Bypass -File scripts/debug-dashboard-e2e.ps1
 ```
 
 That debug script runs the same PowerShell launcher in once mode, verifies a
-dashboard frame rendered with `External calls made: 0`, and fails if the
-launcher leaves a new `dashboard-tui` child process behind.
-For visual QA, `dashboard-tui --screenshot-out <path>` writes a Textual SVG of
-the selected page and exits without provider, OpenAI, Schwab, or broker calls.
+Rust dashboard summary rendered with `provider_calls=0`, and fails if the
+launcher leaves a new dashboard child process behind.
+For legacy visual QA, `radar --python-tui --screenshot-out <path>` writes a
+Textual SVG of the selected page and exits without provider, OpenAI, Schwab, or
+broker calls.
 
 ### Terminal dashboard basics
 
