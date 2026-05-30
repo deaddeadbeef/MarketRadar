@@ -5976,6 +5976,50 @@ def test_modern_run_and_evidence_pages_show_command_run_location() -> None:
     asyncio.run(run_app())
 
 
+def test_modern_dashboard_global_chrome_uses_human_status_labels() -> None:
+    payload = _blocked_market_bar_payload_with_stale_real_results_action()
+    payload["readiness"] = {
+        "status": "research_only",
+        "safe_to_make_investment_decision": False,
+    }
+    payload["broker"] = {
+        "snapshot": {"connection_status": "needs_auth"},
+        "exposure": {"broker_connected": False},
+    }
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="readiness",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(180, 50)) as pilot:
+            await pilot.pause()
+            app._snapshot_generation += 1
+            app.payload = payload
+            app.status_message = "Ready."
+            app.refresh_view()
+            for _ in range(80):
+                frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+                if "Trade safe?" in frame and "broker" in frame:
+                    break
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+            else:
+                raise AssertionError("modern dashboard header did not render")
+
+            assert "mode research only" in frame
+            assert "broker needs auth" in frame
+            assert "status research_only" not in frame
+            assert "broker needs_auth" not in frame
+
+    asyncio.run(run_app())
+
+
 def test_evidence_gaps_setup_blocker_preserves_exact_setup_command() -> None:
     payload = {
         "controls": {"ticker": None, "available_at": None},

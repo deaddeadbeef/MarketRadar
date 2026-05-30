@@ -2090,6 +2090,8 @@ class MarketRadarDashboardApp(App[int]):
         )
         next_action = next_step.get("action") or readiness.get("next_action")
         can_act = _decision_label(readiness)
+        readiness_status = _human_status_label(readiness.get("status") or "unknown")
+        broker_status = _human_status_label(broker.get("connection_status") or "n/a")
         audit_status = str(audit.get("status") or "").strip().lower()
         answer_status = _human_label(
             audit_status or str(answer.get("status") or "unknown")
@@ -2212,7 +2214,7 @@ class MarketRadarDashboardApp(App[int]):
                 _metric_text(
                     "Orders",
                     "Disabled",
-                    f"broker {broker.get('connection_status') or 'n/a'}",
+                    f"broker {broker_status}",
                 )
             )
             return
@@ -2225,7 +2227,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"[dim]view {view_label} | Priced-in answer {answer_status} "
                         f"({answer_ready}) | "
                         f"Trade safe? {can_act} | "
-                        f"status {readiness.get('status') or 'unknown'} | "
+                        f"mode {readiness_status} | "
                         f"{self.payload.get('external_calls_made', 0)} calls while viewing[/dim]"
                     ),
                     (
@@ -2271,7 +2273,7 @@ class MarketRadarDashboardApp(App[int]):
             _metric_text(
                 "Orders",
                 "Disabled",
-                f"broker {broker.get('connection_status') or 'n/a'}",
+                f"broker {broker_status}",
             )
         )
 
