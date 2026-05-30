@@ -4432,16 +4432,41 @@ def test_run_page_uses_human_status_labels() -> None:
     assert "partial success" in screen
     assert "Call plan" in screen
     assert "live calls planned" in screen
-    assert "live call planned" in screen
+    assert "live call" in screen
     assert "expected gate" in screen
     assert "Keep cooldown; inspect rejected count." in screen
     assert "Use after live data quality is acceptable." in screen
+    assert "live call planned" not in screen
     assert "Keep the manual cooldown active." not in screen
     assert "Use per-candidate LLM review later." not in screen
     assert "partial_success" not in screen
     assert "live_calls_planned" not in screen
     assert "live_call_planned" not in screen
     assert "expected_gate" not in screen
+
+
+def test_run_plan_table_rows_use_short_status_labels() -> None:
+    call_plan = {
+        "rows": [
+            {"layer": "Market data", "status": "live_call_planned"},
+            {"layer": "News/events", "status": "live_calls_planned"},
+            {"layer": "Scan provider", "status": "local_or_dry_run_only"},
+            {"layer": "LLM review", "status": "expected_gate"},
+        ]
+    }
+    payload = {"call_plan": call_plan}
+
+    modern_statuses = [
+        str(row["status"]) for row in dashboard_tui_module._run_modern_table_rows(payload)
+    ]
+    plain_statuses = [
+        str(row["status"]) for row in dashboard_tui_module._call_plan_table_rows(call_plan)
+    ]
+
+    assert modern_statuses == ["live call", "live calls", "local/dry", "expected gate"]
+    assert plain_statuses == modern_statuses
+    assert all("_" not in status for status in modern_statuses)
+    assert all(len(status) <= 14 for status in modern_statuses)
 
 
 def test_run_page_humanizes_mission_brief_source_tokens() -> None:
