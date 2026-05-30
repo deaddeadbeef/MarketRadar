@@ -154,6 +154,30 @@ EXPECTED_API_ROUTES = {
         "/api/value-report/monthly",
     ): ("catalyst_radar.api.routes.value_report", "monthly_value_report", ("value-report",)),
     ("GET", "/api/health"): ("apps.api.main", "health", ()),
+    (
+        "GET",
+        "/api/dashboard/snapshot",
+    ): ("catalyst_radar.api.routes.dashboard", "snapshot", ("dashboard",)),
+    (
+        "GET",
+        "/api/ops/capabilities",
+    ): ("catalyst_radar.api.routes.ops", "ops_capabilities", ("ops",)),
+    (
+        "GET",
+        "/api/ops/actions",
+    ): ("catalyst_radar.api.routes.ops", "ops_actions", ("ops",)),
+    (
+        "POST",
+        "/api/ops/runs",
+    ): ("catalyst_radar.api.routes.ops", "ops_run_create", ("ops",)),
+    (
+        "GET",
+        "/api/ops/runs/{run_id}",
+    ): ("catalyst_radar.api.routes.ops", "ops_run_show", ("ops",)),
+    (
+        "GET",
+        "/api/ops/runs/{run_id}/artifacts/{artifact_name}",
+    ): ("catalyst_radar.api.routes.ops", "ops_run_artifact", ("ops",)),
     ("GET", "/api/ops/health"): ("catalyst_radar.api.routes.ops", "health", ("ops",)),
     (
         "GET",

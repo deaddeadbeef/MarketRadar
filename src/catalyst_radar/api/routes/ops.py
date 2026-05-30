@@ -4,11 +4,20 @@ from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
+from catalyst_radar.ops.capabilities import ops_action_catalog, ops_capability_catalog
+from catalyst_radar.ops.remote_runs import (
+    OpsRunError,
+    create_ops_run,
+    load_ops_run,
+    resolve_ops_artifact,
+)
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.security.redaction import redact_value
 from catalyst_radar.storage.db import engine_from_url
@@ -27,6 +36,62 @@ def _dashboard_helper(name: str) -> Callable[..., Any]:
     except AttributeError as exc:
         msg = f"dashboard data helper is unavailable: {name}"
         raise RuntimeError(msg) from exc
+
+
+class OpsRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: str = "radar-dashboard"
+    page: str = "overview"
+    renderer: str = "auto"
+    frame_width: int = Field(default=140, ge=80, le=240)
+    frame_height: int = Field(default=42, ge=24, le=80)
+    copy_to_onedrive: bool = False
+
+
+@router.get("/capabilities", dependencies=[Depends(require_role(Role.VIEWER))])
+def ops_capabilities() -> dict[str, object]:
+    return ops_capability_catalog()
+
+
+@router.get("/actions", dependencies=[Depends(require_role(Role.VIEWER))])
+def ops_actions() -> dict[str, object]:
+    return ops_action_catalog()
+
+
+@router.post("/runs", dependencies=[Depends(require_role(Role.ANALYST))])
+def ops_run_create(request: OpsRunRequest) -> dict[str, object]:
+    try:
+        return create_ops_run(
+            action=request.action,
+            page=request.page,
+            renderer=request.renderer,
+            frame_width=request.frame_width,
+            frame_height=request.frame_height,
+            copy_to_onedrive=request.copy_to_onedrive,
+        )
+    except OpsRunError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/runs/{run_id}", dependencies=[Depends(require_role(Role.VIEWER))])
+def ops_run_show(run_id: str) -> dict[str, object]:
+    try:
+        return load_ops_run(run_id)
+    except OpsRunError as exc:
+        raise _ops_run_http_error(exc) from exc
+
+
+@router.get(
+    "/runs/{run_id}/artifacts/{artifact_name}",
+    dependencies=[Depends(require_role(Role.VIEWER))],
+)
+def ops_run_artifact(run_id: str, artifact_name: str) -> FileResponse:
+    try:
+        path = resolve_ops_artifact(run_id, artifact_name)
+    except OpsRunError as exc:
+        raise _ops_run_http_error(exc) from exc
+    return FileResponse(path, filename=path.name)
 
 
 @router.get("/health", dependencies=[Depends(require_role(Role.VIEWER))])
@@ -157,3 +222,9 @@ def _clean_filter(value: str | None) -> str | None:
 
 def _present(value: str | None) -> bool:
     return _clean_filter(value) is not None
+
+
+def _ops_run_http_error(exc: OpsRunError) -> HTTPException:
+    message = str(exc)
+    status_code = 404 if "not found" in message else 400
+    return HTTPException(status_code=status_code, detail=message)
