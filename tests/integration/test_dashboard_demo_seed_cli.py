@@ -5980,6 +5980,13 @@ def test_modern_run_and_evidence_pages_show_command_run_location() -> None:
         filters=DashboardFilters(),
         initial_page="run",
     )
+    app.payload = payload
+    app.page = "readiness"
+    action_text = app._action_text()
+    assert "Run the PowerShell command shown above; then refresh." in action_text
+    assert "First must fix: Live market scan." in action_text
+    assert "with the command" not in action_text
+    assert "market-bars residual-review" not in action_text
 
     async def run_app() -> None:
         async with app.run_test(size=(180, 50)) as pilot:
