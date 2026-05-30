@@ -9163,6 +9163,8 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Prev page" not in frame
             assert "Tutorial: press 1 for Inbox." in frame
             assert "Follow the numbered rows" not in frame
+            assert "Safe rule: clicks and filters make 0 provider calls." in frame
+            assert "clicking, filtering, tutorial" not in frame
             assert "LEARN" in frame
             assert app.page == "tutorial"
 
@@ -9198,6 +9200,10 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Missing / waiting" in frame
             assert "mood" in frame
             assert "Mailbox" in frame
+            assert "Inbox triage: open the top row" in frame
+            assert "Waiting Evidence = data gaps" in frame
+            assert "research-useful mismatch" not in frame
+            assert "missing/stale data" not in frame
             assert "market emotion" in frame
             assert "price reaction" in frame
             assert "M  Mismatches only" in frame

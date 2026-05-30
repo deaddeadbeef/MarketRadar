@@ -2251,8 +2251,6 @@ class MarketRadarDashboardApp(App[int]):
         next_action = (
             next_step.get("action") or readiness.get("next_action") or "Open Evidence Gaps."
         )
-        usefulness = _mapping(readiness.get("market_radar_usefulness"))
-        blocked_layers = usefulness.get("blocked_layers")
         if page == "tutorial":
             return "\n".join(
                 [
@@ -2271,19 +2269,7 @@ class MarketRadarDashboardApp(App[int]):
             scan_yield = _mapping(discovery.get("yield"))
             queue = _mapping(self.payload.get("priced_in_queue"))
             answer = _mapping(self.payload.get("priced_in_answer"))
-            trial = _mapping(self.payload.get("trial_readiness"))
-            minimum_stop = _minimum_product_stop_line_summary(self.payload)
-            approval_summary = _minimum_product_approval_summary(self.payload)
-            approval_command = _minimum_product_approval_command(self.payload)
-            minimum_stop_detail = minimum_stop
-            if minimum_stop_detail and approval_summary:
-                minimum_stop_detail = f"{minimum_stop_detail}; {approval_summary}"
-            if minimum_stop_detail and approval_command:
-                minimum_stop_detail = (
-                    f"{minimum_stop_detail}; command `{approval_command}`"
-                )
             full_scan = _mapping(answer.get("full_scan"))
-            scan_scope = _mapping(answer.get("scan_scope"))
             status_filter = _priced_in_status_filter(queue)
             mode = "Full Scan" if status_filter == "all" else "Mismatches"
             offset = int(_number_or_zero(queue.get("offset")))
@@ -2301,10 +2287,6 @@ class MarketRadarDashboardApp(App[int]):
                     if offset == 0
                     else "showing a later page of bullish/bearish not-priced-in rows"
                 )
-            scope_text = str(
-                scan_scope.get("explanation")
-                or f"showing rows {offset + 1}-{offset + count} of {total}."
-            )
             scanned_rows = (
                 full_scan.get("scanned_rows")
                 or scan_yield.get("scanned_securities")
@@ -2332,47 +2314,12 @@ class MarketRadarDashboardApp(App[int]):
                         f"active securities; ranked {total}; visible page {count}."
                     ),
                     (
-                        "[bold]Mailboxes:[/] Urgent = decision-useful mismatch; "
-                        "Worth Reading = research-useful mismatch; Waiting Evidence = "
-                        "missing/stale data; Monitor = keep on radar."
+                        "[bold]Mailboxes:[/] Urgent = decision-ready; Worth Reading = "
+                        "research; Waiting Evidence = data gaps."
                     ),
                     (
-                        "[bold]Legend:[/] Emotion = market mood; Price reaction = price move; "
-                        "Gap = emotion - reaction; Data gaps are missing or stale evidence."
-                    ),
-                    (
-                        f"[bold]Scope:[/] {scope_text}"
-                    ),
-                    (
-                        f"[bold]Decision blocker:[/] "
-                        f"{_decision_readiness_summary(self.payload)}"
-                    ),
-                    (
-                        f"[bold]Priced-in answer:[/] "
-                        f"{answer.get('answer') or 'Open Inbox for current answer.'}"
-                    ),
-                    (
-                        f"[bold]Setup check:[/] "
-                        f"{trial.get('status') or 'unknown'}; "
-                        f"read-only safe="
-                        f"{str(bool(trial.get('safe_to_try_read_only'))).lower()}; "
-                        "investment-ready=false."
-                    ),
-                    (
-                        f"[bold]Shipped-product stop:[/] {minimum_stop_detail}"
-                        if minimum_stop_detail
-                        else "[bold]Shipped-product stop:[/] not available."
-                    ),
-                    (
-                        f"[bold]Full-scan source workflow:[/] "
-                        f"{_overview_source_workflow_hint(self.payload)}"
-                    ),
-                    (
-                        f"[bold]Controls:[/] click a message or press Enter to open the "
-                        f"case file; M toggles view; next/prev pages rows; export full "
-                        f"prints all ranked rows; these tickers are only the current page; "
-                        f"{can_act}; "
-                        f"{blocked_layers or 0} useful layer(s) blocked."
+                        "[bold]Legend:[/] Gap = emotion - price reaction; browsing "
+                        "and opening rows make 0 provider calls."
                     ),
                 ]
             )
@@ -6916,14 +6863,11 @@ def _tutorial_control_rows(
 
 def _tutorial_caption(payload: Mapping[str, object]) -> str:
     prefix = (
-        "Read WHY/NOW/NEXT first; then follow the numbered rows. "
+        "Read WHY/NOW/NEXT first. "
         if _tutorial_mission_rows(payload)
         else ""
     )
-    return (
-        f"{prefix}Safe rule: clicking, filtering, tutorial, and refresh make "
-        "0 provider calls."
-    )
+    return f"{prefix}Safe rule: clicks and filters make 0 provider calls."
 
 
 def _tutorial_lines(payload: Mapping[str, object], width: int) -> list[str]:
@@ -9787,12 +9731,9 @@ def _latest_scan_results_title(payload: Mapping[str, object]) -> str:
 
 
 def _market_inbox_caption(payload: Mapping[str, object]) -> str:
-    scope_summary = _market_inbox_scope_summary(payload)
-    count_text = f" {scope_summary}." if scope_summary else ""
     return (
-        "Market Inbox groups the latest scan results into triage messages: "
-        "Urgent first, Worth Reading second, Waiting Evidence only after data "
-        f"repair.{count_text} {_overview_caption(payload)}"
+        "Inbox triage: open the top row; Waiting Evidence means data repair. "
+        "Browsing makes 0 provider calls."
     )
 
 
