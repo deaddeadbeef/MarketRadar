@@ -80,6 +80,8 @@ def test_dashboard_launcher_manages_child_process_tree() -> None:
     assert "MarketRadar local Python environment is broken." in text
     assert "Windows Store Python alias" in text
     assert "radar --repair-venv" in text
+    assert "$pythonHome = Get-VenvPythonHome" in text
+    assert "$home = Get-VenvPythonHome" not in text
     assert "Move-Item -LiteralPath $venvDir" in text
     assert "Moved broken .venv" in text
     assert "MarketRadar dependency bootstrap failed." in text
