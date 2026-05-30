@@ -2362,7 +2362,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"[bold]Can I act?[/] {_decision_label(readiness)}. "
                         f"[bold]Coverage:[/] scanned {scanned_text} of "
                         f"{active_text} active securities; {total:,} ranked; "
-                        f"showing {count:,}."
+                        f"loaded {count:,} rows."
                     ),
                     (
                         "[bold]Mailboxes:[/] Urgent = decision-ready; Worth Reading = "
@@ -3008,7 +3008,7 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "export full",
                 "meaning": "Print the full-scan JSON export command.",
             },
-            {"command": "limit <1-200>", "meaning": "Change visible scan rows per page."},
+            {"command": "limit <1-200>", "meaning": "Change loaded Inbox rows per page."},
             {
                 "command": "source-gap <source|all>",
                 "meaning": "Show scan rows missing options, text, events, bars, or broker context.",
@@ -7365,27 +7365,27 @@ def _market_inbox_metric_summary(payload: Mapping[str, object]) -> tuple[str, st
             "setup checklist",
             f"{len(rows)} setup row(s); 0 stock results",
         )
-    visible = len(rows)
+    loaded = len(rows)
     returned = int(
-        _number_or_zero(queue.get("returned_count") or queue.get("count") or visible)
+        _number_or_zero(queue.get("returned_count") or queue.get("count") or loaded)
     )
-    if not visible and returned:
-        visible = returned
+    if not loaded and returned:
+        loaded = returned
     total = int(_number_or_zero(queue.get("total_count")))
     offset = int(_number_or_zero(queue.get("offset")))
     value = ""
-    if total and visible and (offset > 0 or visible < total):
-        value = f"{visible:,} visible / {total:,} total"
+    if total and loaded and (offset > 0 or loaded < total):
+        value = f"{loaded:,} loaded / {total:,} total"
     elif total:
         value = f"{total:,} messages"
-    elif visible:
-        value = f"{visible:,} visible"
+    elif loaded:
+        value = f"{loaded:,} loaded"
 
-    visible_summary = _market_inbox_count_summary(_market_inbox_counts(rows))
+    loaded_summary = _market_inbox_count_summary(_market_inbox_counts(rows))
     usefulness = _usefulness_counts_summary(queue)
     detail_parts: list[str] = []
-    if visible_summary:
-        detail_parts.append(f"visible: {visible_summary}")
+    if loaded_summary:
+        detail_parts.append(f"loaded page: {loaded_summary}")
     if usefulness:
         detail_parts.append(f"queue: {usefulness}")
     return value, "; ".join(detail_parts)
