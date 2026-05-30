@@ -108,6 +108,14 @@ impl Page {
         let index = Self::ALL.iter().position(|page| *page == self).unwrap_or(0);
         Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
     }
+
+    pub fn first() -> Page {
+        Self::ALL[0]
+    }
+
+    pub fn last() -> Page {
+        Self::ALL[Self::ALL.len() - 1]
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use clap::{ArgAction, Parser};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -189,22 +189,83 @@ fn static_frame_app(
 }
 
 fn handle_key(app: &mut DashboardApp, key: KeyEvent) {
-    match (key.code, key.modifiers) {
-        (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => app.should_quit = true,
-        (KeyCode::F(5), _) | (KeyCode::Char('r'), _) => app.request_refresh(),
-        (KeyCode::Tab, _) | (KeyCode::Right, _) => app.next_page(),
-        (KeyCode::BackTab, _) | (KeyCode::Left, _) => app.previous_page(),
-        (KeyCode::Char('n'), KeyModifiers::CONTROL) => app.next_page(),
-        (KeyCode::Char('p'), KeyModifiers::CONTROL) => app.previous_page(),
-        (KeyCode::Char('a'), KeyModifiers::CONTROL) => app.set_page(Page::Agent),
-        (KeyCode::Char('?'), _) => app.set_page(Page::Help),
-        (KeyCode::Char('f'), _) | (KeyCode::Char('F'), _) => app.set_page(Page::Features),
-        (KeyCode::Char(value), _) => {
-            if value.is_ascii_digit() {
-                app.set_page(Page::from_input(&value.to_string()));
-            }
+    match key_action(key) {
+        KeyAction::Quit => app.should_quit = true,
+        KeyAction::Refresh => app.request_refresh(),
+        KeyAction::NextPage => app.next_page(),
+        KeyAction::PreviousPage => app.previous_page(),
+        KeyAction::Jump(page) => app.set_page(page),
+        KeyAction::None => {}
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum KeyAction {
+    Quit,
+    Refresh,
+    NextPage,
+    PreviousPage,
+    Jump(Page),
+    None,
+}
+
+fn key_action(key: KeyEvent) -> KeyAction {
+    if key.kind == KeyEventKind::Release {
+        return KeyAction::None;
+    }
+
+    let command_modifier = key
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match lower_char(key.code) {
+            Some('a') => return KeyAction::Jump(Page::Agent),
+            Some('n') => return KeyAction::NextPage,
+            Some('p') => return KeyAction::PreviousPage,
+            _ => {}
         }
-        _ => {}
+    }
+
+    match key.code {
+        KeyCode::Esc => KeyAction::Quit,
+        KeyCode::F(5) => KeyAction::Refresh,
+        KeyCode::Tab | KeyCode::Right | KeyCode::Down | KeyCode::PageDown => KeyAction::NextPage,
+        KeyCode::BackTab | KeyCode::Left | KeyCode::Up | KeyCode::PageUp => KeyAction::PreviousPage,
+        KeyCode::Home => KeyAction::Jump(Page::first()),
+        KeyCode::End => KeyAction::Jump(Page::last()),
+        KeyCode::Char(value) if !command_modifier => plain_key_action(value),
+        _ => KeyAction::None,
+    }
+}
+
+fn plain_key_action(value: char) -> KeyAction {
+    match value.to_ascii_lowercase() {
+        'q' => KeyAction::Quit,
+        'r' => KeyAction::Refresh,
+        'j' => KeyAction::NextPage,
+        'k' => KeyAction::PreviousPage,
+        value if value.is_ascii_digit() => KeyAction::Jump(Page::from_input(&value.to_string())),
+        '?' => KeyAction::Jump(Page::Help),
+        'o' => KeyAction::Jump(Page::Overview),
+        'e' | 'g' => KeyAction::Jump(Page::Readiness),
+        's' => KeyAction::Jump(Page::Run),
+        'c' => KeyAction::Jump(Page::Candidates),
+        'd' => KeyAction::Jump(Page::Review),
+        'a' => KeyAction::Jump(Page::Alerts),
+        'i' => KeyAction::Jump(Page::Ipo),
+        'b' => KeyAction::Jump(Page::Broker),
+        't' => KeyAction::Jump(Page::Telemetry),
+        'f' => KeyAction::Jump(Page::Features),
+        'h' => KeyAction::Jump(Page::Help),
+        _ => KeyAction::None,
+    }
+}
+
+fn lower_char(code: KeyCode) -> Option<char> {
+    match code {
+        KeyCode::Char(value) => Some(value.to_ascii_lowercase()),
+        _ => None,
     }
 }
 
@@ -244,5 +305,87 @@ impl Args {
             scan_offset: self.scan_offset,
             telemetry_limit: self.telemetry_limit,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn press(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::empty())
+    }
+
+    fn ctrl(value: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(value), KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn arrow_and_tab_keys_move_through_workflow() {
+        assert_eq!(key_action(press(KeyCode::Down)), KeyAction::NextPage);
+        assert_eq!(key_action(press(KeyCode::Right)), KeyAction::NextPage);
+        assert_eq!(key_action(press(KeyCode::Tab)), KeyAction::NextPage);
+        assert_eq!(key_action(press(KeyCode::PageDown)), KeyAction::NextPage);
+
+        assert_eq!(key_action(press(KeyCode::Up)), KeyAction::PreviousPage);
+        assert_eq!(key_action(press(KeyCode::Left)), KeyAction::PreviousPage);
+        assert_eq!(key_action(press(KeyCode::BackTab)), KeyAction::PreviousPage);
+        assert_eq!(key_action(press(KeyCode::PageUp)), KeyAction::PreviousPage);
+    }
+
+    #[test]
+    fn home_end_and_letter_keys_jump_to_expected_pages() {
+        assert_eq!(
+            key_action(press(KeyCode::Home)),
+            KeyAction::Jump(Page::first())
+        );
+        assert_eq!(
+            key_action(press(KeyCode::End)),
+            KeyAction::Jump(Page::last())
+        );
+        assert_eq!(
+            key_action(press(KeyCode::Char('0'))),
+            KeyAction::Jump(Page::Tutorial)
+        );
+        assert_eq!(
+            key_action(press(KeyCode::Char('9'))),
+            KeyAction::Jump(Page::Telemetry)
+        );
+        assert_eq!(
+            key_action(press(KeyCode::Char('A'))),
+            KeyAction::Jump(Page::Alerts)
+        );
+        assert_eq!(
+            key_action(press(KeyCode::Char('g'))),
+            KeyAction::Jump(Page::Readiness)
+        );
+        assert_eq!(
+            key_action(press(KeyCode::Char('s'))),
+            KeyAction::Jump(Page::Run)
+        );
+        assert_eq!(
+            key_action(press(KeyCode::Char('i'))),
+            KeyAction::Jump(Page::Ipo)
+        );
+        assert_eq!(
+            key_action(press(KeyCode::Char('h'))),
+            KeyAction::Jump(Page::Help)
+        );
+    }
+
+    #[test]
+    fn control_shortcuts_and_release_events_are_stable() {
+        assert_eq!(key_action(ctrl('a')), KeyAction::Jump(Page::Agent));
+        assert_eq!(key_action(ctrl('A')), KeyAction::Jump(Page::Agent));
+        assert_eq!(key_action(ctrl('n')), KeyAction::NextPage);
+        assert_eq!(key_action(ctrl('p')), KeyAction::PreviousPage);
+
+        let release =
+            KeyEvent::new_with_kind(KeyCode::Down, KeyModifiers::empty(), KeyEventKind::Release);
+        assert_eq!(key_action(release), KeyAction::None);
+
+        let repeat =
+            KeyEvent::new_with_kind(KeyCode::Down, KeyModifiers::empty(), KeyEventKind::Repeat);
+        assert_eq!(key_action(repeat), KeyAction::NextPage);
     }
 }
