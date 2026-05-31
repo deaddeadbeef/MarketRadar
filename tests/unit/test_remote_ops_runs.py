@@ -131,6 +131,10 @@ def test_copy_to_onedrive_records_destination(tmp_path: Path, monkeypatch) -> No
     assert onedrive_dir.name == result["run_id"]
     assert (onedrive_dir / "terminal.png").exists()
     assert (onedrive_dir / "report.html").exists()
+    copied_result = json.loads((onedrive_dir / "result.json").read_text(encoding="utf-8"))
+    assert copied_result["onedrive"]["status"] == "copied"
+    assert copied_result["onedrive"]["path"] == str(onedrive_dir)
+    assert copied_result == load_ops_run(str(result["run_id"]))
 
 
 def test_rust_renderer_decodes_subprocess_output_as_utf8(tmp_path: Path, monkeypatch) -> None:

@@ -152,6 +152,7 @@ class SecSubmissionsBatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     targets: list[SecSubmissionTargetRequest] = Field(default_factory=list)
+    available_at: datetime | None = None
 
 
 class SecCikOverrideRequest(BaseModel):
@@ -1307,6 +1308,7 @@ def radar_sec_submissions_batch(
             provider_repo=ProviderRepository(engine),
             event_repo=EventRepository(engine),
             targets=targets,
+            available_at=_parse_api_datetime(request.available_at),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

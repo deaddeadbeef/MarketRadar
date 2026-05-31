@@ -3537,7 +3537,10 @@ def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
 
     response = client.post(
         "/api/radar/sec/submissions-batch",
-        json={"targets": [{"ticker": "msft", "cik": "789"}]},
+        json={
+            "available_at": "2026-05-18T16:00:00+00:00",
+            "targets": [{"ticker": "msft", "cik": "789"}],
+        },
     )
 
     assert response.status_code == 200
@@ -3549,6 +3552,7 @@ def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
     assert len(targets) == 1
     assert targets[0].ticker == "MSFT"
     assert targets[0].cik == "0000000789"
+    assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
 
 
 def test_post_radar_sec_company_tickers_refreshes_cik_metadata(

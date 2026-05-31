@@ -36,6 +36,7 @@ class SecSubmissionsBatchResult:
     targets: tuple[SecSubmissionTarget, ...]
     results: tuple[ProviderIngestResult, ...]
     live: bool
+    available_at: datetime
 
     def as_payload(self) -> dict[str, object]:
         return {
@@ -43,6 +44,7 @@ class SecSubmissionsBatchResult:
             "provider": "sec",
             "endpoint": "submissions-batch",
             "live": self.live,
+            "available_at": self.available_at.isoformat(),
             "target_count": len(self.targets),
             "targets": [target.as_payload() for target in self.targets],
             "external_calls_made": len(self.targets) if self.live else 0,
@@ -77,11 +79,13 @@ def ingest_sec_submissions_batch(
     event_repo: EventRepository,
     targets: Sequence[SecSubmissionTarget],
     fixture_path: Path | None = None,
+    available_at: datetime | None = None,
 ) -> SecSubmissionsBatchResult:
     parsed_targets = tuple(targets)
     if not parsed_targets:
         msg = "at least one SEC submissions target is required"
         raise ValueError(msg)
+    requested_at = _requested_at(available_at)
     results = tuple(
         ingest_sec_record(
             config=config,
@@ -93,6 +97,7 @@ def ingest_sec_submissions_batch(
             cik=target.cik,
             fixture_path=fixture_path,
             document_fixture_path=None,
+            requested_at=requested_at,
         )
         for target in parsed_targets
     )
@@ -100,6 +105,7 @@ def ingest_sec_submissions_batch(
         targets=parsed_targets,
         results=results,
         live=fixture_path is None,
+        available_at=requested_at,
     )
 
 
@@ -114,6 +120,7 @@ def ingest_sec_record(
     cik: str,
     fixture_path: Path | None,
     document_fixture_path: Path | None,
+    requested_at: datetime | None = None,
 ) -> ProviderIngestResult:
     if sec_command not in {"submissions", "ipo-s1"}:
         msg = f"unsupported sec command: {sec_command}"
@@ -124,6 +131,7 @@ def ingest_sec_record(
     if fixture_path is None and not config.sec_user_agent_configured:
         msg = "CATALYST_SEC_USER_AGENT is required for live SEC ingest"
         raise ValueError(msg)
+    resolved_requested_at = _requested_at(requested_at)
 
     transport = (
         HeaderInjectingTransport(
@@ -161,12 +169,13 @@ def ingest_sec_record(
             str(document_fixture_path) if document_fixture_path is not None else None
         ),
         "live": fixture_path is None,
+        "available_at": resolved_requested_at.isoformat(),
     }
     request = ConnectorRequest(
         provider="sec",
         endpoint=sec_command,
         params={"ticker": ticker.upper(), "cik": cik},
-        requested_at=datetime.now(UTC),
+        requested_at=resolved_requested_at,
     )
     return ingest_provider_records(
         connector=connector,
@@ -177,3 +186,11 @@ def ingest_sec_record(
         metadata=metadata,
         event_repo=event_repo,
     )
+
+
+def _requested_at(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime.now(UTC).replace(microsecond=0)
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

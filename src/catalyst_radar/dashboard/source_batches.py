@@ -27,6 +27,7 @@ from catalyst_radar.events.sec_ingest import (
     SecSubmissionTarget,
     ingest_sec_submissions_batch,
 )
+from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.feature_repositories import FeatureRepository
@@ -116,7 +117,7 @@ def execute_priced_in_source_batch(
             ),
         )
     if source_name == "local_text":
-        result = _execute_local_text_source_batch(engine, batch)
+        result = _execute_local_text_source_batch(engine, config, batch)
     elif source_name == "catalyst_events":
         result = _execute_sec_source_batch(engine, config, batch)
     elif source_name in {"options", "broker_context"}:
@@ -148,6 +149,7 @@ def execute_priced_in_source_batch(
             source_name=source_name,
             before_plan=plan,
             after_plan=post_plan,
+            available_at=available_at,
         )
     return _execution_payload(
         source_name=source_name,
@@ -436,6 +438,7 @@ def _market_bar_execution_blocker(
 
 def _execute_local_text_source_batch(
     engine: Engine,
+    config: AppConfig,
     batch: Mapping[str, object],
 ) -> dict[str, object]:
     payload = _mapping(batch.get("api_payload"))
@@ -453,6 +456,13 @@ def _execute_local_text_source_batch(
         available_at=available_at,
         tickers=tuple(tickers),
     )
+    refresh = _refresh_priced_in_scan_rows(
+        engine,
+        config=config,
+        tickers=tickers,
+        as_of=as_of,
+        available_at=available_at,
+    )
     return {
         "status": "executed",
         "provider": "local_text",
@@ -463,6 +473,7 @@ def _execute_local_text_source_batch(
         "ticker_count": len(tickers),
         "feature_count": result.feature_count,
         "snippet_count": result.snippet_count,
+        "scan_refresh": refresh,
         "external_calls_made": 0,
     }
 
@@ -481,6 +492,8 @@ def _execute_sec_source_batch(
             targets.append(SecSubmissionTarget(ticker=ticker, cik=cik))
     if not targets:
         return {"status": "blocked", "reason": "No SEC targets with CIKs are available."}
+    as_of = _date_or_none(payload.get("as_of"))
+    available_at = _datetime_or_none(payload.get("available_at")) or datetime.now(UTC)
     try:
         result = ingest_sec_submissions_batch(
             config=config,
@@ -488,12 +501,100 @@ def _execute_sec_source_batch(
             provider_repo=ProviderRepository(engine),
             event_repo=EventRepository(engine),
             targets=tuple(targets),
+            available_at=available_at,
         )
     except ValueError as exc:
         return {"status": "blocked", "reason": f"SEC batch blocked: {exc}"}
     except ProviderIngestError as exc:
         return {"status": "failed", "reason": f"SEC batch failed: {exc}"}
-    return {"status": "executed", **result.as_payload()}
+    refresh = _refresh_priced_in_scan_rows(
+        engine,
+        config=config,
+        tickers=[target.ticker for target in targets],
+        as_of=as_of,
+        available_at=available_at,
+    )
+    return {
+        "status": "executed",
+        "as_of": as_of.isoformat() if as_of is not None else None,
+        "available_at": available_at.isoformat(),
+        "scan_refresh": refresh,
+        **result.as_payload(),
+    }
+
+
+def _refresh_priced_in_scan_rows(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    tickers: Sequence[str],
+    as_of: date | None,
+    available_at: datetime,
+) -> dict[str, object]:
+    normalized = tuple(
+        dict.fromkeys(
+            str(ticker).strip().upper()
+            for ticker in tickers
+            if str(ticker).strip()
+        )
+    )
+    if as_of is None:
+        return {
+            "status": "skipped",
+            "reason": "missing_scan_as_of",
+            "refreshed_count": 0,
+            "external_calls_made": 0,
+        }
+    if not normalized:
+        return {
+            "status": "skipped",
+            "reason": "no_tickers",
+            "refreshed_count": 0,
+            "external_calls_made": 0,
+        }
+    market_repo = MarketRepository(engine)
+    try:
+        results = tuple(
+            run_scan(
+                market_repo,
+                as_of,
+                available_at=available_at,
+                provider=_scan_provider_from_config(config),
+                universe_tickers=normalized,
+                event_repo=EventRepository(engine),
+                text_repo=TextRepository(engine),
+                feature_repo=FeatureRepository(engine),
+            )
+        )
+        for result in results:
+            market_repo.save_scan_result(result.candidate, result.policy)
+    except Exception as exc:  # pragma: no cover - returned in live diagnostics
+        return {
+            "status": "failed",
+            "reason": str(exc),
+            "as_of": as_of.isoformat(),
+            "available_at": available_at.isoformat(),
+            "tickers": list(normalized),
+            "refreshed_count": 0,
+            "external_calls_made": 0,
+        }
+    return {
+        "status": "refreshed" if results else "no_scan_results",
+        "as_of": as_of.isoformat(),
+        "available_at": available_at.isoformat(),
+        "tickers": list(normalized),
+        "requested_count": len(normalized),
+        "refreshed_count": len(results),
+        "market_provider": _scan_provider_from_config(config),
+        "external_calls_made": 0,
+    }
+
+
+def _scan_provider_from_config(config: AppConfig) -> str | None:
+    provider = str(config.daily_market_provider or "").strip().lower()
+    if provider in {"polygon", "sample"}:
+        return provider
+    return None
 
 
 def _execute_schwab_source_batch(
@@ -684,6 +785,7 @@ def _post_execution_check_payload(
     source_name: str,
     before_plan: Mapping[str, object],
     after_plan: Mapping[str, object],
+    available_at: datetime | None = None,
 ) -> dict[str, object]:
     before_gap_rows = int(_number_or_zero(before_plan.get("total_gap_rows")))
     after_gap_rows = int(_number_or_zero(after_plan.get("total_gap_rows")))
@@ -714,6 +816,7 @@ def _post_execution_check_payload(
         "schema_version": "priced-in-source-batch-post-execution-v1",
         "source": source_name,
         "status": status,
+        "available_at": available_at.isoformat() if available_at is not None else None,
         "external_calls_made": 0,
         "before_gap_rows": before_gap_rows,
         "after_gap_rows": after_gap_rows,
