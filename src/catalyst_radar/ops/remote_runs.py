@@ -148,6 +148,11 @@ def create_ops_run(
     if copy_to_onedrive:
         result["onedrive"] = _copy_to_onedrive(run_dir, run_id)
     _write_json(result_path, result)
+    onedrive = result.get("onedrive")
+    if isinstance(onedrive, dict) and onedrive.get("status") == "copied":
+        destination = Path(str(onedrive.get("path") or ""))
+        if destination.exists():
+            shutil.copy2(result_path, destination / "result.json")
     return result
 
 

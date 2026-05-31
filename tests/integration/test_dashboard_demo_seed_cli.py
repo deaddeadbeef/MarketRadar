@@ -7698,6 +7698,81 @@ def test_source_batch_run_executes_capped_chunks_and_reports_delta(
     assert plan_calls[0]["decision_gap"] == ["candidate_packet"]
 
 
+def test_source_batch_execution_rechecks_post_plan_at_requested_scope(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    execution_available_at = datetime(2026, 5, 18, 16, tzinfo=UTC)
+    source_plan_calls: list[dict[str, object]] = []
+
+    def fake_plan(_engine, _config, **kwargs) -> dict[str, object]:
+        if kwargs["source"] == "market_bars":
+            return {"source": "market_bars", "total_gap_rows": 0}
+        source_plan_calls.append(kwargs)
+        gap_rows = 10 if len(source_plan_calls) == 1 else 9
+        return {
+            "status": "ready",
+            "source": kwargs["source"],
+            "total_gap_rows": gap_rows,
+            "plannable_gap_rows": gap_rows,
+            "unplannable_gap_rows": 0,
+            "batch_count": 1,
+            "batch_size": 5,
+            "review_rows_command": (
+                "catalyst-radar priced-in-queue --full-scan "
+                f"--source-gap {kwargs['source']} --limit 50"
+            ),
+            "all_batches_command": (
+                "catalyst-radar priced-in-source-batches "
+                f"--source {kwargs['source']} --all --json"
+            ),
+            "batches": [
+                {
+                    "number": 1,
+                    "tickers": ["ACME"],
+                    "call_plan_status": "live_calls_planned",
+                    "api_payload": {
+                        "as_of": "2026-05-15",
+                        "available_at": execution_available_at.isoformat(),
+                        "targets": [{"ticker": "ACME", "cik": "0000000001"}],
+                    },
+                }
+            ],
+        }
+
+    def fake_execute(_engine, _config, batch) -> dict[str, object]:
+        return {
+            "status": "executed",
+            "provider": "sec",
+            "available_at": execution_available_at.isoformat(),
+            "batch": dict(batch),
+            "external_calls_made": 1,
+        }
+
+    monkeypatch.setattr(
+        source_batch_module,
+        "priced_in_source_gap_batches_payload",
+        fake_plan,
+    )
+    monkeypatch.setattr(source_batch_module, "_execute_sec_source_batch", fake_execute)
+
+    payload = source_batch_module.execute_priced_in_source_batch(
+        engine,
+        AppConfig.from_env(),
+        source="catalyst_events",
+    )
+
+    assert payload["status"] == "executed"
+    assert len(source_plan_calls) == 2
+    assert source_plan_calls[0]["available_at"] is None
+    assert source_plan_calls[1]["available_at"] is None
+    assert payload["post_execution"]["status"] == "improved"
+    assert payload["post_execution"]["available_at"] is None
+
+
 def test_priced_in_source_batches_execute_batches_cli_runs_capped_batch_run(
     tmp_path: Path,
     monkeypatch,

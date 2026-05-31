@@ -1138,8 +1138,14 @@ def priced_in_source_gap_batches_payload(
     tickers = [str(row["ticker"]).strip().upper() for row in plan_rows]
     batch_count = ceil(len(tickers) / resolved_batch_size) if batchable and tickers else 0
     scan_as_of = _priced_in_batch_as_of(rows)
+    scan_available_at = _priced_in_batch_available_at(
+        resolved_queue,
+        requested_available_at=available_at,
+    )
     planned_at = datetime.now(UTC).replace(microsecond=0)
-    planned_available_at = planned_at.isoformat()
+    planned_available_at = (
+        scan_available_at.replace(microsecond=0) if scan_available_at else planned_at
+    ).isoformat()
     resolved_limit = max(batch_count, 1) if all_batches else requested_limit
     batches = []
     if batchable:
@@ -14994,6 +15000,8 @@ def radar_discovery_snapshot_payload(
             "status": summary.get("status"),
             "as_of": summary.get("as_of"),
             "decision_available_at": summary.get("decision_available_at"),
+            "started_at": summary.get("started_at"),
+            "finished_at": summary.get("finished_at"),
             "provider": summary.get("provider"),
             "universe": summary.get("universe"),
             "required_complete": run_path["required_complete"],
@@ -18317,6 +18325,25 @@ def _priced_in_batch_as_of(rows: Sequence[Mapping[str, object]]) -> str:
     return "<LATEST_TRADING_DATE>"
 
 
+def _priced_in_batch_available_at(
+    queue: Mapping[str, object],
+    *,
+    requested_available_at: datetime | None,
+) -> datetime | None:
+    if requested_available_at is not None:
+        return _as_utc_datetime_or_none(requested_available_at)
+    latest_run = _mapping_value(queue, "latest_run")
+    for key in ("finished_at", "decision_available_at"):
+        parsed = _parse_utc_datetime(latest_run.get(key))
+        if parsed is not None:
+            return parsed
+    filters = _mapping_value(queue, "filters")
+    parsed = _parse_utc_datetime(filters.get("available_at"))
+    if parsed is not None:
+        return parsed
+    return None
+
+
 def _priced_in_source_batch_command(
     source_name: str,
     tickers: Sequence[str],
@@ -18334,7 +18361,10 @@ def _priced_in_source_batch_command(
             if target.get("ticker") and target.get("cik")
         )
         if target_args:
-            return f"catalyst-radar ingest-sec submissions-batch {target_args}"
+            return (
+                "catalyst-radar ingest-sec submissions-batch "
+                f"--available-at {planned_available_at} {target_args}"
+            )
         ticker_args = _ticker_args(tickers)
         return (
             "catalyst-radar run-daily "
@@ -18345,7 +18375,7 @@ def _priced_in_source_batch_command(
         ticker_args = _ticker_args(tickers)
         return (
             "catalyst-radar run-textint "
-            f"--as-of {scan_as_of} {ticker_args}"
+            f"--as-of {scan_as_of} --available-at {planned_available_at} {ticker_args}"
         ).strip()
     return "catalyst-radar priced-in-preflight --json"
 
@@ -18458,6 +18488,8 @@ def _priced_in_source_batch_api_payload(
         }
     if source_name == "catalyst_events":
         return {
+            "as_of": scan_as_of,
+            "available_at": planned_available_at,
             "targets": [
                 {"ticker": target.get("ticker"), "cik": target.get("cik")}
                 for target in targets

@@ -471,6 +471,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Ticker and CIK pair in TICKER:CIK form.",
     )
+    submissions_batch.add_argument("--available-at", type=_parse_aware_datetime)
     submissions_batch.add_argument("--fixture", type=Path)
     company_tickers = sec_sub.add_parser("company-tickers")
     company_tickers.add_argument("--fixture", type=Path)
@@ -1747,10 +1748,11 @@ def main(argv: list[str] | None = None) -> int:
                 config=config,
                 market_repo=market_repo,
                 provider_repo=provider_repo,
-                event_repo=event_repo,
-                targets=args.target,
-                fixture_path=args.fixture,
-            )
+                  event_repo=event_repo,
+                  targets=args.target,
+                  fixture_path=args.fixture,
+                  available_at=args.available_at,
+              )
         return _ingest_sec_provider(
             config=config,
             market_repo=market_repo,
@@ -3867,6 +3869,7 @@ def _ingest_sec_submissions_batch(
     event_repo: EventRepository,
     targets: Sequence[str],
     fixture_path: Path | None,
+    available_at: datetime | None,
 ) -> int:
     try:
         parsed_targets = [parse_sec_submission_target(target) for target in targets]
@@ -3881,6 +3884,7 @@ def _ingest_sec_submissions_batch(
             event_repo=event_repo,
             targets=parsed_targets,
             fixture_path=fixture_path,
+            available_at=available_at,
         )
     except (ProviderIngestError, ValueError) as exc:
         print(f"sec batch ingest failed: {exc}", file=sys.stderr)

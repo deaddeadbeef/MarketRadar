@@ -5805,13 +5805,15 @@ def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
     assert "<UTC-now>" not in command
     assert command == (
         "catalyst-radar ingest-sec submissions-batch "
-        "--target AAPL:0000320193"
+        f"--available-at {planned_at.isoformat()} --target AAPL:0000320193"
     )
     assert payload["batches"][0]["targets"] == [
         {"ticker": "AAPL", "cik": "0000320193"}
     ]
     assert payload["batches"][0]["api"] == "POST /api/radar/sec/submissions-batch"
     assert payload["batches"][0]["api_payload"] == {
+        "as_of": AS_OF.date().isoformat(),
+        "available_at": planned_at.isoformat(),
         "targets": [{"ticker": "AAPL", "cik": "0000320193"}]
     }
     assert payload["batches"][0]["external_calls_required"] == 1
@@ -5843,12 +5845,16 @@ def test_priced_in_source_gap_batches_payload_avoids_market_call_for_sec_batches
     )
 
     batch = payload["batches"][0]
+    planned_at = datetime.fromisoformat(str(payload["planned_at"]))
     assert batch["tickers"] == ["AAPL"]
     assert batch["command"] == (
-        "catalyst-radar ingest-sec submissions-batch --target AAPL:0000320193"
+        "catalyst-radar ingest-sec submissions-batch "
+        f"--available-at {planned_at.isoformat()} --target AAPL:0000320193"
     )
     assert batch["api"] == "POST /api/radar/sec/submissions-batch"
     assert batch["api_payload"] == {
+        "as_of": AS_OF.date().isoformat(),
+        "available_at": planned_at.isoformat(),
         "targets": [{"ticker": "AAPL", "cik": "0000320193"}]
     }
     assert batch["external_calls_required"] == 1
@@ -6055,7 +6061,8 @@ def test_priced_in_source_gap_batches_payload_plans_local_text_batches(
     assert payload["plannable_gap_rows"] == 1
     assert payload["batches"][0]["tickers"] == ["MSFT"]
     assert payload["batches"][0]["command"] == (
-        "catalyst-radar run-textint --as-of 2026-05-10 --ticker MSFT"
+        "catalyst-radar run-textint --as-of 2026-05-10 "
+        f"--available-at {payload['planned_at']} --ticker MSFT"
     )
     assert payload["batches"][0]["api"] == "POST /api/radar/text/features-batch"
     assert payload["batches"][0]["api_payload"] == {
