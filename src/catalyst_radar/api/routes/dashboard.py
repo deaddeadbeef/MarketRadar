@@ -137,6 +137,19 @@ def manifest() -> dict[str, object]:
                     ),
                 },
                 {
+                    "step": "row-open",
+                    "action": (
+                        "Focus a queue-row and press Return, or type open 1 and "
+                        "press Return."
+                    ),
+                    "target": "queue-row",
+                    "expected": (
+                        "dashboard-page reports page=candidate:<TICKER> or "
+                        "page=alert:<ID>, the detail panel is visible, and "
+                        "provider_calls=0."
+                    ),
+                },
+                {
                     "step": "guarded-command",
                     "action": "Type batch catalyst_events and press Return.",
                     "target": "command-input",
@@ -180,6 +193,10 @@ def manifest() -> dict[str, object]:
                 (
                     "Full catalyst-radar commands typed into the desktop command box "
                     "must stay external and leave provider_calls=0."
+                ),
+                (
+                    "Clicking or pressing Enter on queue rows must open local "
+                    "candidate/alert detail without provider calls."
                 ),
             ],
         },
