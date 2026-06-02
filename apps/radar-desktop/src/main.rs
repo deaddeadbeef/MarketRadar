@@ -311,6 +311,8 @@ fn page_shortcut(page: Page) -> &'static str {
         Page::Ops => "8",
         Page::Telemetry => "9",
         Page::Agent => "Ctrl+A",
+        Page::Themes => "theme",
+        Page::Validation => "valid",
         Page::Costs => "V",
         Page::Features => "F",
         Page::Help => "?",
@@ -331,6 +333,8 @@ fn page_description(page: Page) -> &'static str {
         Page::Ops => "Provider health, runtime context, and run diagnostics.",
         Page::Telemetry => "Audit tape and telemetry coverage.",
         Page::Agent => "Zero-call agent preview and gated OpenAI execution status.",
+        Page::Themes => "Clustered catalyst patterns and repeated theme context.",
+        Page::Validation => "Shadow, paper, and value validation evidence.",
         Page::Costs => "Value ledger, outcomes, validation, and cost evidence.",
         Page::Features => "Feature inventory and where each feature lives.",
         Page::Help => "Keyboard, automation, and command reference.",
@@ -357,6 +361,7 @@ fn automation_manifest() -> AutomationManifest {
         keyboard_shortcuts: vec![
             "0-9 jump to numbered workflow pages",
             "Ctrl+A opens Agent",
+            "Type themes or validation to open evidence pages",
             "V opens Costs",
             "F opens Features",
             "? opens Help",
@@ -450,6 +455,12 @@ mod tests {
 
         assert!(pages.iter().any(|page| page.test_id == "nav-page-overview"));
         assert!(pages.iter().any(|page| page.shortcut == "Ctrl+A"));
+        assert!(pages.iter().any(|page| page.test_id == "nav-page-themes"));
+        assert!(
+            pages
+                .iter()
+                .any(|page| page.test_id == "nav-page-validation")
+        );
         assert!(pages.iter().any(|page| page.test_id == "nav-page-costs"));
     }
 

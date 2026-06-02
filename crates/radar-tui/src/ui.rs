@@ -224,6 +224,10 @@ fn render_page(frame: &mut Frame<'_>, area: Rect, app: &DashboardApp) {
             " TELEMETRY ",
         ),
         Page::Agent => render_object_summary(frame, area, snapshot, &["agent_brief"], " AGENT "),
+        Page::Themes => render_json_array(frame, area, snapshot, &["themes", "rows"], " THEMES "),
+        Page::Validation => {
+            render_object_summary(frame, area, snapshot, &["validation"], " VALIDATION ")
+        }
         Page::Costs => render_costs(frame, area, snapshot),
         Page::Help => render_help(frame, area),
     }

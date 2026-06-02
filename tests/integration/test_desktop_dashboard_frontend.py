@@ -25,9 +25,14 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     )
 
     assert "data-testid=\"command-reference\"" in source
+    assert "['themes', 'themes']" in source
+    assert "['validation', 'validation']" in source
     assert "['v', 'costs']" in source
+    assert "renderQueuePage('Themes'" in source
+    assert "renderStructuredPage('Validation'" in source
     assert "renderCosts" in source
     for command in (
+        "themes / validation / costs / features",
         "export full / export current",
         "batch SOURCE / batch SOURCE execute",
         "bars manual template/import",

@@ -121,6 +121,14 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert payload["external_calls_made"] == 0
     assert payload["surfaces"]["default"] == "tauri_desktop"
     assert any(page["key"] == "overview" for page in payload["pages"])
+    assert any(
+        page["key"] == "themes" and page["shortcut"] == "theme"
+        for page in payload["pages"]
+    )
+    assert any(
+        page["key"] == "validation" and page["shortcut"] == "valid"
+        for page in payload["pages"]
+    )
     assert any(page["key"] == "costs" and page["shortcut"] == "V" for page in payload["pages"])
     assert "workflow-nav" in payload["automation"]["landmarks"]
     assert "command-input" in payload["automation"]["landmarks"]
@@ -132,6 +140,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         "Costs" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
+        "themes or validation" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert payload["automation"]["native_window_title"] == "MarketRadar Command Center"
