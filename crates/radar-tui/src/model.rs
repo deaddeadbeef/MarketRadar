@@ -93,18 +93,19 @@ impl Page {
             .replace([' ', '-'], "_")
             .as_str()
         {
-            "0" | "start" | "tutorial" => Page::Tutorial,
-            "1" | "inbox" | "overview" | "o" => Page::Overview,
+            "0" | "learn" | "start" | "tut" | "tutorial" => Page::Tutorial,
+            "1" | "home" | "inbox" | "insight" | "insights" | "mail" | "messages" | "overview"
+            | "o" => Page::Overview,
             "2" | "readiness" | "ready" | "evidence" | "evidence_gaps" | "gaps" => Page::Readiness,
             "3" | "run" | "safe" | "safe_run" | "call_plan" | "plan" => Page::Run,
             "4" | "candidate" | "candidates" | "candidate_review" | "c" => Page::Candidates,
-            "review" | "decision" | "decisions" | "decision_ready" | "d" => Page::Review,
+            "11" | "review" | "decision" | "decisions" | "decision_ready" | "d" => Page::Review,
             "5" | "alert" | "alerts" | "a" => Page::Alerts,
             "6" | "ipo" | "s1" => Page::Ipo,
             "7" | "broker" | "b" => Page::Broker,
             "8" | "ops" => Page::Ops,
             "9" | "telemetry" | "t" => Page::Telemetry,
-            "agent" | "agents" | "brief" => Page::Agent,
+            "10" | "agent" | "agents" | "brief" => Page::Agent,
             "theme" | "themes" | "theme_row" | "theme_rows" => Page::Themes,
             "valid" | "validate" | "validation" | "value_validation" | "value-validation" => {
                 Page::Validation
@@ -304,9 +305,17 @@ mod tests {
 
     #[test]
     fn page_aliases_match_existing_dashboard_words() {
+        assert_eq!(Page::from_input("learn"), Page::Tutorial);
+        assert_eq!(Page::from_input("home"), Page::Overview);
+        assert_eq!(Page::from_input("mail"), Page::Overview);
         assert_eq!(Page::from_input("2"), Page::Readiness);
+        assert_eq!(Page::from_input("evidence-gaps"), Page::Readiness);
         assert_eq!(Page::from_input("safe-run"), Page::Run);
+        assert_eq!(Page::from_input("call-plan"), Page::Run);
+        assert_eq!(Page::from_input("candidate-review"), Page::Candidates);
+        assert_eq!(Page::from_input("11"), Page::Review);
         assert_eq!(Page::from_input("decision_ready"), Page::Review);
+        assert_eq!(Page::from_input("10"), Page::Agent);
         assert_eq!(Page::from_input("themes"), Page::Themes);
         assert_eq!(Page::from_input("value-validation"), Page::Validation);
         assert_eq!(Page::from_input("costs"), Page::Costs);
