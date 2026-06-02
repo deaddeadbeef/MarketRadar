@@ -77,6 +77,82 @@ def manifest() -> dict[str, object]:
                 "Esc focuses the command box",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
             ],
+            "native_window_title": "MarketRadar Command Center",
+            "native_executable": "target\\release\\radar-desktop.exe",
+            "computer_use_steps": [
+                {
+                    "step": "launch",
+                    "action": (
+                        "Launch the app by executable path through Computer Use, "
+                        "then select the returned window object."
+                    ),
+                    "target": "target\\release\\radar-desktop.exe",
+                    "expected": "A native window titled MarketRadar Command Center is targetable.",
+                },
+                {
+                    "step": "capture",
+                    "action": "Capture screenshot and accessibility text for the selected window.",
+                    "target": "MarketRadar Command Center",
+                    "expected": (
+                        "The window exposes MarketRadar workflow tabs, dashboard-page, "
+                        "command-input, automation-state, next-safe-action, and "
+                        "provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "focus-command",
+                    "action": "Press Escape in the dashboard window.",
+                    "target": "command-input",
+                    "expected": (
+                        "The command box receives focus and command-status reports "
+                        "command box focused."
+                    ),
+                },
+                {
+                    "step": "filter-command",
+                    "action": "Type ticker MSFT and press Return.",
+                    "target": "command-input",
+                    "expected": (
+                        "filter-ticker is MSFT, automation-state remains page=overview, "
+                        "and provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "page-command",
+                    "action": "Type ready and press Return.",
+                    "target": "command-input",
+                    "expected": (
+                        "dashboard-page reports page=review and the selected tab is "
+                        "Review."
+                    ),
+                },
+                {
+                    "step": "guarded-command",
+                    "action": "Type batch catalyst_events and press Return.",
+                    "target": "command-input",
+                    "expected": (
+                        "dashboard-page reports page=ops, command-status shows an "
+                        "external command boundary, and provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "json-command",
+                    "action": "Type json and press Return.",
+                    "target": "snapshot-json",
+                    "expected": "Raw JSON snapshot opens for inspection without provider calls.",
+                },
+            ],
+            "zero_call_assertions": [
+                (
+                    "Dashboard browsing, command-box navigation, filtering, copy, "
+                    "and raw JSON inspection must leave provider_calls=0."
+                ),
+                (
+                    "Execute-class commands must show the external PowerShell command "
+                    "boundary instead of running provider, OpenAI, broker, or DB-write "
+                    "actions from the desktop command box."
+                ),
+            ],
         },
         "data_contract": {
             "snapshot_endpoint": "/api/dashboard/snapshot?fast=true",

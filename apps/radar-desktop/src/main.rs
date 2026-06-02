@@ -32,7 +32,19 @@ struct AutomationManifest {
     contract_version: &'static str,
     landmark_test_ids: Vec<&'static str>,
     keyboard_shortcuts: Vec<&'static str>,
+    native_window_title: &'static str,
+    native_executable: &'static str,
+    computer_use_steps: Vec<ComputerUseStep>,
+    zero_call_assertions: Vec<&'static str>,
     notes: Vec<&'static str>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ComputerUseStep {
+    step: &'static str,
+    action: &'static str,
+    target: &'static str,
+    expected: &'static str,
 }
 
 struct DesktopState {
@@ -351,6 +363,13 @@ fn automation_manifest() -> AutomationManifest {
             "Esc focuses the command box",
             "Command box accepts safe page, filter, refresh, help, and JSON commands",
         ],
+        native_window_title: "MarketRadar Command Center",
+        native_executable: "target\\release\\radar-desktop.exe",
+        computer_use_steps: computer_use_steps(),
+        zero_call_assertions: vec![
+            "Dashboard browsing, command-box navigation, filtering, copy, and raw JSON inspection must leave provider_calls=0.",
+            "Execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
+        ],
         notes: vec![
             "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
             "The current page title is exposed through data-testid=page-title.",
@@ -360,6 +379,53 @@ fn automation_manifest() -> AutomationManifest {
             "Execute-class commands remain external and require the normal PowerShell command boundary.",
         ],
     }
+}
+
+fn computer_use_steps() -> Vec<ComputerUseStep> {
+    vec![
+        ComputerUseStep {
+            step: "launch",
+            action: "Launch the app by executable path through Computer Use, then select the returned window object.",
+            target: "target\\release\\radar-desktop.exe",
+            expected: "A native window titled MarketRadar Command Center is targetable.",
+        },
+        ComputerUseStep {
+            step: "capture",
+            action: "Capture screenshot and accessibility text for the selected window.",
+            target: "MarketRadar Command Center",
+            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, automation-state, next-safe-action, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "focus-command",
+            action: "Press Escape in the dashboard window.",
+            target: "command-input",
+            expected: "The command box receives focus and command-status reports command box focused.",
+        },
+        ComputerUseStep {
+            step: "filter-command",
+            action: "Type ticker MSFT and press Return.",
+            target: "command-input",
+            expected: "filter-ticker is MSFT, automation-state remains page=overview, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "page-command",
+            action: "Type ready and press Return.",
+            target: "command-input",
+            expected: "dashboard-page reports page=review and the selected tab is Review.",
+        },
+        ComputerUseStep {
+            step: "guarded-command",
+            action: "Type batch catalyst_events and press Return.",
+            target: "command-input",
+            expected: "dashboard-page reports page=ops, command-status shows an external command boundary, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "json-command",
+            action: "Type json and press Return.",
+            target: "snapshot-json",
+            expected: "Raw JSON snapshot opens for inspection without provider calls.",
+        },
+    ]
 }
 
 #[cfg(test)]
@@ -393,6 +459,29 @@ mod tests {
                 .keyboard_shortcuts
                 .iter()
                 .any(|shortcut| shortcut.contains("command box"))
+        );
+    }
+
+    #[test]
+    fn automation_manifest_exposes_native_computer_use_recipe() {
+        let manifest = automation_manifest();
+
+        assert_eq!(manifest.native_window_title, "MarketRadar Command Center");
+        assert_eq!(
+            manifest.native_executable,
+            "target\\release\\radar-desktop.exe"
+        );
+        assert!(
+            manifest
+                .computer_use_steps
+                .iter()
+                .any(|step| step.step == "guarded-command")
+        );
+        assert!(
+            manifest
+                .zero_call_assertions
+                .iter()
+                .any(|assertion| assertion.contains("provider_calls=0"))
         );
     }
 }

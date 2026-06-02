@@ -128,6 +128,18 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         "command box" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
+    assert payload["automation"]["native_window_title"] == "MarketRadar Command Center"
+    assert payload["automation"]["native_executable"].endswith(
+        "radar-desktop.exe"
+    )
+    assert any(
+        step["step"] == "guarded-command"
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        "provider_calls=0" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")
 
 def _database_url(tmp_path, filename: str) -> str:
