@@ -14,12 +14,13 @@ pub enum Page {
     Ops,
     Telemetry,
     Agent,
+    Costs,
     Features,
     Help,
 }
 
 impl Page {
-    pub const ALL: [Page; 14] = [
+    pub const ALL: [Page; 15] = [
         Page::Tutorial,
         Page::Overview,
         Page::Readiness,
@@ -32,6 +33,7 @@ impl Page {
         Page::Ops,
         Page::Telemetry,
         Page::Agent,
+        Page::Costs,
         Page::Features,
         Page::Help,
     ];
@@ -50,6 +52,7 @@ impl Page {
             Page::Ops => "ops",
             Page::Telemetry => "telemetry",
             Page::Agent => "agent",
+            Page::Costs => "costs",
             Page::Features => "features",
             Page::Help => "help",
         }
@@ -69,6 +72,7 @@ impl Page {
             Page::Ops => "8 Ops",
             Page::Telemetry => "9 Telemetry",
             Page::Agent => "Ctrl+A Agent",
+            Page::Costs => "Costs",
             Page::Features => "F Features",
             Page::Help => "? Help",
         }
@@ -93,6 +97,7 @@ impl Page {
             "8" | "ops" => Page::Ops,
             "9" | "telemetry" | "t" => Page::Telemetry,
             "agent" | "agents" | "brief" => Page::Agent,
+            "cost" | "costs" | "value" | "value_report" | "value-report" => Page::Costs,
             "f" | "features" => Page::Features,
             "?" | "h" | "help" => Page::Help,
             _ => Page::Overview,
@@ -290,6 +295,7 @@ mod tests {
         assert_eq!(Page::from_input("2"), Page::Readiness);
         assert_eq!(Page::from_input("safe-run"), Page::Run);
         assert_eq!(Page::from_input("decision_ready"), Page::Review);
+        assert_eq!(Page::from_input("costs"), Page::Costs);
         assert_eq!(Page::from_input("F"), Page::Features);
     }
 
