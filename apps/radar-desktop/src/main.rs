@@ -350,6 +350,7 @@ fn automation_manifest() -> AutomationManifest {
             "attention-queue",
             "next-safe-action",
             "snapshot-json",
+            "snapshot-json-output",
         ],
         keyboard_shortcuts: vec![
             "0-9 jump to numbered workflow pages",
@@ -422,8 +423,8 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
         ComputerUseStep {
             step: "json-command",
             action: "Type json and press Return.",
-            target: "snapshot-json",
-            expected: "Raw JSON snapshot opens for inspection without provider calls.",
+            target: "snapshot-json-output",
+            expected: "Raw JSON snapshot opens, focus moves to snapshot-json-output, and provider_calls=0.",
         },
     ]
 }
@@ -454,6 +455,7 @@ mod tests {
 
         assert!(manifest.landmark_test_ids.contains(&"command-input"));
         assert!(manifest.landmark_test_ids.contains(&"automation-state"));
+        assert!(manifest.landmark_test_ids.contains(&"snapshot-json-output"));
         assert!(
             manifest
                 .keyboard_shortcuts

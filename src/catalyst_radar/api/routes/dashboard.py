@@ -66,6 +66,7 @@ def manifest() -> dict[str, object]:
                 "attention-queue",
                 "next-safe-action",
                 "snapshot-json",
+                "snapshot-json-output",
             ],
             "keyboard_shortcuts": [
                 "0-9 jump to numbered workflow pages",
@@ -138,8 +139,11 @@ def manifest() -> dict[str, object]:
                 {
                     "step": "json-command",
                     "action": "Type json and press Return.",
-                    "target": "snapshot-json",
-                    "expected": "Raw JSON snapshot opens for inspection without provider calls.",
+                    "target": "snapshot-json-output",
+                    "expected": (
+                        "Raw JSON snapshot opens, focus moves to "
+                        "snapshot-json-output, and provider_calls=0."
+                    ),
                 },
             ],
             "zero_call_assertions": [
