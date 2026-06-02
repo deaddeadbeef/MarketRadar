@@ -79,6 +79,13 @@ struct DesktopArgs {
     snapshot_command: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PageRequest {
+    snapshot_page: Page,
+    selected_page: String,
+    detail_ticker: Option<String>,
+}
+
 #[tauri::command]
 fn desktop_config(state: State<'_, DesktopState>) -> DesktopConfig {
     state.config.clone()
@@ -89,18 +96,23 @@ fn dashboard_snapshot(
     state: State<'_, DesktopState>,
     input: SnapshotInput,
 ) -> Result<Value, String> {
-    let page = Page::from_input(
+    let page_request = page_request(
         input
             .page
             .as_deref()
             .unwrap_or(state.config.initial_page.as_str()),
     );
+    let mut filters = snapshot_filters(input);
+    if let Some(ticker) = page_request.detail_ticker.clone() {
+        filters.ticker = Some(ticker);
+        filters.scan_offset = 0;
+    }
     let request = SnapshotRequest {
-        page,
-        filters: snapshot_filters(input),
+        page: page_request.snapshot_page,
+        filters,
     };
     let mut value = fetch_snapshot(&state.source, &request).map_err(|err| err.to_string())?;
-    ensure_selected_page(&mut value, page.key());
+    ensure_selected_page(&mut value, &page_request.selected_page);
     if let Ok(mut last_snapshot) = state.last_snapshot.lock() {
         *last_snapshot = Some(value.clone());
     }
@@ -175,6 +187,40 @@ fn ensure_selected_page(value: &mut Value, page: &str) {
             *value = Value::Object(object);
         }
     }
+}
+
+fn page_request(raw_page: &str) -> PageRequest {
+    let trimmed = raw_page.trim();
+    if let Some(ticker) = detail_suffix(trimmed, "candidate:") {
+        let ticker = ticker.to_ascii_uppercase();
+        return PageRequest {
+            snapshot_page: Page::Overview,
+            selected_page: format!("candidate:{ticker}"),
+            detail_ticker: Some(ticker),
+        };
+    }
+    if let Some(alert_id) = detail_suffix(trimmed, "alert:") {
+        return PageRequest {
+            snapshot_page: Page::Alerts,
+            selected_page: format!("alert:{alert_id}"),
+            detail_ticker: None,
+        };
+    }
+    let page = Page::from_input(trimmed);
+    PageRequest {
+        snapshot_page: page,
+        selected_page: page.key().to_string(),
+        detail_ticker: None,
+    }
+}
+
+fn detail_suffix<'a>(raw_page: &'a str, prefix: &str) -> Option<&'a str> {
+    raw_page
+        .get(..prefix.len())
+        .filter(|head| head.eq_ignore_ascii_case(prefix))
+        .and_then(|_| raw_page.get(prefix.len()..))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 fn snapshot_source(args: &DesktopArgs, repo_root: &Path) -> SnapshotSource {
@@ -492,6 +538,33 @@ mod tests {
                 .iter()
                 .any(|shortcut| shortcut.contains("command box"))
         );
+    }
+
+    #[test]
+    fn page_request_preserves_candidate_detail_refresh() {
+        let request = page_request(" candidate:msft ");
+
+        assert_eq!(request.snapshot_page, Page::Overview);
+        assert_eq!(request.selected_page, "candidate:MSFT");
+        assert_eq!(request.detail_ticker.as_deref(), Some("MSFT"));
+    }
+
+    #[test]
+    fn page_request_preserves_alert_detail_refresh() {
+        let request = page_request(" Alert:demo-alert-1 ");
+
+        assert_eq!(request.snapshot_page, Page::Alerts);
+        assert_eq!(request.selected_page, "alert:demo-alert-1");
+        assert_eq!(request.detail_ticker, None);
+    }
+
+    #[test]
+    fn page_request_canonicalizes_normal_page_aliases() {
+        let request = page_request("safe-run");
+
+        assert_eq!(request.snapshot_page, Page::Run);
+        assert_eq!(request.selected_page, "run");
+        assert_eq!(request.detail_ticker, None);
     }
 
     #[test]
