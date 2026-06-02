@@ -17,23 +17,108 @@ from catalyst_radar.storage.db import create_schema, engine_from_url
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
-    {"key": "tutorial", "label": "0 Start", "shortcut": "0"},
-    {"key": "overview", "label": "1 Inbox", "shortcut": "1"},
-    {"key": "readiness", "label": "2 Evidence Gaps", "shortcut": "2"},
-    {"key": "run", "label": "3 Safe Run", "shortcut": "3"},
-    {"key": "candidates", "label": "4 Candidate Review", "shortcut": "4"},
-    {"key": "review", "label": "Review", "shortcut": "D"},
-    {"key": "alerts", "label": "5 Alerts", "shortcut": "5"},
-    {"key": "ipo", "label": "6 IPO/S-1", "shortcut": "6"},
-    {"key": "broker", "label": "7 Broker", "shortcut": "7"},
-    {"key": "ops", "label": "8 Ops", "shortcut": "8"},
-    {"key": "telemetry", "label": "9 Telemetry", "shortcut": "9"},
-    {"key": "agent", "label": "Ctrl+A Agent", "shortcut": "Ctrl+A"},
-    {"key": "themes", "label": "Themes", "shortcut": "theme"},
-    {"key": "validation", "label": "Validation", "shortcut": "valid"},
-    {"key": "costs", "label": "V Costs", "shortcut": "V"},
-    {"key": "features", "label": "F Features", "shortcut": "F"},
-    {"key": "help", "label": "? Help", "shortcut": "?"},
+    {
+        "key": "tutorial",
+        "label": "0 Start",
+        "shortcut": "0",
+        "description": "First-run path and safe operating boundary.",
+    },
+    {
+        "key": "overview",
+        "label": "1 Inbox",
+        "shortcut": "1",
+        "description": "Inbox, status, first blocker, and next safe action.",
+    },
+    {
+        "key": "readiness",
+        "label": "2 Evidence Gaps",
+        "shortcut": "2",
+        "description": "Evidence gaps and setup blockers before relying on output.",
+    },
+    {
+        "key": "run",
+        "label": "3 Safe Run",
+        "shortcut": "3",
+        "description": "Safe run plan, provider-call budget, and execution gates.",
+    },
+    {
+        "key": "candidates",
+        "label": "4 Candidate Review",
+        "shortcut": "4",
+        "description": "Candidate queue with source and decision gaps.",
+    },
+    {
+        "key": "review",
+        "label": "Review",
+        "shortcut": "D",
+        "description": "Decision-ready rows filtered to useful review candidates.",
+    },
+    {
+        "key": "alerts",
+        "label": "5 Alerts",
+        "shortcut": "5",
+        "description": "Research alerts and routing status.",
+    },
+    {
+        "key": "ipo",
+        "label": "6 IPO/S-1",
+        "shortcut": "6",
+        "description": "IPO/S-1 catalyst evidence rows.",
+    },
+    {
+        "key": "broker",
+        "label": "7 Broker",
+        "shortcut": "7",
+        "description": "Read-only broker and portfolio context.",
+    },
+    {
+        "key": "ops",
+        "label": "8 Ops",
+        "shortcut": "8",
+        "description": "Provider health, runtime context, and run diagnostics.",
+    },
+    {
+        "key": "telemetry",
+        "label": "9 Telemetry",
+        "shortcut": "9",
+        "description": "Audit tape and telemetry coverage.",
+    },
+    {
+        "key": "agent",
+        "label": "Ctrl+A Agent",
+        "shortcut": "Ctrl+A",
+        "description": "Zero-call agent preview and gated OpenAI execution status.",
+    },
+    {
+        "key": "themes",
+        "label": "Themes",
+        "shortcut": "theme",
+        "description": "Clustered catalyst patterns and repeated theme context.",
+    },
+    {
+        "key": "validation",
+        "label": "Validation",
+        "shortcut": "valid",
+        "description": "Shadow, paper, and value validation evidence.",
+    },
+    {
+        "key": "costs",
+        "label": "Costs",
+        "shortcut": "V",
+        "description": "Value ledger, outcomes, validation, and cost evidence.",
+    },
+    {
+        "key": "features",
+        "label": "F Features",
+        "shortcut": "F",
+        "description": "Feature inventory and where each feature lives.",
+    },
+    {
+        "key": "help",
+        "label": "? Help",
+        "shortcut": "?",
+        "description": "Keyboard, automation, and command reference.",
+    },
 )
 
 
@@ -42,6 +127,15 @@ def _engine():
     create_schema(engine)
     return engine
 
+
+def _desktop_pages() -> list[dict[str, str]]:
+    return [
+        {
+            **page,
+            "test_id": f"nav-page-{page['key']}",
+        }
+        for page in DASHBOARD_DESKTOP_PAGES
+    ]
 
 
 @router.get("/manifest", dependencies=[Depends(require_role(Role.VIEWER))])
@@ -54,7 +148,7 @@ def manifest() -> dict[str, object]:
             "terminal": "rust_tui",
             "legacy": "python_textual",
         },
-        "pages": list(DASHBOARD_DESKTOP_PAGES),
+        "pages": _desktop_pages(),
         "automation": {
             "contract_version": "market-radar-desktop-automation-v1",
             "landmarks": [
@@ -80,6 +174,7 @@ def manifest() -> dict[str, object]:
                 "? opens Help",
                 "Arrow keys move through workflow pages",
                 "F5 refreshes the local snapshot",
+                "Home opens Start, End opens Help",
                 "Esc focuses the command box",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
                 (

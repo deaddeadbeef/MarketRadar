@@ -70,3 +70,26 @@ def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     assert "page: `alert:${alertId}`" in source
     assert "Opened candidate ${ticker}. No calls." in source
     assert "Opened alert ${alertId}. No calls." in source
+
+
+def test_tauri_dashboard_command_aliases_cover_legacy_page_words() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    for alias in (
+        "['learn', 'tutorial']",
+        "['home', 'overview']",
+        "['mail', 'overview']",
+        "['evidence_gaps', 'readiness']",
+        "['call_plan', 'run']",
+        "['safe_run', 'run']",
+        "['candidate_review', 'candidates']",
+        "['11', 'review']",
+        "['decision_ready', 'review']",
+        "['10', 'agent']",
+        "['theme_rows', 'themes']",
+        "['value_validation', 'validation']",
+        "['value_report', 'costs']",
+    ):
+        assert alias in source
