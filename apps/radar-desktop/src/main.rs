@@ -132,10 +132,9 @@ fn main() {
     let args = parse_args(env::args().skip(1));
     let repo_root = find_repo_root().unwrap_or_else(|| env::current_dir().unwrap_or_default());
     let source = snapshot_source(&args, &repo_root);
-    let initial_page = Page::from_input(args.page.as_deref().unwrap_or("overview"));
     let config = DesktopConfig {
         app_name: "MarketRadar",
-        initial_page: initial_page.key().to_string(),
+        initial_page: initial_page_key(args.page.as_deref()),
         source_label: source.label(),
         repo_root: repo_root.display().to_string(),
         pages: page_infos(),
@@ -187,6 +186,10 @@ fn ensure_selected_page(value: &mut Value, page: &str) {
             *value = Value::Object(object);
         }
     }
+}
+
+fn initial_page_key(raw_page: Option<&str>) -> String {
+    page_request(raw_page.unwrap_or("overview")).selected_page
 }
 
 fn page_request(raw_page: &str) -> PageRequest {
@@ -565,6 +568,25 @@ mod tests {
         assert_eq!(request.snapshot_page, Page::Run);
         assert_eq!(request.selected_page, "run");
         assert_eq!(request.detail_ticker, None);
+    }
+
+    #[test]
+    fn initial_page_key_preserves_candidate_detail_arg() {
+        assert_eq!(initial_page_key(Some(" candidate:msft ")), "candidate:MSFT");
+    }
+
+    #[test]
+    fn initial_page_key_preserves_alert_detail_arg() {
+        assert_eq!(
+            initial_page_key(Some(" Alert:demo-alert-1 ")),
+            "alert:demo-alert-1"
+        );
+    }
+
+    #[test]
+    fn initial_page_key_canonicalizes_normal_page_aliases() {
+        assert_eq!(initial_page_key(Some("safe-run")), "run");
+        assert_eq!(initial_page_key(None), "overview");
     }
 
     #[test]
