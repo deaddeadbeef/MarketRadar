@@ -124,6 +124,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert "workflow-nav" in payload["automation"]["landmarks"]
     assert "command-input" in payload["automation"]["landmarks"]
     assert "automation-state" in payload["automation"]["landmarks"]
+    assert "snapshot-json-output" in payload["automation"]["landmarks"]
     assert any(
         "command box" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
@@ -134,6 +135,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         step["step"] == "guarded-command"
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "json-command"
+        and step["target"] == "snapshot-json-output"
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(

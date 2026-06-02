@@ -460,7 +460,15 @@ function rawJsonPanel(snapshot) {
     <section class="panel wide" data-testid="snapshot-json">
       <details>
         <summary>Raw JSON snapshot</summary>
-        <pre class="raw-json">${escapeHtml(JSON.stringify(snapshot, null, 2))}</pre>
+        <pre
+          id="snapshot-json-output"
+          class="raw-json"
+          data-testid="snapshot-json-output"
+          tabindex="0"
+          role="textbox"
+          aria-label="Raw JSON dashboard snapshot"
+          aria-readonly="true"
+        >${escapeHtml(JSON.stringify(snapshot, null, 2))}</pre>
       </details>
     </section>
   `;
@@ -471,8 +479,8 @@ async function handleCommandSubmit(event) {
   const input = qs('#command-input');
   const raw = input.value.trim();
   input.value = '';
-  await applyCommand(raw);
-  input.focus();
+  const shouldFocusCommand = await applyCommand(raw);
+  if (shouldFocusCommand !== false) input.focus();
 }
 
 async function handleCommandInputKeydown(event) {
@@ -637,9 +645,9 @@ async function applyCommand(raw) {
   }
   if (['j', 'json'].includes(command)) {
     qs('details')?.setAttribute('open', 'open');
-    qs('.raw-json')?.focus?.();
+    qs('#snapshot-json-output')?.focus?.();
     setCommandStatus('Raw JSON opened.');
-    return;
+    return false;
   }
   if (command === 'open') {
     setCommandStatus(openCommandMessage(value));
