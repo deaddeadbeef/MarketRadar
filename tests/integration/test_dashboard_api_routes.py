@@ -122,6 +122,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert payload["surfaces"]["default"] == "tauri_desktop"
     assert any(page["key"] == "overview" for page in payload["pages"])
     assert "workflow-nav" in payload["automation"]["landmarks"]
+    assert "command-input" in payload["automation"]["landmarks"]
+    assert "automation-state" in payload["automation"]["landmarks"]
+    assert any(
+        "command box" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")
 
 def _database_url(tmp_path, filename: str) -> str:
