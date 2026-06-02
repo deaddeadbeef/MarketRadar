@@ -11,6 +11,8 @@ const state = {
   decisionGap: [],
   usefulness: null,
   availableAt: null,
+  alertStatus: null,
+  alertRoute: null,
 };
 
 const keyAliases = new Map([
@@ -34,6 +36,10 @@ const keyAliases = new Map([
   ['i', 'ipo'],
   ['b', 'broker'],
   ['t', 'telemetry'],
+  ['v', 'costs'],
+  ['cost', 'costs'],
+  ['costs', 'costs'],
+  ['value', 'costs'],
   ['f', 'features'],
   ['h', 'help'],
   ['?', 'help'],
@@ -46,6 +52,7 @@ const pagePaths = {
   ops: [['ops_health'], ['runtime_context'], ['provider_preflight']],
   telemetry: [['telemetry'], ['telemetry_coverage'], ['raw_telemetry']],
   agent: [['agent_brief'], ['runtime_context']],
+  costs: [['costs'], ['value_ledger'], ['value_outcomes'], ['value_report']],
 };
 
 const executeClassCommands = new Set([
@@ -64,6 +71,34 @@ const executeClassCommands = new Set([
   'ticket',
   'trigger',
 ]);
+
+const commandReference = [
+  ['0..9, Ctrl+A, V, F, ?, or page name', 'Switch pages; Ctrl+A opens Agent and V opens Costs.'],
+  ['features', 'List current MarketRadar features and where they live.'],
+  ['setup / first', 'Show the first setup command and where to run it.'],
+  ['open #|TICKER', 'Open a row from Candidate Review or show its next command.'],
+  ['ticker SYMBOL|all', 'Filter ticker-aware pages.'],
+  ['available-at ISO|latest', 'Set or clear the point-in-time cutoff.'],
+  ['ready / full / mismatches / stocks', 'Switch between decision-useful, full universe, mismatch, and stock-only scan views.'],
+  ['usefulness STATUS|all', 'Filter Inbox by usefulness verdict.'],
+  ['source-gap SOURCE|all', 'Filter Inbox by missing or stale source evidence.'],
+  ['decision-gap GAP|all', 'Filter Inbox by missing decision evidence.'],
+  ['next / prev / offset ROW / limit 1-200', 'Page through current Inbox scan rows.'],
+  ['export full / export current', 'Show JSON export commands without running them.'],
+  ['batch SOURCE / batch SOURCE execute', 'Plan source fills or show the external execution boundary.'],
+  ['bars manual template/import', 'Show market-bar repair command boundaries.'],
+  ['bars saved capture/validate/import', 'Show saved grouped-daily command boundaries.'],
+  ['options template/validate/import', 'Show point-in-time options command boundaries.'],
+  ['cik template/validate/import', 'Show SEC CIK override command boundaries.'],
+  ['agent / agent execute', 'Preview agent gates or show the OpenAI execution boundary.'],
+  ['alert-status STATUS|all / alert-route ROUTE|all', 'Filter alerts.'],
+  ['run / run execute', 'Open Safe Run or show the capped run execution boundary.'],
+  ['action / trigger / ticket / feedback', 'Show local write boundaries on Broker or Alerts.'],
+  ['ledger coverage / record', 'Open Costs or show the value-ledger write boundary.'],
+  ['outcome coverage / update', 'Open Costs or show the value-outcome write boundary.'],
+  ['json', 'Open and focus the raw JSON snapshot.'],
+  ['clear-filters / refresh / q', 'Reset filters, reload, or close the native window.'],
+];
 
 function qs(selector) {
   return document.querySelector(selector);
@@ -221,6 +256,8 @@ function filterInput() {
     page: state.page,
     ticker: qs('#filter-ticker').value.trim() || null,
     available_at: state.availableAt,
+    alert_status: state.alertStatus,
+    alert_route: state.alertRoute,
     priced_in_status: qs('#filter-scan-mode').value,
     usefulness: state.usefulness,
     source_gap: state.sourceGap,
@@ -287,6 +324,7 @@ function renderContent(snapshot) {
     ops: () => renderStructuredPage('Ops', pagePaths.ops),
     telemetry: renderTelemetry,
     agent: () => renderStructuredPage('Agent', pagePaths.agent),
+    costs: renderCosts,
     features: renderFeatures,
     help: renderHelp,
   };
@@ -433,6 +471,20 @@ const telemetryColumns = [
   { label: 'Reason', value: (row) => compact(row.reason || row.occurred_at || row.created_at) },
 ];
 
+function renderCosts(snapshot) {
+  return `
+    <section class="panel wide" data-testid="costs-panel">
+      <h2>Costs</h2>
+      <div class="stack">
+        ${objectPanel('costs', at(snapshot, ['costs'], null))}
+        ${objectPanel('value ledger', at(snapshot, ['value_ledger'], null))}
+        ${objectPanel('value outcomes', at(snapshot, ['value_outcomes'], null))}
+        ${objectPanel('value report', at(snapshot, ['value_report'], null))}
+      </div>
+    </section>
+  `;
+}
+
 function renderFeatures(snapshot) {
   const rows = featureRows(snapshot);
   return queuePanel('Features', rows, [
@@ -450,6 +502,17 @@ function renderHelp() {
       <h2>Keyboard And Automation</h2>
       <div class="kv-grid">
         ${shortcuts.map((item, index) => `<div class="kv"><span>Shortcut ${index + 1}</span><b>${escapeHtml(item)}</b></div>`).join('')}
+      </div>
+      <div class="table-wrap command-reference" data-testid="command-reference">
+        <table aria-label="Dashboard command reference">
+          <thead><tr><th>Command</th><th>Meaning</th></tr></thead>
+          <tbody>${commandReference.map(([command, meaning]) => `
+            <tr>
+              <td class="ticker">${escapeHtml(command)}</td>
+              <td>${escapeHtml(meaning)}</td>
+            </tr>
+          `).join('')}</tbody>
+        </table>
       </div>
     </section>
   `;
@@ -564,6 +627,10 @@ async function applyCommand(raw) {
     }
     return;
   }
+  if (command === 'export') {
+    setCommandStatus(exportCommandMessage(value));
+    return;
+  }
   if (['next', 'more'].includes(command)) {
     const limit = Math.max(1, Number(qs('#filter-limit').value || 50));
     state.scanOffset += limit;
@@ -637,6 +704,18 @@ async function applyCommand(raw) {
     await refreshSnapshot();
     return;
   }
+  if (command === 'alert-status') {
+    state.alertStatus = ['', 'all', 'none'].includes(value) ? null : value;
+    setCommandStatus(state.alertStatus ? `Alert status: ${state.alertStatus}.` : 'Alert-status filter cleared.');
+    await setPage('alerts');
+    return;
+  }
+  if (command === 'alert-route') {
+    state.alertRoute = ['', 'all', 'none'].includes(value) ? null : value;
+    setCommandStatus(state.alertRoute ? `Alert route: ${state.alertRoute}.` : 'Alert-route filter cleared.');
+    await setPage('alerts');
+    return;
+  }
   if (['clear', 'clear-filters', 'reset'].includes(command)) {
     clearFilters();
     setCommandStatus('Filters cleared.');
@@ -651,6 +730,11 @@ async function applyCommand(raw) {
   }
   if (command === 'open') {
     setCommandStatus(openCommandMessage(value));
+    return;
+  }
+  if (['ledger', 'value-ledger', 'value_ledger', 'outcome', 'outcomes', 'value-outcome', 'value_outcome'].includes(command)) {
+    setCommandStatus(costCommandMessage(command, value));
+    await setPage('costs');
     return;
   }
   const guardedMessage = guardedCommandMessage(normalized);
@@ -676,6 +760,8 @@ function clearFilters() {
   qs('#filter-stocks-only').checked = false;
   qs('#filter-limit').value = '50';
   state.availableAt = null;
+  state.alertStatus = null;
+  state.alertRoute = null;
   state.sourceGap = [];
   state.decisionGap = [];
   state.usefulness = null;
@@ -712,12 +798,62 @@ function openCommandMessage(value) {
   return `${ticker}: ${command}`;
 }
 
+function exportCommandMessage(value) {
+  const mode = value.toLowerCase();
+  const scanScope = at(state.snapshot || {}, ['priced_in_answer', 'scan_scope'], {});
+  if (['', 'full', 'full-scan', 'scan', 'all'].includes(mode)) {
+    const command = compact(
+      scanScope?.full_scan_export_command,
+      'catalyst-radar priced-in-queue --full-scan --all --json'
+    );
+    return `Full-scan export command: ${command}`;
+  }
+  if (['current', 'filter', 'filtered'].includes(mode)) {
+    const command = compact(
+      scanScope?.current_filter_export_command,
+      'catalyst-radar priced-in-queue --all --json'
+    );
+    return `Current-filter export command: ${command}`;
+  }
+  return 'Usage: export full or export current. No calls made.';
+}
+
+function costCommandMessage(command, value) {
+  const family = command.includes('outcome') ? 'outcome' : 'ledger';
+  const action = value.split(' ')[0] || 'coverage';
+  if (family === 'ledger') {
+    if (['', 'coverage', 'summary', 'list', 'show'].includes(action)) {
+      return 'Opened Costs. Review value-ledger coverage and entries from the local snapshot.';
+    }
+    return 'Value-ledger writes stay outside dashboard browsing. Run the matching ledger command in PowerShell only after reviewing the write boundary.';
+  }
+  if (['', 'coverage', 'list', 'show'].includes(action)) {
+    return 'Opened Costs. Review value-outcome coverage and rows from the local snapshot.';
+  }
+  return 'Value-outcome writes stay outside dashboard browsing. Run the matching outcome command in PowerShell only after reviewing the write boundary.';
+}
+
 function guardedCommandMessage(normalized) {
   const first = normalized.split(' ')[0];
   if (executeClassCommands.has(normalized) || normalized.includes(' execute')) {
     return 'Execute commands stay outside dashboard browsing. Copy the displayed command and run it in PowerShell after reviewing call/write boundaries.';
   }
-  if (['agent', 'bars', 'batch', 'batches', 'cik', 'options', 'run'].includes(first)) {
+  if ([
+    'action',
+    'agent',
+    'bars',
+    'batch',
+    'batches',
+    'cik',
+    'eval-triggers',
+    'evaluate-triggers',
+    'feedback',
+    'options',
+    'run',
+    'sec',
+    'ticket',
+    'trigger',
+  ].includes(first)) {
     const nextCommand = compact(state.snapshot?.next_command || state.snapshot?.canonical_next_command, 'catalyst-radar dashboard-snapshot --json --fast');
     return `Review command boundary. Suggested external command: ${nextCommand}`;
   }
@@ -727,7 +863,9 @@ function guardedCommandMessage(normalized) {
 function guardedCommandPage(command) {
   if (command === 'agent') return 'agent';
   if (['bars', 'options', 'run'].includes(command)) return 'run';
-  if (['batch', 'batches', 'cik'].includes(command)) return 'ops';
+  if (['batch', 'batches', 'cik', 'sec'].includes(command)) return 'ops';
+  if (['action', 'eval-triggers', 'evaluate-triggers', 'ticket', 'trigger'].includes(command)) return 'broker';
+  if (command === 'feedback') return 'alerts';
   return null;
 }
 

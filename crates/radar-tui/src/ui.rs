@@ -224,6 +224,7 @@ fn render_page(frame: &mut Frame<'_>, area: Rect, app: &DashboardApp) {
             " TELEMETRY ",
         ),
         Page::Agent => render_object_summary(frame, area, snapshot, &["agent_brief"], " AGENT "),
+        Page::Costs => render_costs(frame, area, snapshot),
         Page::Help => render_help(frame, area),
     }
 }
@@ -736,6 +737,41 @@ fn render_object_summary(
             .wrap(Wrap { trim: false })
             .block(dashboard_block(title, CYAN).padding(Padding::new(1, 1, 0, 0))),
         area,
+    );
+}
+
+fn render_costs(frame: &mut Frame<'_>, area: Rect, snapshot: &SnapshotView) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+        ])
+        .split(area);
+
+    render_object_summary(frame, chunks[0], snapshot, &["costs"], " COSTS ");
+    render_object_summary(
+        frame,
+        chunks[1],
+        snapshot,
+        &["value_ledger"],
+        " VALUE LEDGER ",
+    );
+    render_object_summary(
+        frame,
+        chunks[2],
+        snapshot,
+        &["value_outcomes"],
+        " VALUE OUTCOMES ",
+    );
+    render_object_summary(
+        frame,
+        chunks[3],
+        snapshot,
+        &["value_report"],
+        " VALUE REPORT ",
     );
 }
 

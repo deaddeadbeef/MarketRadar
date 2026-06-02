@@ -256,6 +256,7 @@ fn plain_key_action(value: char) -> KeyAction {
         'i' => KeyAction::Jump(Page::Ipo),
         'b' => KeyAction::Jump(Page::Broker),
         't' => KeyAction::Jump(Page::Telemetry),
+        'v' => KeyAction::Jump(Page::Costs),
         'f' => KeyAction::Jump(Page::Features),
         'h' => KeyAction::Jump(Page::Help),
         _ => KeyAction::None,
@@ -370,6 +371,10 @@ mod tests {
         assert_eq!(
             key_action(press(KeyCode::Char('h'))),
             KeyAction::Jump(Page::Help)
+        );
+        assert_eq!(
+            key_action(press(KeyCode::Char('v'))),
+            KeyAction::Jump(Page::Costs)
         );
     }
 
