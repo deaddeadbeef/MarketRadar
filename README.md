@@ -571,6 +571,14 @@ launch it with `--api-base-url` instead. The UI exposes stable landmarks,
 Use can click, navigate, filter, refresh, copy the next command, and inspect
 raw JSON evidence deterministically.
 
+The desktop footer includes the same safe command-box path as the terminal
+dashboard for browsing work: `now`, `help`, `refresh`, page names, `ticker
+SYMBOL`, `ready`, `mismatches`, `source-gap SOURCE`, `decision-gap GAP`, `next`,
+`prev`, `limit 1-200`, and `json`. Press `Esc` to focus it. Commands that can
+write data or make provider/OpenAI calls stay behind the existing PowerShell
+command boundary; the desktop command box reports the command to review instead
+of executing it implicitly.
+
 Manual launch commands are also available:
 
 ```powershell

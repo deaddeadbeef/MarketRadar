@@ -6,6 +6,11 @@ const state = {
   page: 'overview',
   loading: false,
   lastRefresh: null,
+  scanOffset: 0,
+  sourceGap: [],
+  decisionGap: [],
+  usefulness: null,
+  availableAt: null,
 };
 
 const keyAliases = new Map([
@@ -42,6 +47,23 @@ const pagePaths = {
   telemetry: [['telemetry'], ['telemetry_coverage'], ['raw_telemetry']],
   agent: [['agent_brief'], ['runtime_context']],
 };
+
+const executeClassCommands = new Set([
+  'action',
+  'agent execute',
+  'bars manual import execute',
+  'bars saved capture confirm',
+  'bars saved import execute',
+  'batch execute',
+  'cik import execute',
+  'feedback',
+  'ledger record',
+  'options import execute',
+  'outcome update',
+  'run execute',
+  'ticket',
+  'trigger',
+]);
 
 function qs(selector) {
   return document.querySelector(selector);
@@ -128,6 +150,8 @@ function bindControls() {
   qs('#apply-filters').addEventListener('click', () => refreshSnapshot());
   qs('#copy-command').addEventListener('click', copyNextCommand);
   qs('#close-error').addEventListener('click', () => qs('#error-dialog').close());
+  qs('#command-form').addEventListener('submit', handleCommandSubmit);
+  qs('#command-input').addEventListener('keydown', handleCommandInputKeydown);
   document.addEventListener('keydown', handleKeyboard);
 }
 
@@ -139,10 +163,13 @@ function renderNav() {
       type="button"
       role="tab"
       aria-selected="${page.key === state.page}"
+      aria-current="${page.key === state.page ? 'page' : 'false'}"
+      aria-keyshortcuts="${escapeHtml(page.shortcut)}"
       aria-controls="dashboard-main"
       id="tab-${escapeHtml(page.key)}"
       data-testid="${escapeHtml(page.test_id)}"
       data-page="${escapeHtml(page.key)}"
+      tabindex="${page.key === state.page ? '0' : '-1'}"
       aria-label="Open ${escapeHtml(page.label)} dashboard page"
       title="${escapeHtml(page.description)}"
     >
@@ -161,7 +188,12 @@ function renderAutomation() {
 }
 
 async function setPage(page) {
-  if (!page || page === state.page) return;
+  if (!page) return;
+  if (page === state.page) {
+    await refreshSnapshot();
+    qs('#dashboard-main').focus();
+    return;
+  }
   state.page = page;
   renderNav();
   await refreshSnapshot();
@@ -188,10 +220,14 @@ function filterInput() {
   return {
     page: state.page,
     ticker: qs('#filter-ticker').value.trim() || null,
+    available_at: state.availableAt,
     priced_in_status: qs('#filter-scan-mode').value,
+    usefulness: state.usefulness,
+    source_gap: state.sourceGap,
+    decision_gap: state.decisionGap,
     stocks_only: qs('#filter-stocks-only').checked,
     scan_limit: Number(qs('#filter-limit').value || 50),
-    scan_offset: 0,
+    scan_offset: state.scanOffset,
     telemetry_limit: 8,
   };
 }
@@ -207,7 +243,26 @@ function renderSnapshot() {
   setText('#next-action', compact(snapshot.next_action || snapshot.canonical_next_action, 'Review the current page.'));
   setText('#next-command', compact(snapshot.next_command || snapshot.canonical_next_command, 'No command reported.'));
   setText('#boundary-copy', `Snapshot mode ${compact(snapshot.snapshot_mode, 'unknown')}; provider calls reported ${compact(snapshot.external_calls_made, '0')}.`);
+  updateAutomationState(snapshot, status, pageInfo);
   renderContent(snapshot);
+}
+
+function updateAutomationState(snapshot, status, pageInfo) {
+  const main = qs('#dashboard-main');
+  if (main) {
+    main.dataset.currentPage = state.page;
+    main.setAttribute('aria-label', `Dashboard page ${pageInfo ? pageInfo.label : state.page}`);
+  }
+  setText(
+    '#automation-state',
+    [
+      `page=${state.page}`,
+      `label=${pageInfo ? pageInfo.label : state.page}`,
+      `status=${status}`,
+      `provider_calls=${compact(snapshot.external_calls_made, '0')}`,
+      `next_command=${compact(snapshot.next_command || snapshot.canonical_next_command, 'none')}`,
+    ].join(' ')
+  );
 }
 
 function setStatus(status) {
@@ -411,6 +466,267 @@ function rawJsonPanel(snapshot) {
   `;
 }
 
+async function handleCommandSubmit(event) {
+  event.preventDefault();
+  const input = qs('#command-input');
+  const raw = input.value.trim();
+  input.value = '';
+  await applyCommand(raw);
+  input.focus();
+}
+
+async function handleCommandInputKeydown(event) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  await handleCommandSubmit(event);
+}
+
+async function applyCommand(raw) {
+  if (!raw) {
+    setCommandStatus('Refreshed.');
+    await refreshSnapshot();
+    return;
+  }
+  const normalized = raw.toLowerCase().replace(/\s+/g, ' ').trim();
+  const [command, ...parts] = normalized.split(' ');
+  const value = parts.join(' ').trim();
+
+  if (['q', 'quit', 'exit'].includes(command)) {
+    setCommandStatus('Close the MarketRadar window to exit.');
+    return;
+  }
+  if (['r', 'refresh'].includes(command)) {
+    setCommandStatus('Refreshed.');
+    await refreshSnapshot();
+    return;
+  }
+  if (['setup', 'first', 'first-step', 'first_step'].includes(command)) {
+    setCommandStatus('Opened Evidence Gaps.');
+    await setPage('readiness');
+    return;
+  }
+  if (['now', 'what-now', 'whatnow', 'todo', 'do'].includes(command)) {
+    setCommandStatus(compact(state.snapshot?.next_action || state.snapshot?.canonical_next_action, 'Opened Inbox.'));
+    await setPage('overview');
+    return;
+  }
+  if (['all', 'full', 'full-scan'].includes(command)) {
+    qs('#filter-scan-mode').value = 'all';
+    qs('#filter-stocks-only').checked = false;
+    state.usefulness = null;
+    state.scanOffset = 0;
+    setCommandStatus('Full scan mode.');
+    await setPage('overview');
+    return;
+  }
+  if (['stock', 'stocks', 'stocks-only', 'stocks_only'].includes(command)) {
+    qs('#filter-scan-mode').value = 'all';
+    qs('#filter-stocks-only').checked = true;
+    state.scanOffset = 0;
+    setCommandStatus('Stocks-only mode.');
+    await setPage('overview');
+    return;
+  }
+  if (['d', 'ready', 'decision', 'decision-ready', 'decision_ready'].includes(command)) {
+    qs('#filter-scan-mode').value = 'actionable';
+    state.usefulness = 'decision_useful';
+    state.scanOffset = 0;
+    setCommandStatus('Decision-ready review filter.');
+    await setPage('review');
+    return;
+  }
+  if (['m', 'mismatch', 'mismatches', 'actionable'].includes(command)) {
+    qs('#filter-scan-mode').value = 'actionable';
+    state.usefulness = null;
+    state.scanOffset = 0;
+    setCommandStatus('Mismatches mode.');
+    await setPage('overview');
+    return;
+  }
+  if (command === 'scan') {
+    const mode = value || 'all';
+    const select = qs('#filter-scan-mode');
+    if ([...select.options].some((option) => option.value === mode)) {
+      select.value = mode;
+      state.scanOffset = 0;
+      setCommandStatus(`Scan filter: ${mode}.`);
+      await setPage('overview');
+    } else {
+      setCommandStatus(`Unsupported scan filter: ${mode}.`);
+    }
+    return;
+  }
+  if (['next', 'more'].includes(command)) {
+    const limit = Math.max(1, Number(qs('#filter-limit').value || 50));
+    state.scanOffset += limit;
+    setCommandStatus(`Rows starting at ${state.scanOffset + 1}.`);
+    await setPage('overview');
+    return;
+  }
+  if (['prev', 'previous', 'back'].includes(command)) {
+    const limit = Math.max(1, Number(qs('#filter-limit').value || 50));
+    state.scanOffset = Math.max(0, state.scanOffset - limit);
+    setCommandStatus(`Rows starting at ${state.scanOffset + 1}.`);
+    await setPage('overview');
+    return;
+  }
+  if (command === 'offset') {
+    const offset = Number(value);
+    if (!Number.isFinite(offset) || offset < 1) {
+      setCommandStatus('Usage: offset ROW.');
+      return;
+    }
+    state.scanOffset = Math.floor(offset) - 1;
+    setCommandStatus(`Rows starting at ${state.scanOffset + 1}.`);
+    await setPage('overview');
+    return;
+  }
+  if (command === 'limit') {
+    const limit = Number(value);
+    if (!Number.isFinite(limit)) {
+      setCommandStatus('Usage: limit 1-200.');
+      return;
+    }
+    qs('#filter-limit').value = String(Math.min(200, Math.max(1, Math.floor(limit))));
+    state.scanOffset = 0;
+    setCommandStatus(`Rows per page: ${qs('#filter-limit').value}.`);
+    await setPage('overview');
+    return;
+  }
+  if (['ticker', 'tkr'].includes(command)) {
+    const ticker = value.toUpperCase();
+    qs('#filter-ticker').value = ['', 'ALL', 'NONE'].includes(ticker) ? '' : ticker;
+    state.scanOffset = 0;
+    setCommandStatus(qs('#filter-ticker').value ? `Ticker filter: ${qs('#filter-ticker').value}.` : 'Ticker filter cleared.');
+    await refreshSnapshot();
+    return;
+  }
+  if (['source-gap', 'source_gaps', 'data-gap', 'data_gaps'].includes(command)) {
+    state.sourceGap = listFilter(value);
+    state.scanOffset = 0;
+    setCommandStatus(state.sourceGap.length ? `Source gaps: ${state.sourceGap.join(', ')}.` : 'Source-gap filter cleared.');
+    await setPage('overview');
+    return;
+  }
+  if (['decision-gap', 'decision_gaps', 'gap'].includes(command)) {
+    state.decisionGap = listFilter(value);
+    state.scanOffset = 0;
+    setCommandStatus(state.decisionGap.length ? `Decision gaps: ${state.decisionGap.join(', ')}.` : 'Decision-gap filter cleared.');
+    await setPage('overview');
+    return;
+  }
+  if (['usefulness', 'useful'].includes(command)) {
+    state.usefulness = ['', 'all', 'none'].includes(value) ? null : value;
+    state.scanOffset = 0;
+    setCommandStatus(state.usefulness ? `Usefulness: ${state.usefulness}.` : 'Usefulness filter cleared.');
+    await setPage('overview');
+    return;
+  }
+  if (['available-at', 'cutoff'].includes(command)) {
+    state.availableAt = ['', 'latest', 'all', 'none'].includes(value) ? null : value;
+    state.scanOffset = 0;
+    setCommandStatus(state.availableAt ? `Available-at: ${state.availableAt}.` : 'Available-at filter cleared.');
+    await refreshSnapshot();
+    return;
+  }
+  if (['clear', 'clear-filters', 'reset'].includes(command)) {
+    clearFilters();
+    setCommandStatus('Filters cleared.');
+    await refreshSnapshot();
+    return;
+  }
+  if (['j', 'json'].includes(command)) {
+    qs('details')?.setAttribute('open', 'open');
+    qs('.raw-json')?.focus?.();
+    setCommandStatus('Raw JSON opened.');
+    return;
+  }
+  if (command === 'open') {
+    setCommandStatus(openCommandMessage(value));
+    return;
+  }
+  const guardedMessage = guardedCommandMessage(normalized);
+  if (guardedMessage) {
+    setCommandStatus(guardedMessage);
+    const guardedPage = guardedCommandPage(command);
+    if (guardedPage) await setPage(guardedPage);
+    return;
+  }
+
+  const page = pageFromCommand(raw);
+  if (page) {
+    setCommandStatus(`Opened ${page}.`);
+    await setPage(page);
+    return;
+  }
+  setCommandStatus(`Unknown command: ${raw}. Type help for commands.`);
+}
+
+function clearFilters() {
+  qs('#filter-ticker').value = '';
+  qs('#filter-scan-mode').value = 'all';
+  qs('#filter-stocks-only').checked = false;
+  qs('#filter-limit').value = '50';
+  state.availableAt = null;
+  state.sourceGap = [];
+  state.decisionGap = [];
+  state.usefulness = null;
+  state.scanOffset = 0;
+}
+
+function listFilter(value) {
+  return ['', 'all', 'none'].includes(value)
+    ? []
+    : value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function pageFromCommand(raw) {
+  const normalized = raw.toLowerCase().replace(/[\s-]+/g, '_');
+  const direct = keyAliases.get(raw.toLowerCase()) || keyAliases.get(normalized);
+  if (direct) return direct;
+  const pages = state.config?.pages || [];
+  const page = pages.find((item) => (
+    item.key === normalized
+    || item.label.toLowerCase().replace(/^[0-9?]\s*/, '').replace(/[\s/-]+/g, '_') === normalized
+  ));
+  return page?.key || null;
+}
+
+function openCommandMessage(value) {
+  const rows = rowsFromSnapshot(state.snapshot || {});
+  const query = value.trim().toUpperCase();
+  if (!query) return 'Usage: open # or open TICKER.';
+  const index = Number(query);
+  const row = Number.isFinite(index) && index >= 1 ? rows[index - 1] : rows.find((item) => String(item.ticker || item.symbol || '').toUpperCase() === query);
+  if (!row) return `No row matched ${value}.`;
+  const ticker = compact(row.ticker || row.symbol || row.security, value);
+  const command = compact(row.next_command || row.next_action || row.command, 'Review the row details.');
+  return `${ticker}: ${command}`;
+}
+
+function guardedCommandMessage(normalized) {
+  const first = normalized.split(' ')[0];
+  if (executeClassCommands.has(normalized) || normalized.includes(' execute')) {
+    return 'Execute commands stay outside dashboard browsing. Copy the displayed command and run it in PowerShell after reviewing call/write boundaries.';
+  }
+  if (['agent', 'bars', 'batch', 'batches', 'cik', 'options', 'run'].includes(first)) {
+    const nextCommand = compact(state.snapshot?.next_command || state.snapshot?.canonical_next_command, 'catalyst-radar dashboard-snapshot --json --fast');
+    return `Review command boundary. Suggested external command: ${nextCommand}`;
+  }
+  return '';
+}
+
+function guardedCommandPage(command) {
+  if (command === 'agent') return 'agent';
+  if (['bars', 'options', 'run'].includes(command)) return 'run';
+  if (['batch', 'batches', 'cik'].includes(command)) return 'ops';
+  return null;
+}
+
+function setCommandStatus(message) {
+  setText('#command-status', `command=${message}`);
+}
+
 async function copyNextCommand() {
   const command = qs('#next-command').textContent.trim();
   try {
@@ -431,6 +747,12 @@ function showError(error) {
 
 function handleKeyboard(event) {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement) {
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    qs('#command-input').focus();
+    setCommandStatus('Command box focused.');
     return;
   }
   if (event.ctrlKey && event.key.toLowerCase() === 'a') {

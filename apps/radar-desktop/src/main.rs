@@ -331,6 +331,10 @@ fn automation_manifest() -> AutomationManifest {
             "workflow-nav",
             "dashboard-toolbar",
             "dashboard-page",
+            "command-form",
+            "command-input",
+            "command-status",
+            "automation-state",
             "attention-queue",
             "next-safe-action",
             "snapshot-json",
@@ -344,12 +348,16 @@ fn automation_manifest() -> AutomationManifest {
             "ArrowLeft/ArrowUp moves backward",
             "F5 refreshes the local snapshot",
             "Home opens Start, End opens Help",
+            "Esc focuses the command box",
+            "Command box accepts safe page, filter, refresh, help, and JSON commands",
         ],
         notes: vec![
             "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
             "The current page title is exposed through data-testid=page-title.",
+            "The selected page and provider-call count are exposed through data-testid=automation-state.",
             "Rows use data-testid=queue-row and include ticker-specific labels when available.",
             "Refreshing reads the existing dashboard JSON contract and makes zero provider calls.",
+            "Execute-class commands remain external and require the normal PowerShell command boundary.",
         ],
     }
 }
@@ -372,5 +380,19 @@ mod tests {
 
         assert!(pages.iter().any(|page| page.test_id == "nav-page-overview"));
         assert!(pages.iter().any(|page| page.shortcut == "Ctrl+A"));
+    }
+
+    #[test]
+    fn automation_manifest_exposes_command_surface() {
+        let manifest = automation_manifest();
+
+        assert!(manifest.landmark_test_ids.contains(&"command-input"));
+        assert!(manifest.landmark_test_ids.contains(&"automation-state"));
+        assert!(
+            manifest
+                .keyboard_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("command box"))
+        );
     }
 }

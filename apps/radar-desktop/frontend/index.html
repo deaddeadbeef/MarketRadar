@@ -24,7 +24,7 @@
       <div id="workflow-tabs" class="workflow-tabs" role="tablist" aria-label="Dashboard pages"></div>
     </aside>
 
-    <main id="dashboard-main" class="main" role="main" tabindex="-1" data-testid="dashboard-page">
+    <main id="dashboard-main" class="main" role="main" tabindex="-1" aria-labelledby="page-title" data-testid="dashboard-page" data-current-page="overview">
       <section class="toolbar" aria-label="Dashboard filters" data-testid="dashboard-toolbar">
         <label>
           Ticker
@@ -74,10 +74,22 @@
     </aside>
 
     <footer class="footer" role="contentinfo">
-      <span id="source-label" data-testid="source-label">source=pending</span>
-      <span id="refresh-label" data-testid="refresh-label">refresh=pending</span>
-      <span id="provider-calls" data-testid="provider-calls">provider_calls=0</span>
+      <form id="command-form" class="command-form" data-testid="command-form">
+        <label for="command-input">Command</label>
+        <input id="command-input" data-testid="command-input" autocomplete="off" spellcheck="false" placeholder="now, help, ticker MSFT, batch catalyst_events">
+        <button id="command-submit" data-testid="command-submit" type="submit">Run</button>
+      </form>
+      <div class="footer-status" aria-live="polite">
+        <span id="command-status" data-testid="command-status">command=ready</span>
+        <span id="source-label" data-testid="source-label">source=pending</span>
+        <span id="refresh-label" data-testid="refresh-label">refresh=pending</span>
+        <span id="provider-calls" data-testid="provider-calls">provider_calls=0</span>
+      </div>
     </footer>
+
+    <div id="automation-state" class="sr-only" data-testid="automation-state" aria-live="polite">
+      page=overview status=loading provider_calls=0
+    </div>
   </div>
 
   <dialog id="error-dialog" aria-labelledby="error-title">
