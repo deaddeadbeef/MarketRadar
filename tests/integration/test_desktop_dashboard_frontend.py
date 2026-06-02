@@ -31,10 +31,16 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     assert "renderQueuePage('Themes'" in source
     assert "renderStructuredPage('Validation'" in source
     assert "renderCosts" in source
+    assert "const powershellCommandPrefixes = new Set" in source
+    assert "'market-bars'" in source
+    assert "'priced-in-queue'" in source
+    assert "PowerShell command, not a dashboard command." in source
+    assert "Run this in a normal PowerShell prompt" in source
     for command in (
         "themes / validation / costs / features",
         "export full / export current",
         "batch SOURCE / batch SOURCE execute",
+        "catalyst-radar COMMAND",
         "bars manual template/import",
         "options template/validate/import",
         "cik template/validate/import",

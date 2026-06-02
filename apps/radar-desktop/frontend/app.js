@@ -78,6 +78,15 @@ const executeClassCommands = new Set([
   'trigger',
 ]);
 
+const powershellCommandPrefixes = new Set([
+  'build-decision-cards',
+  'build-packets',
+  'ingest-csv',
+  'ingest-polygon',
+  'market-bars',
+  'priced-in-queue',
+]);
+
 const commandReference = [
   ['0..9, Ctrl+A, V, F, ?, or page name', 'Switch pages; Ctrl+A opens Agent and V opens Costs.'],
   ['themes / validation / costs / features', 'Open local evidence pages for clustered themes, validation, costs, and feature inventory.'],
@@ -92,6 +101,7 @@ const commandReference = [
   ['next / prev / offset ROW / limit 1-200', 'Page through current Inbox scan rows.'],
   ['export full / export current', 'Show JSON export commands without running them.'],
   ['batch SOURCE / batch SOURCE execute', 'Plan source fills or show the external execution boundary.'],
+  ['catalyst-radar COMMAND', 'Show where to run full CLI commands without executing them in the dashboard.'],
   ['bars manual template/import', 'Show market-bar repair command boundaries.'],
   ['bars saved capture/validate/import', 'Show saved grouped-daily command boundaries.'],
   ['options template/validate/import', 'Show point-in-time options command boundaries.'],
@@ -856,6 +866,8 @@ function costCommandMessage(command, value) {
 
 function guardedCommandMessage(normalized) {
   const first = normalized.split(' ')[0];
+  const powershellMessage = powershellCommandMessage(normalized);
+  if (powershellMessage) return powershellMessage;
   if (executeClassCommands.has(normalized) || normalized.includes(' execute')) {
     return 'Execute commands stay outside dashboard browsing. Copy the displayed command and run it in PowerShell after reviewing call/write boundaries.';
   }
@@ -869,6 +881,7 @@ function guardedCommandMessage(normalized) {
     'eval-triggers',
     'evaluate-triggers',
     'feedback',
+    'market-bars',
     'options',
     'run',
     'sec',
@@ -881,9 +894,36 @@ function guardedCommandMessage(normalized) {
   return '';
 }
 
+function powershellCommandMessage(normalized) {
+  const parts = normalized.split(' ');
+  const first = parts[0];
+  const shellCommand = first === 'catalyst-radar'
+    ? normalized
+    : powershellCommandPrefixes.has(first)
+      ? `catalyst-radar ${normalized}`
+      : '';
+  if (!shellCommand) return '';
+  return [
+    'PowerShell command, not a dashboard command.',
+    `Run this in a normal PowerShell prompt: ${shellCommand}.`,
+    powershellCommandBoundary(shellCommand),
+  ].join(' ');
+}
+
+function powershellCommandBoundary(shellCommand) {
+  const normalized = shellCommand.toLowerCase();
+  if (normalized.includes(' market-bars residual-review ')) {
+    return 'Read-only market-bar review; no provider, OpenAI, broker, order, or DB write calls.';
+  }
+  if (normalized.includes(' build-packets ') || normalized.includes(' build-decision-cards ')) {
+    return 'Candidate evidence writes stay outside dashboard browsing and require explicit PowerShell review.';
+  }
+  return 'Run it only after accepting the command call/write boundary.';
+}
+
 function guardedCommandPage(command) {
   if (command === 'agent') return 'agent';
-  if (['bars', 'options', 'run'].includes(command)) return 'run';
+  if (['bars', 'market-bars', 'options', 'run'].includes(command)) return 'run';
   if (['batch', 'batches', 'cik', 'sec'].includes(command)) return 'ops';
   if (['action', 'eval-triggers', 'evaluate-triggers', 'ticket', 'trigger'].includes(command)) return 'broker';
   if (command === 'feedback') return 'alerts';

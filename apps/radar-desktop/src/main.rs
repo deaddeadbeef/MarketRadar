@@ -371,6 +371,7 @@ fn automation_manifest() -> AutomationManifest {
             "Home opens Start, End opens Help",
             "Esc focuses the command box",
             "Command box accepts safe page, filter, refresh, help, and JSON commands",
+            "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
         ],
         native_window_title: "MarketRadar Command Center",
         native_executable: "target\\release\\radar-desktop.exe",
@@ -378,6 +379,7 @@ fn automation_manifest() -> AutomationManifest {
         zero_call_assertions: vec![
             "Dashboard browsing, command-box navigation, filtering, copy, and raw JSON inspection must leave provider_calls=0.",
             "Execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
+            "Full catalyst-radar commands typed into the desktop command box must stay external and leave provider_calls=0.",
         ],
         notes: vec![
             "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
@@ -427,6 +429,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             action: "Type batch catalyst_events and press Return.",
             target: "command-input",
             expected: "dashboard-page reports page=ops, command-status shows an external command boundary, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "powershell-command",
+            action: "Type catalyst-radar priced-in-queue --full-scan --all --json and press Return.",
+            target: "command-input",
+            expected: "command-status says it is a PowerShell command, not a dashboard command, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "json-command",
