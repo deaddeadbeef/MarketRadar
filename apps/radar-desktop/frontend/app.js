@@ -36,6 +36,11 @@ const keyAliases = new Map([
   ['i', 'ipo'],
   ['b', 'broker'],
   ['t', 'telemetry'],
+  ['theme', 'themes'],
+  ['themes', 'themes'],
+  ['valid', 'validation'],
+  ['validate', 'validation'],
+  ['validation', 'validation'],
   ['v', 'costs'],
   ['cost', 'costs'],
   ['costs', 'costs'],
@@ -52,6 +57,7 @@ const pagePaths = {
   ops: [['ops_health'], ['runtime_context'], ['provider_preflight']],
   telemetry: [['telemetry'], ['telemetry_coverage'], ['raw_telemetry']],
   agent: [['agent_brief'], ['runtime_context']],
+  validation: [['validation'], ['validation', 'latest_run'], ['validation', 'report']],
   costs: [['costs'], ['value_ledger'], ['value_outcomes'], ['value_report']],
 };
 
@@ -74,7 +80,7 @@ const executeClassCommands = new Set([
 
 const commandReference = [
   ['0..9, Ctrl+A, V, F, ?, or page name', 'Switch pages; Ctrl+A opens Agent and V opens Costs.'],
-  ['features', 'List current MarketRadar features and where they live.'],
+  ['themes / validation / costs / features', 'Open local evidence pages for clustered themes, validation, costs, and feature inventory.'],
   ['setup / first', 'Show the first setup command and where to run it.'],
   ['open #|TICKER', 'Open a row from Candidate Review or show its next command.'],
   ['ticker SYMBOL|all', 'Filter ticker-aware pages.'],
@@ -324,6 +330,8 @@ function renderContent(snapshot) {
     ops: () => renderStructuredPage('Ops', pagePaths.ops),
     telemetry: renderTelemetry,
     agent: () => renderStructuredPage('Agent', pagePaths.agent),
+    themes: () => renderQueuePage('Themes', themeRows(snapshot), themeColumns),
+    validation: () => renderStructuredPage('Validation', pagePaths.validation),
     costs: renderCosts,
     features: renderFeatures,
     help: renderHelp,
@@ -456,6 +464,19 @@ const ipoColumns = [
   { label: 'Filing', className: 'state', value: (row) => compact(row.form || row.filing_type || row.status) },
   { label: 'Summary', value: (row) => compact(row.summary || row.subject || row.risk_summary) },
   { label: 'Next', value: (row) => compact(row.next_action || row.command, 'inspect filing') },
+];
+
+function themeRows(snapshot) {
+  const rows = at(snapshot, ['themes', 'rows'], []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+const themeColumns = [
+  { label: 'Theme', className: 'ticker', value: (row) => compact(row.theme || row.name || row.cluster) },
+  { label: 'Count', className: 'state', value: (row) => compact(row.candidate_count || row.count || row.rows) },
+  { label: 'Avg Score', value: (row) => compact(row.avg_score || row.average_score || row.score) },
+  { label: 'Tickers', value: (row) => compact(row.top_tickers || row.tickers || row.sample_tickers) },
+  { label: 'States', value: (row) => compact(row.states || row.state_counts || row.statuses) },
 ];
 
 function renderTelemetry(snapshot) {

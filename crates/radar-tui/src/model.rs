@@ -14,13 +14,15 @@ pub enum Page {
     Ops,
     Telemetry,
     Agent,
+    Themes,
+    Validation,
     Costs,
     Features,
     Help,
 }
 
 impl Page {
-    pub const ALL: [Page; 15] = [
+    pub const ALL: [Page; 17] = [
         Page::Tutorial,
         Page::Overview,
         Page::Readiness,
@@ -33,6 +35,8 @@ impl Page {
         Page::Ops,
         Page::Telemetry,
         Page::Agent,
+        Page::Themes,
+        Page::Validation,
         Page::Costs,
         Page::Features,
         Page::Help,
@@ -52,6 +56,8 @@ impl Page {
             Page::Ops => "ops",
             Page::Telemetry => "telemetry",
             Page::Agent => "agent",
+            Page::Themes => "themes",
+            Page::Validation => "validation",
             Page::Costs => "costs",
             Page::Features => "features",
             Page::Help => "help",
@@ -72,6 +78,8 @@ impl Page {
             Page::Ops => "8 Ops",
             Page::Telemetry => "9 Telemetry",
             Page::Agent => "Ctrl+A Agent",
+            Page::Themes => "Themes",
+            Page::Validation => "Validation",
             Page::Costs => "Costs",
             Page::Features => "F Features",
             Page::Help => "? Help",
@@ -97,6 +105,10 @@ impl Page {
             "8" | "ops" => Page::Ops,
             "9" | "telemetry" | "t" => Page::Telemetry,
             "agent" | "agents" | "brief" => Page::Agent,
+            "theme" | "themes" | "theme_row" | "theme_rows" => Page::Themes,
+            "valid" | "validate" | "validation" | "value_validation" | "value-validation" => {
+                Page::Validation
+            }
             "cost" | "costs" | "value" | "value_report" | "value-report" => Page::Costs,
             "f" | "features" => Page::Features,
             "?" | "h" | "help" => Page::Help,
@@ -295,6 +307,8 @@ mod tests {
         assert_eq!(Page::from_input("2"), Page::Readiness);
         assert_eq!(Page::from_input("safe-run"), Page::Run);
         assert_eq!(Page::from_input("decision_ready"), Page::Review);
+        assert_eq!(Page::from_input("themes"), Page::Themes);
+        assert_eq!(Page::from_input("value-validation"), Page::Validation);
         assert_eq!(Page::from_input("costs"), Page::Costs);
         assert_eq!(Page::from_input("F"), Page::Features);
     }

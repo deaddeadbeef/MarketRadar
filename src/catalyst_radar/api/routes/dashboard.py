@@ -29,6 +29,8 @@ DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
     {"key": "ops", "label": "8 Ops", "shortcut": "8"},
     {"key": "telemetry", "label": "9 Telemetry", "shortcut": "9"},
     {"key": "agent", "label": "Ctrl+A Agent", "shortcut": "Ctrl+A"},
+    {"key": "themes", "label": "Themes", "shortcut": "theme"},
+    {"key": "validation", "label": "Validation", "shortcut": "valid"},
     {"key": "costs", "label": "V Costs", "shortcut": "V"},
     {"key": "features", "label": "F Features", "shortcut": "F"},
     {"key": "help", "label": "? Help", "shortcut": "?"},
@@ -72,6 +74,7 @@ def manifest() -> dict[str, object]:
             "keyboard_shortcuts": [
                 "0-9 jump to numbered workflow pages",
                 "Ctrl+A opens Agent",
+                "Type themes or validation to open evidence pages",
                 "V opens Costs",
                 "F opens Features",
                 "? opens Help",
