@@ -82,6 +82,10 @@ def manifest() -> dict[str, object]:
                 "F5 refreshes the local snapshot",
                 "Esc focuses the command box",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
+                (
+                    "Full catalyst-radar commands show a PowerShell boundary "
+                    "instead of executing in-app"
+                ),
             ],
             "native_window_title": "MarketRadar Command Center",
             "native_executable": "target\\release\\radar-desktop.exe",
@@ -142,6 +146,18 @@ def manifest() -> dict[str, object]:
                     ),
                 },
                 {
+                    "step": "powershell-command",
+                    "action": (
+                        "Type catalyst-radar priced-in-queue --full-scan "
+                        "--all --json and press Return."
+                    ),
+                    "target": "command-input",
+                    "expected": (
+                        "command-status says it is a PowerShell command, not a "
+                        "dashboard command, and provider_calls=0."
+                    ),
+                },
+                {
                     "step": "json-command",
                     "action": "Type json and press Return.",
                     "target": "snapshot-json-output",
@@ -160,6 +176,10 @@ def manifest() -> dict[str, object]:
                     "Execute-class commands must show the external PowerShell command "
                     "boundary instead of running provider, OpenAI, broker, or DB-write "
                     "actions from the desktop command box."
+                ),
+                (
+                    "Full catalyst-radar commands typed into the desktop command box "
+                    "must stay external and leave provider_calls=0."
                 ),
             ],
         },

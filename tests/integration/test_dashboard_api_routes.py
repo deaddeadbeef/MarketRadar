@@ -146,6 +146,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         "themes or validation" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
+    assert any(
+        "catalyst-radar commands" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
     assert payload["automation"]["native_window_title"] == "MarketRadar Command Center"
     assert payload["automation"]["native_executable"].endswith(
         "radar-desktop.exe"
@@ -155,12 +159,20 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
+        step["step"] == "powershell-command"
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
         step["step"] == "json-command"
         and step["target"] == "snapshot-json-output"
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
         "provider_calls=0" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
+        "Full catalyst-radar commands" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")
