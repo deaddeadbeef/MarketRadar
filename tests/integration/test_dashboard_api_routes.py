@@ -163,6 +163,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
+        step["step"] == "row-open"
+        and step["target"] == "queue-row"
+        and "candidate:<TICKER>" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
         step["step"] == "json-command"
         and step["target"] == "snapshot-json-output"
         for step in payload["automation"]["computer_use_steps"]
@@ -173,6 +179,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         "Full catalyst-radar commands" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
+        "queue rows" in assertion and "candidate/alert detail" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")

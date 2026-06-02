@@ -48,3 +48,25 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
         "outcome coverage / update",
     ):
         assert command in source
+
+
+def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "function renderCandidateDetail(snapshot, ticker)" in source
+    assert "function renderAlertDetail(snapshot, alertId)" in source
+    assert 'data-testid="candidate-detail"' in source
+    assert 'data-testid="alert-detail"' in source
+    assert 'data-testid="detail-summary"' in source
+    assert 'data-open-key="${escapeHtml(key)}"' in source
+    assert 'tabindex="0"' in source
+    assert 'role="button"' in source
+    assert "function bindQueueRows()" in source
+    assert "if (!['Enter', ' '].includes(event.key)) return;" in source
+    assert "await openDashboardTarget(target);" in source
+    assert "page: `candidate:${ticker}`" in source
+    assert "page: `alert:${alertId}`" in source
+    assert "Opened candidate ${ticker}. No calls." in source
+    assert "Opened alert ${alertId}. No calls." in source

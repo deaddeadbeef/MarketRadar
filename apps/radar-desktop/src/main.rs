@@ -380,12 +380,13 @@ fn automation_manifest() -> AutomationManifest {
             "Dashboard browsing, command-box navigation, filtering, copy, and raw JSON inspection must leave provider_calls=0.",
             "Execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
             "Full catalyst-radar commands typed into the desktop command box must stay external and leave provider_calls=0.",
+            "Clicking or pressing Enter on queue rows must open local candidate/alert detail without provider calls.",
         ],
         notes: vec![
             "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
             "The current page title is exposed through data-testid=page-title.",
             "The selected page and provider-call count are exposed through data-testid=automation-state.",
-            "Rows use data-testid=queue-row and include ticker-specific labels when available.",
+            "Rows use data-testid=queue-row, are keyboard focusable, and include ticker-specific labels when available.",
             "Refreshing reads the existing dashboard JSON contract and makes zero provider calls.",
             "Execute-class commands remain external and require the normal PowerShell command boundary.",
         ],
@@ -423,6 +424,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             action: "Type ready and press Return.",
             target: "command-input",
             expected: "dashboard-page reports page=review and the selected tab is Review.",
+        },
+        ComputerUseStep {
+            step: "row-open",
+            action: "Focus a queue-row and press Return, or type open 1 and press Return.",
+            target: "queue-row",
+            expected: "dashboard-page reports page=candidate:<TICKER> or page=alert:<ID>, the detail panel is visible, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "guarded-command",
@@ -504,9 +511,24 @@ mod tests {
         );
         assert!(
             manifest
+                .computer_use_steps
+                .iter()
+                .any(|step| step.step == "row-open"
+                    && step.target == "queue-row"
+                    && step.expected.contains("candidate:<TICKER>"))
+        );
+        assert!(
+            manifest
                 .zero_call_assertions
                 .iter()
                 .any(|assertion| assertion.contains("provider_calls=0"))
+        );
+        assert!(
+            manifest
+                .zero_call_assertions
+                .iter()
+                .any(|assertion| assertion.contains("queue rows")
+                    && assertion.contains("candidate/alert detail"))
         );
     }
 }

@@ -150,6 +150,11 @@ function at(object, path, fallback = undefined) {
   return current ?? fallback;
 }
 
+function arrayAt(object, path) {
+  const value = at(object, path, []);
+  return Array.isArray(value) ? value : [];
+}
+
 function compact(value, fallback = '-') {
   const normalized = text(value, '').trim();
   return normalized || fallback;
@@ -289,7 +294,8 @@ function renderSnapshot() {
   const snapshot = state.snapshot || {};
   const status = compact(snapshot.status || at(snapshot, ['readiness', 'status']), 'unknown');
   const pageInfo = state.config.pages.find((page) => page.key === state.page);
-  setText('#page-title', pageInfo ? pageInfo.label : 'Dashboard');
+  const label = pageInfo ? pageInfo.label : dynamicPageLabel(state.page);
+  setText('#page-title', label);
   setStatus(status);
   setText('#refresh-label', `refresh=${state.lastRefresh ? state.lastRefresh.toLocaleTimeString() : 'pending'}`);
   setText('#provider-calls', `provider_calls=${compact(snapshot.external_calls_made, '0')}`);
@@ -298,24 +304,32 @@ function renderSnapshot() {
   setText('#boundary-copy', `Snapshot mode ${compact(snapshot.snapshot_mode, 'unknown')}; provider calls reported ${compact(snapshot.external_calls_made, '0')}.`);
   updateAutomationState(snapshot, status, pageInfo);
   renderContent(snapshot);
+  bindQueueRows();
 }
 
 function updateAutomationState(snapshot, status, pageInfo) {
+  const label = pageInfo ? pageInfo.label : dynamicPageLabel(state.page);
   const main = qs('#dashboard-main');
   if (main) {
     main.dataset.currentPage = state.page;
-    main.setAttribute('aria-label', `Dashboard page ${pageInfo ? pageInfo.label : state.page}`);
+    main.setAttribute('aria-label', `Dashboard page ${label}`);
   }
   setText(
     '#automation-state',
     [
       `page=${state.page}`,
-      `label=${pageInfo ? pageInfo.label : state.page}`,
+      `label=${label}`,
       `status=${status}`,
       `provider_calls=${compact(snapshot.external_calls_made, '0')}`,
       `next_command=${compact(snapshot.next_command || snapshot.canonical_next_command, 'none')}`,
     ].join(' ')
   );
+}
+
+function dynamicPageLabel(page) {
+  if (page.startsWith('candidate:')) return `Candidate ${page.split(':', 2)[1].toUpperCase()}`;
+  if (page.startsWith('alert:')) return `Alert ${page.split(':', 2)[1]}`;
+  return 'Dashboard';
 }
 
 function setStatus(status) {
@@ -327,6 +341,16 @@ function setStatus(status) {
 }
 
 function renderContent(snapshot) {
+  if (state.page.startsWith('candidate:')) {
+    const ticker = state.page.split(':', 2)[1] || '';
+    qs('#content').innerHTML = `${metricGrid(snapshot)}${renderCandidateDetail(snapshot, ticker)}${rawJsonPanel(snapshot)}`;
+    return;
+  }
+  if (state.page.startsWith('alert:')) {
+    const alertId = state.page.split(':', 2)[1] || '';
+    qs('#content').innerHTML = `${metricGrid(snapshot)}${renderAlertDetail(snapshot, alertId)}${rawJsonPanel(snapshot)}`;
+    return;
+  }
   const renderers = {
     tutorial: renderTutorial,
     overview: renderOverview,
@@ -446,13 +470,46 @@ function queuePanel(title, rows, columns = candidateColumns) {
 }
 
 function rowHtml(row, index, columns) {
-  const ticker = compact(row.ticker || row.symbol || row.security, `row-${index + 1}`);
-  const label = `Dashboard row ${ticker}`;
+  const key = rowOpenKey(row, index);
+  const ticker = compact(row.ticker || row.symbol || row.security || key, `row-${index + 1}`);
+  const label = `Open dashboard row ${ticker}`;
   return `
-    <tr data-testid="queue-row" data-ticker="${escapeHtml(ticker)}" aria-label="${escapeHtml(label)}">
+    <tr
+      data-testid="queue-row"
+      data-ticker="${escapeHtml(ticker)}"
+      data-open-key="${escapeHtml(key)}"
+      data-row-index="${index + 1}"
+      tabindex="0"
+      role="button"
+      aria-label="${escapeHtml(label)}"
+      title="${escapeHtml(label)}"
+    >
       ${columns.map((column) => `<td class="${column.className || ''}">${escapeHtml(column.value(row, index))}</td>`).join('')}
     </tr>
   `;
+}
+
+function rowOpenKey(row, index) {
+  if (state.page === 'alerts') {
+    return compact(row.id || row.alert_id || row.key || row.ticker || row.symbol, String(index + 1));
+  }
+  return compact(row.ticker || row.symbol || row.security || row.id || row.key, String(index + 1));
+}
+
+function bindQueueRows() {
+  document.querySelectorAll('[data-testid="queue-row"]').forEach((row) => {
+    row.addEventListener('click', () => openRowFromElement(row));
+    row.addEventListener('keydown', (event) => {
+      if (!['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      openRowFromElement(row);
+    });
+  });
+}
+
+async function openRowFromElement(row) {
+  const target = row.dataset.openKey || row.dataset.rowIndex || '';
+  await openDashboardTarget(target);
 }
 
 const candidateColumns = [
@@ -514,6 +571,103 @@ function renderCosts(snapshot) {
       </div>
     </section>
   `;
+}
+
+function renderCandidateDetail(snapshot, ticker) {
+  const row = candidateDetailRow(snapshot, ticker);
+  if (!row) return missingDetailPanel('Candidate', ticker, 'No local candidate row matched this ticker.');
+  return `
+    <section class="panel wide" data-testid="candidate-detail">
+      <h2>Candidate ${escapeHtml(ticker.toUpperCase())}</h2>
+      <div class="stack">
+        ${detailGrid(candidateDetailPairs(row, ticker))}
+        ${objectPanel('candidate row', row)}
+      </div>
+    </section>
+  `;
+}
+
+function renderAlertDetail(snapshot, alertId) {
+  const row = alertDetailRow(snapshot, alertId);
+  if (!row) return missingDetailPanel('Alert', alertId, 'No local alert row matched this identifier.');
+  return `
+    <section class="panel wide" data-testid="alert-detail">
+      <h2>Alert ${escapeHtml(alertId)}</h2>
+      <div class="stack">
+        ${detailGrid(alertDetailPairs(row, alertId))}
+        ${objectPanel('alert row', row)}
+      </div>
+    </section>
+  `;
+}
+
+function missingDetailPanel(kind, identifier, message) {
+  return `
+    <section class="panel wide empty" data-testid="detail-missing">
+      <h2>${escapeHtml(kind)} ${escapeHtml(identifier)}</h2>
+      <p>${escapeHtml(message)}</p>
+      <p>No provider calls were made.</p>
+    </section>
+  `;
+}
+
+function detailGrid(pairs) {
+  return `
+    <article class="panel-sub" data-testid="detail-summary">
+      <div class="kv-grid">
+        ${pairs.map(([key, value]) => `<div class="kv"><span>${escapeHtml(key)}</span><b>${escapeHtml(compact(value))}</b></div>`).join('')}
+      </div>
+    </article>
+  `;
+}
+
+function candidateDetailRow(snapshot, ticker) {
+  const query = String(ticker || '').toUpperCase();
+  return candidateSearchRows(snapshot).find((row) => String(row.ticker || row.symbol || row.security || '').toUpperCase() === query) || null;
+}
+
+function candidateSearchRows(snapshot) {
+  const rows = [
+    ...rowsFromSnapshot(snapshot),
+    ...arrayAt(snapshot, ['candidates', 'rows']),
+    ...arrayAt(snapshot, ['candidates', 'items']),
+  ];
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = compact(row.ticker || row.symbol || row.security || row.id || JSON.stringify(row));
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function alertDetailRow(snapshot, alertId) {
+  const query = String(alertId || '').toUpperCase();
+  return alertRows(snapshot).find((row) => String(row.id || row.alert_id || row.key || row.ticker || row.symbol || '').toUpperCase() === query) || null;
+}
+
+function candidateDetailPairs(row, ticker) {
+  const nextCommand = compact(row.priced_in_next_command || row.next_command || row.command, '');
+  const sourceGaps = compact(row.source_gaps || row.missing_sources || row.optional_context_gaps, 'none');
+  return [
+    ['Can I act now?', row.decision_ready ? 'Research review only; not trade approval.' : 'No - research only until readiness says this is decision-ready.'],
+    ['What happened?', row.why_now || row.subject || row.title || row.setup || 'No local explanation recorded.'],
+    ['What is missing?', sourceGaps],
+    ['Next safe action', row.next_action || row.next_step || row.decision_next_step || 'Review evidence before action.'],
+    ['Next command', nextCommand || 'n/a'],
+    ['Where to run', nextCommand ? 'normal PowerShell prompt, not the dashboard command box.' : 'n/a'],
+  ];
+}
+
+function alertDetailPairs(row, alertId) {
+  return [
+    ['Alert id', row.id || row.alert_id || alertId],
+    ['Ticker', row.ticker || row.symbol || 'n/a'],
+    ['Status', row.status || row.route || 'review'],
+    ['Subject', row.subject || row.title || row.message || 'No local alert text recorded.'],
+    ['Next safe action', row.next_action || row.command || 'Review alert evidence before action.'],
+    ['Boundary', 'Feedback writes require an explicit command; browsing made no provider calls.'],
+  ];
 }
 
 function renderFeatures(snapshot) {
@@ -760,7 +914,7 @@ async function applyCommand(raw) {
     return false;
   }
   if (command === 'open') {
-    setCommandStatus(openCommandMessage(value));
+    await openDashboardTarget(value);
     return;
   }
   if (['ledger', 'value-ledger', 'value_ledger', 'outcome', 'outcomes', 'value-outcome', 'value_outcome'].includes(command)) {
@@ -817,16 +971,68 @@ function pageFromCommand(raw) {
   return page?.key || null;
 }
 
-function openCommandMessage(value) {
-  const rows = rowsFromSnapshot(state.snapshot || {});
-  const query = value.trim().toUpperCase();
-  if (!query) return 'Usage: open # or open TICKER.';
-  const index = Number(query);
-  const row = Number.isFinite(index) && index >= 1 ? rows[index - 1] : rows.find((item) => String(item.ticker || item.symbol || '').toUpperCase() === query);
-  if (!row) return `No row matched ${value}.`;
-  const ticker = compact(row.ticker || row.symbol || row.security, value);
-  const command = compact(row.next_command || row.next_action || row.command, 'Review the row details.');
-  return `${ticker}: ${command}`;
+async function openDashboardTarget(value) {
+  const target = resolveOpenTarget(value);
+  if (!target) {
+    setCommandStatus(openNoMatchMessage(value));
+    return;
+  }
+  state.page = target.page;
+  renderNav();
+  setCommandStatus(target.message);
+  renderSnapshot();
+  qs('#dashboard-main').focus();
+}
+
+function resolveOpenTarget(value) {
+  const token = String(value || '').trim();
+  if (!token) return null;
+  const snapshot = state.snapshot || {};
+  const numericIndex = Number(token);
+  const isIndex = Number.isInteger(numericIndex) && numericIndex >= 1;
+
+  if (isIndex && ['overview', 'review', 'candidates'].includes(state.page)) {
+    return candidateTargetFromRow(rowsFromSnapshot(snapshot)[numericIndex - 1]);
+  }
+  if (isIndex && state.page === 'alerts') {
+    return alertTargetFromRow(alertRows(snapshot)[numericIndex - 1], numericIndex);
+  }
+  if (isIndex) return null;
+
+  const query = token.toUpperCase();
+  const candidate = candidateSearchRows(snapshot).find((row) => String(row.ticker || row.symbol || row.security || '').toUpperCase() === query);
+  if (candidate) return candidateTargetFromRow(candidate);
+  const alert = alertRows(snapshot).find((row) => String(row.id || row.alert_id || row.key || row.ticker || row.symbol || '').toUpperCase() === query);
+  return alertTargetFromRow(alert, token);
+}
+
+function candidateTargetFromRow(row) {
+  if (!row) return null;
+  const ticker = compact(row.ticker || row.symbol || row.security, '').toUpperCase();
+  if (!ticker) return null;
+  return {
+    page: `candidate:${ticker}`,
+    message: `Opened candidate ${ticker}. No calls. Review evidence before action.`,
+  };
+}
+
+function alertTargetFromRow(row, fallback) {
+  if (!row) return null;
+  const alertId = compact(row.id || row.alert_id || row.key || row.ticker || row.symbol, fallback || '');
+  if (!alertId) return null;
+  return {
+    page: `alert:${alertId}`,
+    message: `Opened alert ${alertId}. No calls. Review alert evidence before feedback.`,
+  };
+}
+
+function openNoMatchMessage(value) {
+  const token = String(value || '').trim();
+  if (!token) return 'Open command needs a target. No calls made. Type open TICKER, open ALERT_ID, or use row numbers on Inbox, Candidate Review, or Alerts.';
+  if (/^\d+$/.test(token)) {
+    return `No row ${token} is openable on ${dynamicPageLabel(state.page)}. No calls made. Use row numbers on Inbox, Candidate Review, or Alerts; from any page type open TICKER or open ALERT_ID.`;
+  }
+  return `No local candidate or alert matched ${token}. No calls made. Try open TICKER, open ALERT_ID, or refresh if you expected it in the latest scan.`;
 }
 
 function exportCommandMessage(value) {

@@ -420,6 +420,17 @@ tr:nth-child(even) td {
   background: rgba(255, 255, 255, .025);
 }
 
+tr[data-testid="queue-row"] {
+  cursor: pointer;
+}
+
+tr[data-testid="queue-row"]:hover td,
+tr[data-testid="queue-row"]:focus-visible td {
+  background: rgba(84, 215, 255, .08);
+  outline: 2px solid rgba(84, 215, 255, .42);
+  outline-offset: -2px;
+}
+
 .ticker {
   color: var(--cyan);
   font-weight: 800;
