@@ -7,6 +7,7 @@ $venvDir = Join-Path $repoRoot ".venv"
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $dashboardExe = Join-Path $repoRoot ".venv\Scripts\catalyst-radar.exe"
 $rustTuiExe = Join-Path $repoRoot "target\release\radar-tui.exe"
+$desktopExe = Join-Path $repoRoot "target\release\radar-desktop.exe"
 $stateDir = Join-Path $repoRoot ".state"
 $stampPath = Join-Path $stateDir "dashboard-bootstrap.json"
 
@@ -14,6 +15,7 @@ $noUpdate = $false
 $forceInstall = $false
 $repairVenv = $false
 $usePythonTui = $false
+$useTerminalTui = $false
 $hasSnapshotCommand = $false
 $dashboardArgs = New-Object System.Collections.Generic.List[string]
 
@@ -38,6 +40,14 @@ foreach ($arg in $args) {
         }
         "--legacy-python-tui" {
             $usePythonTui = $true
+            continue
+        }
+        "--rust-tui" {
+            $useTerminalTui = $true
+            continue
+        }
+        "--terminal-tui" {
+            $useTerminalTui = $true
             continue
         }
         "--screenshot-out" {
@@ -187,13 +197,15 @@ function Get-EditableInstallFailureMessage {
 
 function Get-RustInstallHint {
     return @(
-        "MarketRadar's default terminal dashboard now uses the Rust TUI.",
+        "MarketRadar's default dashboard now uses the Tauri desktop app.",
         "Install Rust/Cargo, then run radar again.",
         "Recommended Windows install:",
         "  winget install Rustlang.Rustup",
         "After install, open a new PowerShell session.",
         "",
-        "Temporary legacy fallback:",
+        "Temporary terminal fallback:",
+        "  radar --rust-tui",
+        "Legacy Python fallback:",
         "  radar --python-tui"
     ) -join [Environment]::NewLine
 }
@@ -313,6 +325,17 @@ function Ensure-RustTui {
         throw "Rust dashboard build finished but $rustTuiExe was not found."
     }
 }
+
+function Ensure-DesktopApp {
+    if ($null -eq (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        throw (Get-RustInstallHint)
+    }
+    Invoke-Checked cargo @("build", "-p", "radar-desktop", "--release", "--quiet")
+    if (-not (Test-Path -LiteralPath $desktopExe)) {
+        throw "Tauri dashboard build finished but $desktopExe was not found."
+    }
+}
+
 
 function ConvertTo-PowerShellSingleQuotedLiteral {
     param([string]$Value)
@@ -455,8 +478,11 @@ try {
     if ($usePythonTui) {
         Write-Host "Using legacy Python/Textual dashboard."
     }
-    else {
+    elseif ($useTerminalTui) {
         Write-Host "Using Rust terminal dashboard; local data refreshes through the read-only Python snapshot API."
+    }
+    else {
+        Write-Host "Using Tauri desktop dashboard; local data refreshes through the read-only Python snapshot API."
     }
 
     Update-CleanMain
@@ -468,7 +494,7 @@ try {
             -FilePath $dashboardExe `
             -Arguments (@("dashboard-tui") + $dashboardArgs.ToArray())
     }
-    else {
+    elseif ($useTerminalTui) {
         Ensure-RustTui
         $rustArgs = New-Object System.Collections.Generic.List[string]
         if (-not $hasSnapshotCommand) {
@@ -486,6 +512,12 @@ try {
         $exitCode = Invoke-DashboardProcess `
             -FilePath $rustTuiExe `
             -Arguments $rustArgs.ToArray()
+    }
+    else {
+        Ensure-DesktopApp
+        $exitCode = Invoke-DashboardProcess `
+            -FilePath $desktopExe `
+            -Arguments $dashboardArgs.ToArray()
     }
     if ($exitCode -ne 0) {
         throw "MarketRadar dashboard exited with code $exitCode."

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MarketRadar Command Center</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell" data-testid="desktop-shell">
+    <header class="topbar" role="banner">
+      <div>
+        <div class="eyebrow">MarketRadar</div>
+        <h1 id="page-title" data-testid="page-title">Command Center</h1>
+      </div>
+      <div class="topbar-actions" role="group" aria-label="Dashboard actions">
+        <span id="status-chip" class="status-pill" data-testid="status-chip" aria-live="polite">loading</span>
+        <button class="icon-button" id="refresh-button" data-testid="refresh-button" aria-label="Refresh local dashboard snapshot" title="Refresh">R</button>
+      </div>
+    </header>
+
+    <aside class="sidebar" role="navigation" aria-label="MarketRadar workflow" data-testid="workflow-nav">
+      <div class="nav-title">Workflow</div>
+      <div id="workflow-tabs" class="workflow-tabs" role="tablist" aria-label="Dashboard pages"></div>
+    </aside>
+
+    <main id="dashboard-main" class="main" role="main" tabindex="-1" data-testid="dashboard-page">
+      <section class="toolbar" aria-label="Dashboard filters" data-testid="dashboard-toolbar">
+        <label>
+          Ticker
+          <input id="filter-ticker" data-testid="filter-ticker" autocomplete="off" spellcheck="false" maxlength="12" placeholder="Any">
+        </label>
+        <label>
+          Scan mode
+          <select id="filter-scan-mode" data-testid="filter-scan-mode">
+            <option value="all">All rows</option>
+            <option value="actionable">Actionable</option>
+            <option value="bullish_not_priced_in">Bullish not priced</option>
+            <option value="bearish_not_priced_in">Bearish not priced</option>
+            <option value="blocked">Blocked</option>
+            <option value="fully_priced">Fully priced</option>
+            <option value="conflicted">Conflicted</option>
+          </select>
+        </label>
+        <label>
+          Rows
+          <input id="filter-limit" data-testid="filter-limit" type="number" min="1" max="200" step="1" value="50">
+        </label>
+        <label class="check-row">
+          <input id="filter-stocks-only" data-testid="filter-stocks-only" type="checkbox">
+          Stocks only
+        </label>
+        <button id="apply-filters" data-testid="apply-filters">Apply</button>
+      </section>
+
+      <section id="content" class="content-grid" aria-live="polite"></section>
+    </main>
+
+    <aside class="right-rail" aria-label="Current operator state">
+      <section class="panel" data-testid="next-safe-action">
+        <h2>Next Safe Action</h2>
+        <p id="next-action">Loading local snapshot.</p>
+        <button id="copy-command" data-testid="copy-next-command">Copy Command</button>
+        <code id="next-command">dashboard-snapshot --json --fast</code>
+      </section>
+      <section class="panel boundary" data-testid="boundary-panel">
+        <h2>Boundary</h2>
+        <p id="boundary-copy">Browsing reads local JSON and should report 0 provider calls.</p>
+      </section>
+      <section class="panel automation" data-testid="automation-panel">
+        <h2>Automation</h2>
+        <ul id="automation-list"></ul>
+      </section>
+    </aside>
+
+    <footer class="footer" role="contentinfo">
+      <span id="source-label" data-testid="source-label">source=pending</span>
+      <span id="refresh-label" data-testid="refresh-label">refresh=pending</span>
+      <span id="provider-calls" data-testid="provider-calls">provider_calls=0</span>
+    </footer>
+  </div>
+
+  <dialog id="error-dialog" aria-labelledby="error-title">
+    <h2 id="error-title">Snapshot unavailable</h2>
+    <p id="error-message"></p>
+    <button id="close-error">Close</button>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
+
