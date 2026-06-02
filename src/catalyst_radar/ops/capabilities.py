@@ -162,6 +162,18 @@ def _operations() -> list[dict[str, object]]:
             "external_calls_possible": False,
         },
         {
+            "id": "dashboard.manifest",
+            "method": "GET",
+            "path": "/api/dashboard/manifest",
+            "role": "viewer",
+            "safety": "read_only",
+            "ai_use": (
+                "Discover Tauri/Rust dashboard pages, automation landmarks, "
+                "and snapshot contract."
+            ),
+            "external_calls_possible": False,
+        },
+        {
             "id": "radar.candidates",
             "method": "GET",
             "path": "/api/radar/candidates",

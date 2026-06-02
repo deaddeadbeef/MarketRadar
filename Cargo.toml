@@ -1,3 +1,3 @@
 [workspace]
-members = ["crates/radar-tui"]
+members = ["crates/radar-tui", "apps/radar-desktop"]
 resolver = "2"

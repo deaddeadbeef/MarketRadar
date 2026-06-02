@@ -25,6 +25,10 @@ def test_get_ops_capabilities_returns_ai_first_catalog(tmp_path: Path, monkeypat
         operation["path"] == "/api/dashboard/snapshot"
         for operation in payload["operations"]
     )
+    assert any(
+        operation["path"] == "/api/dashboard/manifest"
+        for operation in payload["operations"]
+    )
 
 
 def test_get_ops_actions_returns_allowlisted_actions(tmp_path: Path, monkeypatch) -> None:

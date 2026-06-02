@@ -103,6 +103,27 @@ def test_get_dashboard_snapshot_can_request_full_diagnostic_payload(
     assert captured["snapshot_kwargs"]["fast_view"] is False
 
 
+
+def test_get_dashboard_manifest_returns_desktop_automation_contract(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "dashboard-manifest-api.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.get("/api/dashboard/manifest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "dashboard-ui-manifest-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["surfaces"]["default"] == "tauri_desktop"
+    assert any(page["key"] == "overview" for page in payload["pages"])
+    assert "workflow-nav" in payload["automation"]["landmarks"]
+    assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")
+
 def _database_url(tmp_path, filename: str) -> str:
     return f"sqlite:///{tmp_path / filename}"
 

@@ -552,22 +552,39 @@ dashboard at `http://127.0.0.1:8514`, loading `.env.local` through the app
 startup path. Docker Compose runs the same command-center entry point at
 `http://localhost:8501`.
 
-The primary operator dashboard can also run entirely in the terminal. The
-`radar` launcher uses the Rust `ratatui` dashboard by default:
+The primary operator dashboard is the Tauri desktop command center. The
+`radar` launcher builds `target\release\radar-desktop.exe` and opens the same
+workflow pages, filters, keyboard shortcuts, and read-only snapshot source used
+by the terminal dashboard:
 
 ```powershell
 radar
-radar --once --page features
 radar --page overview
+radar --page features
 ```
 
-The Rust dashboard keeps MarketRadar's Python API and database helpers as the
-source of truth, then renders the read-only dashboard snapshot with `ratatui`.
+The desktop app reads the existing MarketRadar snapshot contract, not a forked
+data path. By default it runs the repo-local Python command
+`dashboard-snapshot --json --fast`; deployments that already run FastAPI can
+launch it with `--api-base-url` instead. The UI exposes stable landmarks,
+`data-testid` hooks, tab roles, ARIA labels, and keyboard shortcuts so Computer
+Use can click, navigate, filter, refresh, copy the next command, and inspect
+raw JSON evidence deterministically.
+
 Manual launch commands are also available:
 
 ```powershell
-cargo run -p radar-tui -- --api-base-url http://127.0.0.1:8000
-cargo run -p radar-tui -- --snapshot-command "catalyst-radar dashboard-snapshot --json --fast"
+cargo run -p radar-desktop -- --page overview
+cargo run -p radar-desktop -- --snapshot-command "catalyst-radar dashboard-snapshot --json --fast"
+cargo run -p radar-desktop -- --api-base-url http://127.0.0.1:8000 --api-role viewer
+```
+
+The Rust terminal dashboard remains available for terminal-only sessions and
+headless smoke tests:
+
+```powershell
+radar --rust-tui
+radar --once --page features
 cargo run -p radar-tui -- --snapshot-command "catalyst-radar dashboard-snapshot --json --fast" --once
 ```
 
@@ -638,11 +655,12 @@ radar --once --page tutorial
 The alias calls `scripts/run-dashboard-tui.ps1`. That script keeps setup local
 to this repo: it creates `.venv` if needed, installs the editable
 `catalyst-radar` command when `pyproject.toml` changes, builds
-`target\release\radar-tui.exe`, fast-forwards clean `main` to `origin/main`,
-and then starts the Rust TUI. It does not set `PYTHONPATH` or mutate the
-caller's shell environment. Use `radar --no-update` to skip the Git update step,
-`radar --force-install` to refresh the editable install, and
-`radar --python-tui` to run the legacy Textual dashboard.
+`target\release\radar-desktop.exe`, fast-forwards clean `main` to
+`origin/main`, and then starts the Tauri desktop app. It does not set
+`PYTHONPATH` or mutate the caller's shell environment. Use `radar --no-update`
+to skip the Git update step, `radar --force-install` to refresh the editable
+install, `radar --rust-tui` for the terminal dashboard, and `radar --python-tui`
+to run the legacy Textual dashboard.
 If the repo-local Python environment was created from a Windows Store Python
 alias that no longer starts, the launcher fails fast with the recorded Python
 home and the clean repair command: `radar --repair-venv`. That repair command
@@ -651,21 +669,19 @@ Python setup.
 Runtime SQLite files such as `data/schwab-live.db` are ignored so local market
 data does not block the update check; tracked source edits still make the
 launcher skip auto-update.
-The launcher prints a startup line immediately. The interactive Rust TUI opens
-on latest scan results before the local snapshot finishes loading, and
-`radar --once` is the fastest smoke test for the same data path. Use
-`radar --page tutorial` only when you want the walkthrough. The Rust TUI and
-`dashboard-tui --once` use a fast local browsing snapshot; the heavier
-`dashboard-snapshot --json` command remains the full diagnostic/export surface.
-For a fuller zero-provider-call launcher check, run:
+The launcher prints a startup line immediately. The Tauri app opens on the
+configured page and refreshes through the same fast local browsing snapshot as
+the Rust TUI. `radar --once` intentionally uses the terminal renderer for the
+fastest zero-provider-call smoke test. The heavier `dashboard-snapshot --json`
+command remains the full diagnostic/export surface. For a fuller launcher check, run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/debug-dashboard-e2e.ps1
 ```
 
-That debug script runs the same PowerShell launcher in once mode, verifies a
-Rust dashboard summary rendered with `provider_calls=0`, and fails if the
-launcher leaves a new dashboard child process behind.
+That debug script runs the PowerShell launcher in once mode, verifies a Rust
+dashboard summary rendered with `provider_calls=0`, and fails if the launcher
+leaves a new dashboard child process behind.
 For legacy visual QA, `radar --python-tui --screenshot-out <path>` writes a
 Textual SVG of the selected page and exits without provider, OpenAI, Schwab, or
 broker calls.

@@ -16,12 +16,68 @@ from catalyst_radar.storage.db import create_schema, engine_from_url
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
+DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
+    {"key": "tutorial", "label": "0 Start", "shortcut": "0"},
+    {"key": "overview", "label": "1 Inbox", "shortcut": "1"},
+    {"key": "readiness", "label": "2 Evidence Gaps", "shortcut": "2"},
+    {"key": "run", "label": "3 Safe Run", "shortcut": "3"},
+    {"key": "candidates", "label": "4 Candidate Review", "shortcut": "4"},
+    {"key": "review", "label": "Review", "shortcut": "D"},
+    {"key": "alerts", "label": "5 Alerts", "shortcut": "5"},
+    {"key": "ipo", "label": "6 IPO/S-1", "shortcut": "6"},
+    {"key": "broker", "label": "7 Broker", "shortcut": "7"},
+    {"key": "ops", "label": "8 Ops", "shortcut": "8"},
+    {"key": "telemetry", "label": "9 Telemetry", "shortcut": "9"},
+    {"key": "agent", "label": "Ctrl+A Agent", "shortcut": "Ctrl+A"},
+    {"key": "features", "label": "F Features", "shortcut": "F"},
+    {"key": "help", "label": "? Help", "shortcut": "?"},
+)
+
 
 def _engine():
     engine = engine_from_url(AppConfig.from_env().database_url)
     create_schema(engine)
     return engine
 
+
+
+@router.get("/manifest", dependencies=[Depends(require_role(Role.VIEWER))])
+def manifest() -> dict[str, object]:
+    return {
+        "schema_version": "dashboard-ui-manifest-v1",
+        "external_calls_made": 0,
+        "surfaces": {
+            "default": "tauri_desktop",
+            "terminal": "rust_tui",
+            "legacy": "python_textual",
+        },
+        "pages": list(DASHBOARD_DESKTOP_PAGES),
+        "automation": {
+            "contract_version": "market-radar-desktop-automation-v1",
+            "landmarks": [
+                "desktop-shell",
+                "workflow-nav",
+                "dashboard-toolbar",
+                "dashboard-page",
+                "attention-queue",
+                "next-safe-action",
+                "snapshot-json",
+            ],
+            "keyboard_shortcuts": [
+                "0-9 jump to numbered workflow pages",
+                "Ctrl+A opens Agent",
+                "F opens Features",
+                "? opens Help",
+                "Arrow keys move through workflow pages",
+                "F5 refreshes the local snapshot",
+            ],
+        },
+        "data_contract": {
+            "snapshot_endpoint": "/api/dashboard/snapshot?fast=true",
+            "snapshot_command": "catalyst-radar dashboard-snapshot --json --fast",
+            "provider_calls_for_browsing": 0,
+        },
+    }
 
 @router.get("/snapshot", dependencies=[Depends(require_role(Role.VIEWER))])
 def snapshot(
