@@ -103,6 +103,88 @@ def test_get_dashboard_snapshot_can_request_full_diagnostic_payload(
     assert captured["snapshot_kwargs"]["fast_view"] is False
 
 
+def test_get_dashboard_snapshot_preserves_candidate_detail_refresh(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "dashboard-candidate-detail-api.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_dashboard_snapshot_payload(**kwargs):
+        captured["snapshot_kwargs"] = kwargs
+        return {
+            "schema_version": "dashboard-cli-snapshot-v1",
+            "snapshot_mode": "fast_view",
+            "external_calls_made": 0,
+        }
+
+    monkeypatch.setattr(
+        dashboard_routes,
+        "dashboard_snapshot_payload",
+        fake_dashboard_snapshot_payload,
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/dashboard/snapshot",
+        params={
+            "page": "candidate:msft",
+            "ticker": "aapl",
+            "scan_offset": "40",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_page"] == "candidate:MSFT"
+    assert payload["external_calls_made"] == 0
+    filters = captured["snapshot_kwargs"]["filters"].normalized()
+    assert filters.ticker == "MSFT"
+    assert filters.priced_in_offset == 0
+
+
+def test_get_dashboard_snapshot_preserves_alert_detail_refresh(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "dashboard-alert-detail-api.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_dashboard_snapshot_payload(**kwargs):
+        captured["snapshot_kwargs"] = kwargs
+        return {
+            "schema_version": "dashboard-cli-snapshot-v1",
+            "snapshot_mode": "fast_view",
+            "external_calls_made": 0,
+        }
+
+    monkeypatch.setattr(
+        dashboard_routes,
+        "dashboard_snapshot_payload",
+        fake_dashboard_snapshot_payload,
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/dashboard/snapshot",
+        params={
+            "page": "alert:demo-alert-1",
+            "scan_offset": "12",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_page"] == "alert:demo-alert-1"
+    assert payload["external_calls_made"] == 0
+    filters = captured["snapshot_kwargs"]["filters"].normalized()
+    assert filters.ticker is None
+    assert filters.priced_in_offset == 12
+
 
 def test_get_dashboard_manifest_returns_desktop_automation_contract(
     tmp_path,

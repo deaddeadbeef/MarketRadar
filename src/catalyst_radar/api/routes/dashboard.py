@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated
 
@@ -15,6 +16,13 @@ from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+
+@dataclass(frozen=True)
+class DashboardPageRequest:
+    snapshot_page: str
+    selected_page: str
+    detail_ticker: str | None = None
 
 DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
     {
@@ -302,6 +310,31 @@ def manifest() -> dict[str, object]:
         },
     }
 
+
+def _dashboard_page_request(page: str) -> DashboardPageRequest:
+    raw_page = page.strip() or "overview"
+    if ticker := _detail_page_suffix(raw_page, "candidate:"):
+        ticker = ticker.upper()
+        return DashboardPageRequest(
+            snapshot_page="overview",
+            selected_page=f"candidate:{ticker}",
+            detail_ticker=ticker,
+        )
+    if alert_id := _detail_page_suffix(raw_page, "alert:"):
+        return DashboardPageRequest(
+            snapshot_page="alerts",
+            selected_page=f"alert:{alert_id}",
+        )
+    return DashboardPageRequest(snapshot_page=raw_page, selected_page=raw_page)
+
+
+def _detail_page_suffix(page: str, prefix: str) -> str | None:
+    if page[: len(prefix)].lower() != prefix:
+        return None
+    suffix = page[len(prefix) :].strip()
+    return suffix or None
+
+
 @router.get("/snapshot", dependencies=[Depends(require_role(Role.VIEWER))])
 def snapshot(
     page: str = "overview",
@@ -319,8 +352,9 @@ def snapshot(
     telemetry_limit: Annotated[int, Query(ge=1, le=200)] = 8,
     fast: bool = True,
 ) -> dict[str, object]:
+    page_request = _dashboard_page_request(page)
     filters = DashboardFilters(
-        ticker=ticker,
+        ticker=page_request.detail_ticker or ticker,
         available_at=available_at,
         alert_status=alert_status,
         alert_route=alert_route,
@@ -330,10 +364,10 @@ def snapshot(
         priced_in_decision_gap=decision_gap,
         priced_in_stocks_only=stocks_only,
         priced_in_limit=scan_limit,
-        priced_in_offset=scan_offset,
+        priced_in_offset=0 if page_request.detail_ticker else scan_offset,
         telemetry_limit=telemetry_limit,
     )
-    filters = dashboard_filters_for_page(filters, page)
+    filters = dashboard_filters_for_page(filters, page_request.snapshot_page)
     payload = dashboard_snapshot_payload(
         engine=_engine(),
         config=AppConfig.from_env(),
@@ -341,7 +375,7 @@ def snapshot(
         filters=filters,
         fast_view=fast,
     )
-    payload["selected_page"] = page
+    payload["selected_page"] = page_request.selected_page
     return payload
 
 
