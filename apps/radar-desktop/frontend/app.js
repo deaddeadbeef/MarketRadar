@@ -1207,13 +1207,13 @@ function showError(error) {
 }
 
 function handleKeyboard(event) {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement) {
-    return;
-  }
   if (event.key === 'Escape') {
     event.preventDefault();
     qs('#command-input').focus();
     setCommandStatus('Command box focused.');
+    return;
+  }
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement) {
     return;
   }
   if (event.ctrlKey && event.key.toLowerCase() === 'a') {
