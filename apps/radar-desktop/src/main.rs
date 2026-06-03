@@ -109,6 +109,7 @@ fn dashboard_snapshot(
     }
     let request = SnapshotRequest {
         page: page_request.snapshot_page,
+        requested_page: Some(page_request.selected_page.clone()),
         filters,
     };
     let mut value = fetch_snapshot(&state.source, &request).map_err(|err| err.to_string())?;

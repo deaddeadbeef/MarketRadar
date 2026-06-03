@@ -94,6 +94,7 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
     let page = Page::from_input(&args.page);
+    let requested_page = requested_page_arg(&args.page);
     let filters = args.snapshot_filters();
     let source = match args.snapshot_command {
         Some(command) => SnapshotSource::Command { command },
@@ -108,6 +109,7 @@ fn main() -> Result<()> {
         let app = static_frame_app(
             &source,
             page,
+            requested_page.clone(),
             filters.clone(),
             Duration::from_secs(args.refresh_seconds.max(1)),
             args.loading_frame,
@@ -120,7 +122,11 @@ fn main() -> Result<()> {
     }
 
     if args.once {
-        let request = SnapshotRequest { page, filters };
+        let request = SnapshotRequest {
+            page,
+            requested_page,
+            filters,
+        };
         let value = fetch_snapshot(&source, &request)?;
         let snapshot = SnapshotView::from_value(value);
         println!(
@@ -171,6 +177,7 @@ fn run_app(
 fn static_frame_app(
     source: &SnapshotSource,
     page: Page,
+    requested_page: Option<String>,
     filters: SnapshotFilters,
     refresh_every: Duration,
     loading_frame: bool,
@@ -181,11 +188,20 @@ fn static_frame_app(
         return Ok(app);
     }
 
-    let request = SnapshotRequest { page, filters };
+    let request = SnapshotRequest {
+        page,
+        requested_page,
+        filters,
+    };
     let value = fetch_snapshot(source, &request)?;
     app.snapshot = Some(SnapshotView::from_value(value));
     app.last_refresh = Some(Instant::now());
     Ok(app)
+}
+
+fn requested_page_arg(page: &str) -> Option<String> {
+    let page = page.trim();
+    (!page.is_empty()).then(|| page.to_string())
 }
 
 fn handle_key(app: &mut DashboardApp, key: KeyEvent) {

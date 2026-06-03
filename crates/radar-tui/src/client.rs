@@ -46,6 +46,7 @@ impl Default for SnapshotFilters {
 #[derive(Clone, Debug)]
 pub struct SnapshotRequest {
     pub page: Page,
+    pub requested_page: Option<String>,
     pub filters: SnapshotFilters,
 }
 
@@ -109,11 +110,7 @@ fn fetch_api_snapshot(
 }
 
 fn fetch_command_snapshot(command: &str, request: &SnapshotRequest) -> Result<Value> {
-    let mut command_line = if command.contains("{page}") {
-        command.replace("{page}", request.page.key())
-    } else {
-        format!("{command} --page {}", request.page.key())
-    };
+    let mut command_line = command_line_for_snapshot(command, request);
     append_command_filters(&mut command_line, &request.filters);
     let output = shell_command(&command_line)
         .with_context(|| format!("snapshot command failed to start: {command_line}"))?;
@@ -143,9 +140,18 @@ fn shell_command(command_line: &str) -> std::io::Result<std::process::Output> {
     Command::new("sh").args(["-lc", command_line]).output()
 }
 
+fn command_line_for_snapshot(command: &str, request: &SnapshotRequest) -> String {
+    let page = request_page(request);
+    if command.contains("{page}") {
+        command.replace("{page}", page)
+    } else {
+        format!("{command} --page {}", shell_quote(page))
+    }
+}
+
 fn api_query(request: &SnapshotRequest) -> Vec<(String, String)> {
     let mut query = vec![
-        ("page".to_string(), request.page.key().to_string()),
+        ("page".to_string(), request_page(request).to_string()),
         ("fast".to_string(), "true".to_string()),
         (
             "priced_in_status".to_string(),
@@ -195,6 +201,15 @@ fn api_query(request: &SnapshotRequest) -> Vec<(String, String)> {
         query.push(("decision_gap".to_string(), decision_gap.clone()));
     }
     query
+}
+
+fn request_page(request: &SnapshotRequest) -> &str {
+    request
+        .requested_page
+        .as_deref()
+        .map(str::trim)
+        .filter(|page| !page.is_empty())
+        .unwrap_or_else(|| request.page.key())
 }
 
 fn push_query(query: &mut Vec<(String, String)>, name: &str, value: Option<&str>) {
@@ -295,6 +310,7 @@ mod tests {
     fn api_query_preserves_existing_dashboard_filters() {
         let request = SnapshotRequest {
             page: Page::Review,
+            requested_page: None,
             filters: SnapshotFilters {
                 ticker: Some("MSFT".to_string()),
                 available_at: Some("2026-05-18T16:00:00+00:00".to_string()),
@@ -323,6 +339,25 @@ mod tests {
     }
 
     #[test]
+    fn api_query_preserves_exact_detail_page_request() {
+        let request = SnapshotRequest {
+            page: Page::Overview,
+            requested_page: Some("candidate:MSFT".to_string()),
+            filters: SnapshotFilters {
+                ticker: Some("MSFT".to_string()),
+                scan_offset: 0,
+                ..SnapshotFilters::default()
+            },
+        };
+
+        let query = api_query(&request);
+
+        assert!(query.contains(&("page".to_string(), "candidate:MSFT".to_string())));
+        assert!(query.contains(&("ticker".to_string(), "MSFT".to_string())));
+        assert!(query.contains(&("scan_offset".to_string(), "0".to_string())));
+    }
+
+    #[test]
     fn command_filters_append_snapshot_arguments() {
         let filters = SnapshotFilters {
             database_url: Some("sqlite:///data/local/test.db".to_string()),
@@ -345,5 +380,35 @@ mod tests {
         assert!(command.contains("--source-gap 'options,local_text'"));
         assert!(command.contains("--stocks-only"));
         assert!(command.contains("--scan-limit '50'"));
+    }
+
+    #[test]
+    fn command_line_preserves_exact_detail_page_request() {
+        let request = SnapshotRequest {
+            page: Page::Alerts,
+            requested_page: Some("alert:demo-alert-1".to_string()),
+            filters: SnapshotFilters::default(),
+        };
+
+        let command =
+            command_line_for_snapshot("catalyst-radar dashboard-snapshot --json --fast", &request);
+
+        assert!(command.contains("--page 'alert:demo-alert-1'"));
+    }
+
+    #[test]
+    fn command_line_substitutes_exact_page_placeholder() {
+        let request = SnapshotRequest {
+            page: Page::Run,
+            requested_page: Some("safe-run".to_string()),
+            filters: SnapshotFilters::default(),
+        };
+
+        let command = command_line_for_snapshot(
+            "catalyst-radar dashboard-snapshot --json --fast --page {page}",
+            &request,
+        );
+
+        assert!(command.contains("--page safe-run"));
     }
 }
