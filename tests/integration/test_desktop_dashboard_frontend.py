@@ -3,6 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> None:
+    source = Path("apps/radar-desktop/frontend/index.html").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'data-testid="dashboard-page"' in source
+    assert 'data-current-page="overview"' in source
+    assert 'data-current-nav-page="overview"' in source
+    assert 'data-testid="automation-state"' in source
+    assert "page=overview nav=overview status=loading provider_calls=0" in source
+
+
 def test_tauri_dashboard_json_command_targets_focusable_output() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",
