@@ -31,6 +31,23 @@ def test_tauri_dashboard_json_command_targets_focusable_output() -> None:
     assert "return false;" in source
 
 
+def test_tauri_dashboard_quit_command_closes_native_window() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+    rust_source = Path("apps/radar-desktop/src/main.rs").read_text(
+        encoding="utf-8",
+    )
+
+    assert "['q', 'quit', 'exit'].includes(command)" in source
+    assert "setCommandStatus('Closing MarketRadar.');" in source
+    assert "await closeDashboardWindow();" in source
+    assert "await invoke('close_dashboard_window');" in source
+    assert "fn close_dashboard_window(app: AppHandle) -> Result<(), String>" in rust_source
+    assert ".get_webview_window(\"main\")" in rust_source
+    assert "close_dashboard_window" in rust_source
+
+
 def test_tauri_dashboard_escape_focuses_command_from_form_controls() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",

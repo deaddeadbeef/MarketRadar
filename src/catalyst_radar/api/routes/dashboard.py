@@ -186,6 +186,7 @@ def manifest() -> dict[str, object]:
                 "Home opens Start, End opens Help",
                 "Esc focuses the command box",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
+                "q, quit, or exit closes the native desktop window",
                 (
                     "Full catalyst-radar commands show a PowerShell boundary "
                     "instead of executing in-app"
@@ -283,6 +284,18 @@ def manifest() -> dict[str, object]:
                         "snapshot-json-output, and provider_calls=0."
                     ),
                 },
+                {
+                    "step": "close-command",
+                    "action": (
+                        "Type q and press Return only when the automation "
+                        "session is finished."
+                    ),
+                    "target": "command-input",
+                    "expected": (
+                        "The native MarketRadar Command Center window closes "
+                        "without provider, OpenAI, broker, or DB-write actions."
+                    ),
+                },
             ],
             "zero_call_assertions": [
                 (
@@ -305,6 +318,11 @@ def manifest() -> dict[str, object]:
                 (
                     "Dynamic detail pages must expose both page=<candidate|alert detail> "
                     "and nav=<parent workflow page> for automation."
+                ),
+                (
+                    "q, quit, and exit close the native window through the Tauri "
+                    "window API and must not run provider, OpenAI, broker, or "
+                    "DB-write actions."
                 ),
             ],
             "notes": [

@@ -6,7 +6,7 @@ use radar_tui::client::{SnapshotFilters, SnapshotRequest, SnapshotSource, fetch_
 use radar_tui::model::Page;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 #[derive(Clone, Debug, Serialize)]
 struct PageInfo {
@@ -129,6 +129,14 @@ fn last_dashboard_snapshot(state: State<'_, DesktopState>) -> Option<Value> {
         .and_then(|snapshot| snapshot.clone())
 }
 
+#[tauri::command]
+fn close_dashboard_window(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "dashboard window not found".to_string())?;
+    window.close().map_err(|err| err.to_string())
+}
+
 fn main() {
     let args = parse_args(env::args().skip(1));
     let repo_root = find_repo_root().unwrap_or_else(|| env::current_dir().unwrap_or_default());
@@ -151,7 +159,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             desktop_config,
             dashboard_snapshot,
-            last_dashboard_snapshot
+            last_dashboard_snapshot,
+            close_dashboard_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running MarketRadar desktop dashboard");
@@ -421,6 +430,7 @@ fn automation_manifest() -> AutomationManifest {
             "Home opens Start, End opens Help",
             "Esc focuses the command box",
             "Command box accepts safe page, filter, refresh, help, and JSON commands",
+            "q, quit, or exit closes the native desktop window",
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
         ],
         native_window_title: "MarketRadar Command Center",
@@ -432,6 +442,7 @@ fn automation_manifest() -> AutomationManifest {
             "Full catalyst-radar commands typed into the desktop command box must stay external and leave provider_calls=0.",
             "Clicking or pressing Enter on queue rows must open local candidate/alert detail without provider calls.",
             "Dynamic detail pages must expose both page=<candidate|alert detail> and nav=<parent workflow page> for automation.",
+            "q, quit, and exit close the native window through the Tauri window API and must not run provider, OpenAI, broker, or DB-write actions.",
         ],
         notes: vec![
             "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
@@ -501,6 +512,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             action: "Type json and press Return.",
             target: "snapshot-json-output",
             expected: "Raw JSON snapshot opens, focus moves to snapshot-json-output, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "close-command",
+            action: "Type q and press Return only when the automation session is finished.",
+            target: "command-input",
+            expected: "The native MarketRadar Command Center window closes without provider, OpenAI, broker, or DB-write actions.",
         },
     ]
 }
@@ -645,6 +662,19 @@ mod tests {
                 .iter()
                 .any(|assertion| assertion.contains("Dynamic detail pages")
                     && assertion.contains("nav=<parent workflow page>"))
+        );
+        assert!(manifest.computer_use_steps.iter().any(|step| {
+            step.step == "close-command"
+                && step.action.contains("Type q")
+                && step
+                    .expected
+                    .contains("native MarketRadar Command Center window closes")
+        }));
+        assert!(
+            manifest
+                .zero_call_assertions
+                .iter()
+                .any(|assertion| assertion.contains("q, quit, and exit close"))
         );
     }
 }

@@ -796,8 +796,9 @@ async function applyCommand(raw) {
   const value = parts.join(' ').trim();
 
   if (['q', 'quit', 'exit'].includes(command)) {
-    setCommandStatus('Close the MarketRadar window to exit.');
-    return;
+    setCommandStatus('Closing MarketRadar.');
+    await closeDashboardWindow();
+    return false;
   }
   if (['r', 'refresh'].includes(command)) {
     setCommandStatus('Refreshed.');
@@ -1186,6 +1187,15 @@ function guardedCommandPage(command) {
 
 function setCommandStatus(message) {
   setText('#command-status', `command=${message}`);
+}
+
+async function closeDashboardWindow() {
+  try {
+    await invoke('close_dashboard_window');
+  } catch (error) {
+    setCommandStatus('Close the MarketRadar window to exit.');
+    showError(error);
+  }
 }
 
 async function copyNextCommand() {
