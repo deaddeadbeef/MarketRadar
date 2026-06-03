@@ -31,6 +31,21 @@ def test_tauri_dashboard_json_command_targets_focusable_output() -> None:
     assert "return false;" in source
 
 
+def test_tauri_dashboard_escape_focuses_command_from_form_controls() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    escape_handler = source.index("if (event.key === 'Escape')")
+    form_control_guard = source.index(
+        "event.target instanceof HTMLInputElement",
+    )
+
+    assert escape_handler < form_control_guard
+    assert "qs('#command-input').focus();" in source
+    assert "setCommandStatus('Command box focused.');" in source
+
+
 def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",
