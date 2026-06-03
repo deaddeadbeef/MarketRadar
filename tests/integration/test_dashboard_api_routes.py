@@ -103,6 +103,58 @@ def test_get_dashboard_snapshot_can_request_full_diagnostic_payload(
     assert captured["snapshot_kwargs"]["fast_view"] is False
 
 
+def test_get_dashboard_snapshot_canonicalizes_page_aliases(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "dashboard-page-alias-api.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: list[dict[str, object]] = []
+
+    def fake_dashboard_snapshot_payload(**kwargs):
+        captured.append(kwargs)
+        return {
+            "schema_version": "dashboard-cli-snapshot-v1",
+            "snapshot_mode": "fast_view",
+            "external_calls_made": 0,
+        }
+
+    monkeypatch.setattr(
+        dashboard_routes,
+        "dashboard_snapshot_payload",
+        fake_dashboard_snapshot_payload,
+    )
+    client = TestClient(create_app())
+
+    run_response = client.get(
+        "/api/dashboard/snapshot",
+        params={"page": "safe-run", "scan_offset": "9"},
+    )
+    review_response = client.get(
+        "/api/dashboard/snapshot",
+        params={"page": "decision-ready", "scan_offset": "9"},
+    )
+
+    assert run_response.status_code == 200
+    run_payload = run_response.json()
+    assert run_payload["selected_page"] == "run"
+    assert run_payload["external_calls_made"] == 0
+    run_filters = captured[0]["filters"].normalized()
+    assert run_filters.priced_in_status == "all"
+    assert run_filters.priced_in_usefulness is None
+    assert run_filters.priced_in_offset == 9
+
+    assert review_response.status_code == 200
+    review_payload = review_response.json()
+    assert review_payload["selected_page"] == "review"
+    assert review_payload["external_calls_made"] == 0
+    review_filters = captured[1]["filters"].normalized()
+    assert review_filters.priced_in_status == "actionable"
+    assert review_filters.priced_in_usefulness == "decision_useful"
+    assert review_filters.priced_in_offset == 0
+
+
 def test_get_dashboard_snapshot_preserves_candidate_detail_refresh(
     tmp_path,
     monkeypatch,

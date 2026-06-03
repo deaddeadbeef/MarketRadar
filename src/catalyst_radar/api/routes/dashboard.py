@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard.tui import (
+    PAGE_ALIASES,
     DashboardFilters,
     dashboard_filters_for_page,
     dashboard_snapshot_payload,
@@ -357,7 +358,16 @@ def _dashboard_page_request(page: str) -> DashboardPageRequest:
             snapshot_page="alerts",
             selected_page=f"alert:{alert_id}",
         )
-    return DashboardPageRequest(snapshot_page=raw_page, selected_page=raw_page)
+    canonical_page = _canonical_dashboard_page(raw_page)
+    return DashboardPageRequest(
+        snapshot_page=canonical_page,
+        selected_page=canonical_page,
+    )
+
+
+def _canonical_dashboard_page(page: str) -> str:
+    normalized = "-".join(page.strip().lower().replace("_", " ").split())
+    return PAGE_ALIASES.get(normalized, page)
 
 
 def _detail_page_suffix(page: str, prefix: str) -> str | None:
