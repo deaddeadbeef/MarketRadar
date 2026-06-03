@@ -226,6 +226,14 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert "automation-state" in payload["automation"]["landmarks"]
     assert "snapshot-json-output" in payload["automation"]["landmarks"]
     assert any(
+        "data-current-page" in note and "data-current-nav-page" in note
+        for note in payload["automation"]["notes"]
+    )
+    assert any(
+        "nav-page-candidates" in note and "nav-page-alerts" in note
+        for note in payload["automation"]["notes"]
+    )
+    assert any(
         "command box" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -261,6 +269,8 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         step["step"] == "row-open"
         and step["target"] == "queue-row"
         and "candidate:<TICKER>" in step["expected"]
+        and "nav=candidates" in step["expected"]
+        and "nav=alerts" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
@@ -280,7 +290,13 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         "queue rows" in assertion and "candidate/alert detail" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
+    assert any(
+        "Dynamic detail pages" in assertion
+        and "nav=<parent workflow page>" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")
+
 
 def _database_url(tmp_path, filename: str) -> str:
     return f"sqlite:///{tmp_path / filename}"

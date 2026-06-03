@@ -430,11 +430,14 @@ fn automation_manifest() -> AutomationManifest {
             "Execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
             "Full catalyst-radar commands typed into the desktop command box must stay external and leave provider_calls=0.",
             "Clicking or pressing Enter on queue rows must open local candidate/alert detail without provider calls.",
+            "Dynamic detail pages must expose both page=<candidate|alert detail> and nav=<parent workflow page> for automation.",
         ],
         notes: vec![
             "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
             "The current page title is exposed through data-testid=page-title.",
-            "The selected page and provider-call count are exposed through data-testid=automation-state.",
+            "The exact selected page, parent nav page, and provider-call count are exposed through data-testid=automation-state.",
+            "The dashboard main region exposes data-current-page and data-current-nav-page for dynamic detail pages.",
+            "Candidate detail pages keep nav-page-candidates selected; alert detail pages keep nav-page-alerts selected.",
             "Rows use data-testid=queue-row, are keyboard focusable, and include ticker-specific labels when available.",
             "Refreshing reads the existing dashboard JSON contract and makes zero provider calls.",
             "Execute-class commands remain external and require the normal PowerShell command boundary.",
@@ -454,7 +457,7 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "capture",
             action: "Capture screenshot and accessibility text for the selected window.",
             target: "MarketRadar Command Center",
-            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, automation-state, next-safe-action, and provider_calls=0.",
+            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, automation-state, next-safe-action, page=<PAGE>, nav=<WORKFLOW_PAGE>, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "focus-command",
@@ -478,7 +481,7 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "row-open",
             action: "Focus a queue-row and press Return, or type open 1 and press Return.",
             target: "queue-row",
-            expected: "dashboard-page reports page=candidate:<TICKER> or page=alert:<ID>, the detail panel is visible, and provider_calls=0.",
+            expected: "dashboard-page reports page=candidate:<TICKER> with nav=candidates or page=alert:<ID> with nav=alerts, the detail panel is visible, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "guarded-command",
@@ -540,6 +543,14 @@ mod tests {
                 .keyboard_shortcuts
                 .iter()
                 .any(|shortcut| shortcut.contains("command box"))
+        );
+        assert!(manifest.notes.iter().any(
+            |note| note.contains("data-current-page") && note.contains("data-current-nav-page")
+        ));
+        assert!(
+            manifest.notes.iter().any(
+                |note| note.contains("nav-page-candidates") && note.contains("nav-page-alerts")
+            )
         );
     }
 
@@ -610,7 +621,9 @@ mod tests {
                 .iter()
                 .any(|step| step.step == "row-open"
                     && step.target == "queue-row"
-                    && step.expected.contains("candidate:<TICKER>"))
+                    && step.expected.contains("candidate:<TICKER>")
+                    && step.expected.contains("nav=candidates")
+                    && step.expected.contains("nav=alerts"))
         );
         assert!(
             manifest
@@ -624,6 +637,13 @@ mod tests {
                 .iter()
                 .any(|assertion| assertion.contains("queue rows")
                     && assertion.contains("candidate/alert detail"))
+        );
+        assert!(
+            manifest
+                .zero_call_assertions
+                .iter()
+                .any(|assertion| assertion.contains("Dynamic detail pages")
+                    && assertion.contains("nav=<parent workflow page>"))
         );
     }
 }

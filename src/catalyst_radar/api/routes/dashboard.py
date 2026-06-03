@@ -209,7 +209,7 @@ def manifest() -> dict[str, object]:
                     "expected": (
                         "The window exposes MarketRadar workflow tabs, dashboard-page, "
                         "command-input, automation-state, next-safe-action, and "
-                        "provider_calls=0."
+                        "page=<PAGE>, nav=<WORKFLOW_PAGE>, and provider_calls=0."
                     ),
                 },
                 {
@@ -248,8 +248,8 @@ def manifest() -> dict[str, object]:
                     "target": "queue-row",
                     "expected": (
                         "dashboard-page reports page=candidate:<TICKER> or "
-                        "page=alert:<ID>, the detail panel is visible, and "
-                        "provider_calls=0."
+                        "page=alert:<ID>, automation-state reports nav=candidates "
+                        "or nav=alerts, the detail panel is visible, and provider_calls=0."
                     ),
                 },
                 {
@@ -300,6 +300,38 @@ def manifest() -> dict[str, object]:
                 (
                     "Clicking or pressing Enter on queue rows must open local "
                     "candidate/alert detail without provider calls."
+                ),
+                (
+                    "Dynamic detail pages must expose both page=<candidate|alert detail> "
+                    "and nav=<parent workflow page> for automation."
+                ),
+            ],
+            "notes": [
+                "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
+                "The current page title is exposed through data-testid=page-title.",
+                (
+                    "The exact selected page, parent nav page, and provider-call "
+                    "count are exposed through data-testid=automation-state."
+                ),
+                (
+                    "The dashboard main region exposes data-current-page and "
+                    "data-current-nav-page for dynamic detail pages."
+                ),
+                (
+                    "Candidate detail pages keep nav-page-candidates selected; "
+                    "alert detail pages keep nav-page-alerts selected."
+                ),
+                (
+                    "Rows use data-testid=queue-row, are keyboard focusable, "
+                    "and include ticker-specific labels when available."
+                ),
+                (
+                    "Refreshing reads the existing dashboard JSON contract and "
+                    "makes zero provider calls."
+                ),
+                (
+                    "Execute-class commands remain external and require the "
+                    "normal PowerShell command boundary."
                 ),
             ],
         },
