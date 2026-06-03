@@ -331,6 +331,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
+        step["step"] == "close-command"
+        and step["target"] == "command-input"
+        and "window closes" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
         "provider_calls=0" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
@@ -345,6 +351,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         "Dynamic detail pages" in assertion
         and "nav=<parent workflow page>" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
+        "q, quit, and exit close" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")
