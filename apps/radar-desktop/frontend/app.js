@@ -242,19 +242,20 @@ function bindControls() {
 
 function renderNav() {
   const host = qs('#workflow-tabs');
+  const activePage = navigationPageKey(state.page);
   host.innerHTML = state.config.pages.map((page) => `
     <button
       class="workflow-tab"
       type="button"
       role="tab"
-      aria-selected="${page.key === state.page}"
-      aria-current="${page.key === state.page ? 'page' : 'false'}"
+      aria-selected="${page.key === activePage}"
+      aria-current="${page.key === activePage ? 'page' : 'false'}"
       aria-keyshortcuts="${escapeHtml(page.shortcut)}"
       aria-controls="dashboard-main"
       id="tab-${escapeHtml(page.key)}"
       data-testid="${escapeHtml(page.test_id)}"
       data-page="${escapeHtml(page.key)}"
-      tabindex="${page.key === state.page ? '0' : '-1'}"
+      tabindex="${page.key === activePage ? '0' : '-1'}"
       aria-label="Open ${escapeHtml(page.label)} dashboard page"
       title="${escapeHtml(page.description)}"
     >
@@ -322,8 +323,8 @@ function filterInput() {
 function renderSnapshot() {
   const snapshot = state.snapshot || {};
   const status = compact(snapshot.status || at(snapshot, ['readiness', 'status']), 'unknown');
-  const pageInfo = state.config.pages.find((page) => page.key === state.page);
-  const label = pageInfo ? pageInfo.label : dynamicPageLabel(state.page);
+  const pageInfo = state.config.pages.find((page) => page.key === navigationPageKey(state.page));
+  const label = pageLabelFor(state.page, pageInfo);
   setText('#page-title', label);
   setStatus(status);
   setText('#refresh-label', `refresh=${state.lastRefresh ? state.lastRefresh.toLocaleTimeString() : 'pending'}`);
@@ -337,22 +338,40 @@ function renderSnapshot() {
 }
 
 function updateAutomationState(snapshot, status, pageInfo) {
-  const label = pageInfo ? pageInfo.label : dynamicPageLabel(state.page);
+  const navPage = navigationPageKey(state.page);
+  const label = pageLabelFor(state.page, pageInfo);
   const main = qs('#dashboard-main');
   if (main) {
     main.dataset.currentPage = state.page;
+    main.dataset.currentNavPage = navPage;
     main.setAttribute('aria-label', `Dashboard page ${label}`);
   }
   setText(
     '#automation-state',
     [
       `page=${state.page}`,
+      `nav=${navPage}`,
       `label=${label}`,
       `status=${status}`,
       `provider_calls=${compact(snapshot.external_calls_made, '0')}`,
       `next_command=${compact(snapshot.next_command || snapshot.canonical_next_command, 'none')}`,
     ].join(' ')
   );
+}
+
+function pageLabelFor(page, pageInfo) {
+  if (isDynamicDetailPage(page)) return dynamicPageLabel(page);
+  return pageInfo ? pageInfo.label : dynamicPageLabel(page);
+}
+
+function isDynamicDetailPage(page) {
+  return page.startsWith('candidate:') || page.startsWith('alert:');
+}
+
+function navigationPageKey(page) {
+  if (page.startsWith('candidate:')) return 'candidates';
+  if (page.startsWith('alert:')) return 'alerts';
+  return page;
 }
 
 function dynamicPageLabel(page) {
@@ -1236,7 +1255,7 @@ function handleKeyboard(event) {
 
 function stepPage(delta) {
   const pages = state.config.pages.map((page) => page.key);
-  const current = Math.max(0, pages.indexOf(state.page));
+  const current = Math.max(0, pages.indexOf(navigationPageKey(state.page)));
   const next = (current + delta + pages.length) % pages.length;
   setPage(pages[next]);
 }

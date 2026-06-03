@@ -72,6 +72,25 @@ def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     assert "Opened alert ${alertId}. No calls." in source
 
 
+def test_tauri_dashboard_detail_pages_expose_parent_navigation() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "const activePage = navigationPageKey(state.page);" in source
+    assert 'aria-selected="${page.key === activePage}"' in source
+    assert 'aria-current="${page.key === activePage ? \'page\' : \'false\'}"' in source
+    assert 'tabindex="${page.key === activePage ? \'0\' : \'-1\'}"' in source
+    assert "function pageLabelFor(page, pageInfo)" in source
+    assert "function isDynamicDetailPage(page)" in source
+    assert "function navigationPageKey(page)" in source
+    assert "if (page.startsWith('candidate:')) return 'candidates';" in source
+    assert "if (page.startsWith('alert:')) return 'alerts';" in source
+    assert "main.dataset.currentNavPage = navPage;" in source
+    assert "`nav=${navPage}`" in source
+    assert "pages.indexOf(navigationPageKey(state.page))" in source
+
+
 def test_tauri_dashboard_command_aliases_cover_legacy_page_words() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",
