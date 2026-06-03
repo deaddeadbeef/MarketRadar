@@ -80,6 +80,7 @@ impl DashboardApp {
         let source = self.source.clone();
         let request = SnapshotRequest {
             page: self.page,
+            requested_page: None,
             filters: self.filters.clone(),
         };
         let tx = self.tx.clone();
