@@ -298,6 +298,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "batch SOURCE opens an Ops source plan" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "catalyst-radar commands" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -311,6 +315,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         step["step"] == "guarded-command"
+        and "source-specific Ops plan" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "source-batch-execute-boundary"
+        and "--execute-batches 3" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
@@ -342,6 +352,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         "Full catalyst-radar commands" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
+        "Source batch plan commands" in assertion
+        and "provider_calls=0" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(

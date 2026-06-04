@@ -430,6 +430,7 @@ fn automation_manifest() -> AutomationManifest {
             "Home opens Start, End opens Help",
             "Esc focuses the command box",
             "Command box accepts safe page, filter, refresh, help, and JSON commands",
+            "batch SOURCE opens an Ops source plan; batch SOURCE all and batch SOURCE execute N show PowerShell boundaries",
             "q, quit, or exit closes the native desktop window",
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
         ],
@@ -439,6 +440,7 @@ fn automation_manifest() -> AutomationManifest {
         zero_call_assertions: vec![
             "Dashboard browsing, command-box navigation, filtering, copy, and raw JSON inspection must leave provider_calls=0.",
             "Execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
+            "Source batch plan commands may read the current snapshot, but execute variants must remain external PowerShell boundaries and leave provider_calls=0.",
             "Full catalyst-radar commands typed into the desktop command box must stay external and leave provider_calls=0.",
             "Clicking or pressing Enter on queue rows must open local candidate/alert detail without provider calls.",
             "Dynamic detail pages must expose both page=<candidate|alert detail> and nav=<parent workflow page> for automation.",
@@ -499,7 +501,13 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "guarded-command",
             action: "Type batch catalyst_events and press Return.",
             target: "command-input",
-            expected: "dashboard-page reports page=ops, command-status shows an external command boundary, and provider_calls=0.",
+            expected: "dashboard-page reports page=ops, command-status shows a source-specific Ops plan or workflow status, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "source-batch-execute-boundary",
+            action: "Type batch catalyst_events execute 3 and press Return.",
+            target: "command-input",
+            expected: "dashboard-page reports page=ops, command-status shows the PowerShell command with --execute-batches 3 and provider_calls=0.",
         },
         ComputerUseStep {
             step: "powershell-command",
@@ -631,7 +639,15 @@ mod tests {
             manifest
                 .computer_use_steps
                 .iter()
-                .any(|step| step.step == "guarded-command")
+                .any(|step| step.step == "guarded-command"
+                    && step.expected.contains("source-specific Ops plan"))
+        );
+        assert!(
+            manifest
+                .computer_use_steps
+                .iter()
+                .any(|step| step.step == "source-batch-execute-boundary"
+                    && step.expected.contains("--execute-batches 3"))
         );
         assert!(
             manifest
@@ -642,6 +658,13 @@ mod tests {
                     && step.expected.contains("candidate:<TICKER>")
                     && step.expected.contains("nav=candidates")
                     && step.expected.contains("nav=alerts"))
+        );
+        assert!(
+            manifest
+                .zero_call_assertions
+                .iter()
+                .any(|assertion| assertion.contains("Source batch plan commands")
+                    && assertion.contains("provider_calls=0"))
         );
         assert!(
             manifest
