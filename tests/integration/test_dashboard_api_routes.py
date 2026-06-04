@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from fastapi.testclient import TestClient
 
 from apps.api.main import create_app
@@ -238,6 +240,92 @@ def test_get_dashboard_snapshot_preserves_alert_detail_refresh(
     assert filters.priced_in_offset == 12
 
 
+def test_post_dashboard_command_reuses_cli_dispatcher_contract(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "dashboard-command-api.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_dashboard_snapshot_payload(**kwargs):
+        captured["snapshot_kwargs"] = kwargs
+        return {
+            "schema_version": "dashboard-cli-snapshot-v1",
+            "snapshot_mode": "fast_view",
+            "external_calls_made": 0,
+        }
+
+    @dataclass(frozen=True)
+    class FakeUpdate:
+        page: str
+        filters: dashboard_routes.DashboardFilters
+        exit_requested: bool = False
+        message: str = "Local only: action saved; db_writes=1."
+
+    def fake_apply_dashboard_command(raw, payload, page, filters, *, engine, config):
+        captured["command"] = raw
+        captured["payload"] = payload
+        captured["page"] = page
+        captured["filters"] = filters
+        captured["engine"] = engine
+        captured["config"] = config
+        return FakeUpdate(page="broker", filters=filters.normalized())
+
+    monkeypatch.setattr(
+        dashboard_routes,
+        "dashboard_snapshot_payload",
+        fake_dashboard_snapshot_payload,
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "apply_dashboard_command",
+        fake_apply_dashboard_command,
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/dashboard/command",
+        json={
+            "command": "action msft watch codex smoke",
+            "page": "broker",
+            "ticker": "msft",
+            "available_at": "2026-05-18T16:00:00+00:00",
+            "source_gap": ["options"],
+            "decision_gap": ["decision_card"],
+            "stocks_only": True,
+            "scan_limit": 12,
+            "scan_offset": 24,
+            "telemetry_limit": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "dashboard-command-result-v1"
+    assert payload["command"] == "action msft watch codex smoke"
+    assert payload["page"] == "broker"
+    assert payload["exit_requested"] is False
+    assert payload["message"] == "Local only: action saved; db_writes=1."
+    assert payload["snapshot"]["selected_page"] == "broker"
+    assert payload["snapshot"]["external_calls_made"] == 0
+    assert payload["filters"]["ticker"] == "MSFT"
+    assert payload["filters"]["priced_in_source_gap"] == ["options"]
+    assert payload["filters"]["priced_in_decision_gap"] == ["decision_card"]
+    assert payload["filters"]["priced_in_stocks_only"] is True
+    assert payload["filters"]["priced_in_limit"] == 12
+    assert payload["filters"]["priced_in_offset"] == 24
+    assert payload["filters"]["telemetry_limit"] == 5
+    assert captured["command"] == "action msft watch codex smoke"
+    assert captured["page"] == "broker"
+    filters = captured["filters"].normalized()
+    assert filters.ticker == "MSFT"
+    assert filters.available_at.isoformat() == "2026-05-18T16:00:00+00:00"
+    assert filters.priced_in_source_gap == ("options",)
+    assert filters.priced_in_decision_gap == ("decision_card",)
+
+
 def test_get_dashboard_manifest_returns_desktop_automation_contract(
     tmp_path,
     monkeypatch,
@@ -326,6 +414,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "action, trigger, ticket, feedback, ledger, and outcome" in shortcut
+        and "guarded dashboard backend" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "catalyst-radar commands" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -350,6 +443,13 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         step["step"] == "safe-run-execute-command"
         and "radar_run telemetry contract" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "local-dashboard-command"
+        and "Local only" in step["expected"]
+        and "db_writes=1" in step["expected"]
+        and "no provider" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
@@ -423,7 +523,9 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
-        "Non-run execute-class commands" in assertion
+        "Local broker, feedback, value-ledger, and outcome commands" in assertion
+        and "guarded dashboard backend" in assertion
+        and "provider, OpenAI, broker, order, or external calls" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
@@ -465,7 +567,8 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
-        "run execute uses the guarded radar-run" in note
+        "Local broker, feedback, value-ledger, and outcome commands" in note
+        and "run execute uses the guarded radar-run" in note
         for note in payload["automation"]["notes"]
     )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")

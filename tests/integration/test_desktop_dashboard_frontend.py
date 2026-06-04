@@ -225,6 +225,46 @@ def test_tauri_dashboard_run_execute_uses_backend_command() -> None:
     assert "'run execute'" not in execute_set
 
 
+def test_tauri_dashboard_local_commands_use_backend_command() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    backend_handler = source.index("if (backendCommandWords.has(command))")
+    guarded_handler = source.index("const guardedMessage = guardedCommandMessage")
+    execute_set = source.split("const executeClassCommands = new Set([", 1)[1].split(
+        "]);",
+        1,
+    )[0]
+
+    assert "const backendCommandWords = new Set" in source
+    for command in (
+        "'action'",
+        "'eval-triggers'",
+        "'feedback'",
+        "'ledger'",
+        "'outcome'",
+        "'ticket'",
+        "'trigger'",
+        "'value-ledger'",
+    ):
+        assert command in source
+        assert command not in execute_set
+    assert backend_handler < guarded_handler
+    assert "await handleBackendDashboardCommand(raw);" in source
+    assert "async function handleBackendDashboardCommand(raw)" in source
+    assert "command: raw" in source
+    assert "function applyBackendDashboardResult(result)" in source
+    assert "function applyBackendDashboardFilters(filters)" in source
+    assert "function dashboardCommandResultMessage(result)" in source
+    assert "Running dashboard command through backend" in source
+    assert "Dashboard command failed" in source
+    assert "costCommandMessage" not in source
+    assert "Run guarded local Broker or Alert commands through the dashboard backend" in source
+    assert "Run guarded local value-ledger commands through the dashboard backend" in source
+    assert "Run guarded local value-outcome commands through the dashboard backend" in source
+
+
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",

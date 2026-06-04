@@ -15,5 +15,6 @@ Status:
 - In progress: desktop clear-filter parity so `clear-filters` resets browsing filters while preserving the current row limit.
 - In progress: desktop optional-filter parity so usefulness and alert filters clear case-insensitively like the Python TUI.
 - In progress: desktop Safe Run execute parity so `run execute` uses the guarded radar-run API/CLI backend instead of a generic boundary.
+- In progress: desktop local command API parity so broker, feedback, value-ledger, and outcome commands route through the guarded dashboard backend.
 - Validation passed: cargo tests for radar-desktop/radar-tui, release build, Ruff, targeted API route pytest, manifest probe, and git diff whitespace check.
 - Remaining blocker: native Computer Use still fails before app discovery with Computer Use native pipe path is unavailable.

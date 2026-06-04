@@ -467,6 +467,7 @@ fn automation_manifest() -> AutomationManifest {
             "source-gap and decision-gap commands reject unsupported values before refreshing",
             "batch SOURCE opens an Ops source plan; batch SOURCE all and batch SOURCE execute N show PowerShell boundaries",
             "run opens Safe Run; run execute starts the guarded radar-run API/CLI backend path",
+            "action, trigger, ticket, feedback, ledger, and outcome commands use the guarded dashboard backend for local DB-only operations",
             "q, quit, or exit closes the native desktop window",
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
         ],
@@ -475,7 +476,7 @@ fn automation_manifest() -> AutomationManifest {
         computer_use_steps: computer_use_steps(),
         zero_call_assertions: vec![
             "Dashboard browsing, command-box navigation, filtering, copy, and raw JSON inspection must leave provider_calls=0.",
-            "Non-run execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
+            "Local broker, feedback, value-ledger, and outcome commands may write the local DB through the guarded dashboard backend, but must not make provider, OpenAI, broker, order, or external calls unless the command explicitly reports an external-call budget.",
             "Source batch plan commands may read the current snapshot, but execute variants must remain external PowerShell boundaries and leave provider_calls=0.",
             "Invalid source-gap or decision-gap filter commands must not refresh the snapshot or change filters.",
             "Invalid offset, limit, or available-at commands must not refresh the snapshot or change filters.",
@@ -495,7 +496,7 @@ fn automation_manifest() -> AutomationManifest {
             "Candidate detail pages keep nav-page-candidates selected; alert detail pages keep nav-page-alerts selected.",
             "Rows use data-testid=queue-row, are keyboard focusable, and include ticker-specific labels when available.",
             "Refreshing reads the existing dashboard JSON contract and makes zero provider calls.",
-            "Non-run execute-class commands remain external and require the normal PowerShell command boundary; run execute uses the guarded radar-run API/CLI backend path.",
+            "Local broker, feedback, value-ledger, and outcome commands use the guarded dashboard backend; source-batch execute and provider import commands remain external PowerShell boundaries; run execute uses the guarded radar-run API/CLI backend path.",
         ],
     }
 }
@@ -585,6 +586,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             action: "Type batch catalyst_events execute 3 and press Return.",
             target: "command-input",
             expected: "dashboard-page reports page=ops, command-status shows the PowerShell command with --execute-batches 3 and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "local-dashboard-command",
+            action: "Type action ACME watch Codex smoke and press Return only after intentional local write validation.",
+            target: "command-input",
+            expected: "dashboard-page reports page=broker, command-status reports Local only, db_writes=1, and no provider, OpenAI, broker, order, or external calls occur after refresh.",
         },
         ComputerUseStep {
             step: "safe-run-execute-command",
@@ -785,6 +792,15 @@ mod tests {
                 .any(|step| step.step == "safe-run-execute-command"
                     && step.expected.contains("radar_run telemetry contract"))
         );
+        assert!(manifest.keyboard_shortcuts.iter().any(|shortcut| {
+            shortcut.contains("action, trigger, ticket, feedback, ledger, and outcome")
+                && shortcut.contains("guarded dashboard backend")
+        }));
+        assert!(manifest.computer_use_steps.iter().any(|step| step.step
+            == "local-dashboard-command"
+            && step.expected.contains("Local only")
+            && step.expected.contains("db_writes=1")
+            && step.expected.contains("no provider")));
         assert!(
             manifest
                 .computer_use_steps
@@ -831,18 +847,15 @@ mod tests {
                 .any(|assertion| assertion.contains("Source batch plan commands")
                     && assertion.contains("provider_calls=0"))
         );
-        assert!(
-            manifest
-                .zero_call_assertions
-                .iter()
-                .any(|assertion| assertion.contains("Non-run execute-class commands"))
-        );
-        assert!(
-            manifest
-                .notes
-                .iter()
-                .any(|note| note.contains("run execute uses the guarded radar-run"))
-        );
+        assert!(manifest.zero_call_assertions.iter().any(|assertion| {
+            assertion.contains("Local broker, feedback, value-ledger, and outcome commands")
+                && assertion.contains("guarded dashboard backend")
+                && assertion.contains("provider, OpenAI, broker, order, or external calls")
+        }));
+        assert!(manifest.notes.iter().any(|note| {
+            note.contains("Local broker, feedback, value-ledger, and outcome commands")
+                && note.contains("run execute uses the guarded radar-run")
+        }));
         assert!(
             manifest
                 .zero_call_assertions

@@ -97,6 +97,7 @@ pub fn execute_dashboard_command(
             role.as_deref(),
             *allow_invalid_certs,
             command_text,
+            request,
         ),
         SnapshotSource::Command { command } => {
             execute_command_dashboard_command(command, command_text, request)
@@ -109,36 +110,50 @@ fn execute_api_dashboard_command(
     role: Option<&str>,
     allow_invalid_certs: bool,
     command_text: &str,
+    request: &SnapshotRequest,
 ) -> Result<Value> {
-    if !is_run_execute_command(command_text) {
-        bail!("API dashboard command is only implemented for run execute");
-    }
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(120))
         .danger_accept_invalid_certs(allow_invalid_certs)
         .build()
         .context("failed to build HTTP client")?;
-    let url = format!("{}/api/radar/runs", base_url.trim_end_matches('/'));
-    let mut request = client.post(url).json(&json!({
-        "run_llm": true,
-        "llm_dry_run": true,
-        "dry_run_alerts": true,
-    }));
+    let (path, body, label) = if is_run_execute_command(command_text) {
+        (
+            "/api/radar/runs",
+            json!({
+                "run_llm": true,
+                "llm_dry_run": true,
+                "dry_run_alerts": true,
+            }),
+            "radar run",
+        )
+    } else {
+        (
+            "/api/dashboard/command",
+            api_dashboard_command_body(command_text, request),
+            "dashboard command",
+        )
+    };
+    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
+    let mut request = client.post(url).json(&body);
     if let Some(role) = role {
         request = request.header("x-catalyst-role", role);
     }
-    let response = request.send().context("radar run request failed")?;
+    let response = request
+        .send()
+        .with_context(|| format!("{label} request failed"))?;
     let status = response.status();
     let text = response
         .text()
-        .context("radar run response body could not be read")?;
+        .with_context(|| format!("{label} response body could not be read"))?;
     if !status.is_success() {
         bail!(
-            "radar run endpoint returned {status}: {}",
+            "{label} endpoint returned {status}: {}",
             response_error_detail(&text)
         );
     }
-    serde_json::from_str::<Value>(&text).context("radar run response was not valid JSON")
+    serde_json::from_str::<Value>(&text)
+        .with_context(|| format!("{label} response was not valid JSON"))
 }
 
 fn execute_command_dashboard_command(
@@ -257,6 +272,25 @@ fn is_run_execute_command(command_text: &str) -> bool {
         .collect::<Vec<_>>()
         .join(" ")
         == "run execute"
+}
+
+fn api_dashboard_command_body(command_text: &str, request: &SnapshotRequest) -> Value {
+    json!({
+        "command": command_text,
+        "page": request_page(request),
+        "ticker": request.filters.ticker.clone(),
+        "available_at": request.filters.available_at.clone(),
+        "alert_status": request.filters.alert_status.clone(),
+        "alert_route": request.filters.alert_route.clone(),
+        "priced_in_status": request.filters.priced_in_status.clone(),
+        "usefulness": request.filters.usefulness.clone(),
+        "source_gap": request.filters.source_gap.clone(),
+        "decision_gap": request.filters.decision_gap.clone(),
+        "stocks_only": request.filters.stocks_only,
+        "scan_limit": request.filters.scan_limit,
+        "scan_offset": request.filters.scan_offset,
+        "telemetry_limit": request.filters.telemetry_limit,
+    })
 }
 
 fn response_error_detail(text: &str) -> String {
@@ -481,6 +515,46 @@ mod tests {
         assert!(query.contains(&("page".to_string(), "candidate:MSFT".to_string())));
         assert!(query.contains(&("ticker".to_string(), "MSFT".to_string())));
         assert!(query.contains(&("scan_offset".to_string(), "0".to_string())));
+    }
+
+    #[test]
+    fn api_dashboard_command_body_preserves_filters() {
+        let request = SnapshotRequest {
+            page: Page::Broker,
+            requested_page: Some("broker".to_string()),
+            filters: SnapshotFilters {
+                ticker: Some("MSFT".to_string()),
+                available_at: Some("2026-05-18T16:00:00+00:00".to_string()),
+                alert_status: Some("open".to_string()),
+                alert_route: Some("review".to_string()),
+                priced_in_status: "actionable".to_string(),
+                usefulness: Some("decision_useful".to_string()),
+                source_gap: vec!["options".to_string()],
+                decision_gap: vec!["decision_card".to_string()],
+                stocks_only: true,
+                scan_limit: 12,
+                scan_offset: 24,
+                telemetry_limit: 5,
+                ..SnapshotFilters::default()
+            },
+        };
+
+        let body = api_dashboard_command_body("action MSFT watch codex smoke", &request);
+
+        assert_eq!(body["command"], "action MSFT watch codex smoke");
+        assert_eq!(body["page"], "broker");
+        assert_eq!(body["ticker"], "MSFT");
+        assert_eq!(body["available_at"], "2026-05-18T16:00:00+00:00");
+        assert_eq!(body["alert_status"], "open");
+        assert_eq!(body["alert_route"], "review");
+        assert_eq!(body["priced_in_status"], "actionable");
+        assert_eq!(body["usefulness"], "decision_useful");
+        assert_eq!(body["source_gap"], json!(["options"]));
+        assert_eq!(body["decision_gap"], json!(["decision_card"]));
+        assert_eq!(body["stocks_only"], true);
+        assert_eq!(body["scan_limit"], 12);
+        assert_eq!(body["scan_offset"], 24);
+        assert_eq!(body["telemetry_limit"], 5);
     }
 
     #[test]
