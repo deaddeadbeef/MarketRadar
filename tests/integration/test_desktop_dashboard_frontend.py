@@ -283,7 +283,7 @@ def test_tauri_dashboard_provider_preview_commands_use_backend_with_execute_guar
     assert "function guardedExecutionBoundaryMessage(normalized)" in source
     assert "function providerBackendCommandWords()" in source
     assert (
-        "providerBackendCommandWords().has(command) && /\\bexecute\\b/.test(normalized)"
+        "providerBackendCommandWords().has(command) && /\\b(?:execute|confirm)\\b/.test(normalized)"
         in source
     )
     for command in (
@@ -311,6 +311,21 @@ def test_tauri_dashboard_provider_preview_commands_use_backend_with_execute_guar
     assert "Preview point-in-time options commands through the dashboard backend" in source
     assert "Preview SEC CIK override commands through the dashboard backend" in source
     assert "Preview agent gates through the dashboard backend" in source
+
+
+def test_tauri_dashboard_provider_confirm_commands_stay_external_boundaries() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    boundary_function = source.split("function guardedExecutionBoundaryMessage(normalized)", 1)[
+        1
+    ].split("function providerBackendCommandWords()", 1)[0]
+
+    assert "/\\b(?:execute|confirm)\\b/.test(normalized)" in boundary_function
+    assert "providerBackendCommandWords().has(command)" in boundary_function
+    assert "Execute commands stay outside dashboard browsing" in boundary_function
+    assert "confirm variants stay external" in source
 
 
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:

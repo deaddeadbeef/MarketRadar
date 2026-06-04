@@ -1461,7 +1461,8 @@ function guardedExecutionBoundaryMessage(normalized) {
   if (executeClassCommands.has(normalized)) {
     return 'Execute commands stay outside dashboard browsing. Copy the displayed command and run it in PowerShell after reviewing call/write boundaries.';
   }
-  if (providerBackendCommandWords().has(command) && /\bexecute\b/.test(normalized)) {
+  // Provider previews can use the backend; execute and confirm variants stay external.
+  if (providerBackendCommandWords().has(command) && /\b(?:execute|confirm)\b/.test(normalized)) {
     return 'Execute commands stay outside dashboard browsing. Copy the displayed command and run it in PowerShell after reviewing call/write boundaries.';
   }
   return '';
