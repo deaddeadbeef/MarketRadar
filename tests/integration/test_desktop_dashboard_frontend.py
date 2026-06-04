@@ -75,6 +75,15 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     assert "item.safety" in source
     assert "item.route" in source
     assert "commandReference().map" in source
+    assert "function catalogLabel(value)" in source
+    assert "<th>Safety</th><th>Route</th>" in source
+    assert 'data-testid="command-reference-row"' in source
+    assert 'data-command="${escapeHtml(command)}"' in source
+    assert 'data-safety="${escapeHtml(safety)}"' in source
+    assert 'data-route="${escapeHtml(route)}"' in source
+    assert 'tabindex="0"' in source
+    assert "Safety ${catalogLabel(safety)}. Route ${catalogLabel(route)}." in source
+    assert "class=\"command-route\"" in source
     assert "['themes', 'themes']" in source
     assert "['validation', 'validation']" in source
     assert "['v', 'costs']" in source
