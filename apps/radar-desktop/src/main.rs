@@ -451,6 +451,7 @@ fn automation_manifest() -> AutomationManifest {
             "command-input",
             "command-status",
             "automation-state",
+            "filter-state",
             "attention-queue",
             "loading-dashboard",
             "loading-metric-strip",
@@ -485,6 +486,7 @@ fn automation_manifest() -> AutomationManifest {
             "Command box accepts safe page, filter, refresh, help, and JSON commands",
             "offset, limit, and available-at commands reject invalid values before refreshing",
             "source-gap and decision-gap commands reject unsupported values before refreshing",
+            "ready applies the decision-ready scan filter; review opens the Review page",
             "batch SOURCE opens an Ops source plan; batch SOURCE all and batch SOURCE execute N show PowerShell boundaries",
             "run opens Safe Run; run execute starts the guarded radar-run API/CLI backend path",
             "action, trigger, ticket, feedback, ledger, and outcome commands use the guarded dashboard backend for local DB-only operations",
@@ -503,6 +505,7 @@ fn automation_manifest() -> AutomationManifest {
             "Source batch plan commands may read the current snapshot, but execute variants must remain external PowerShell boundaries and leave provider_calls=0.",
             "Invalid source-gap or decision-gap filter commands must not refresh the snapshot or change filters.",
             "Invalid offset, limit, or available-at commands must not refresh the snapshot or change filters.",
+            "ready must update filter-state to scan_mode=actionable and usefulness=decision_useful while opening Review without provider calls; review must open the Review page without changing filters.",
             "Pagination commands must not advance scan_offset beyond priced_in_queue.total_count.",
             "clear-filters must preserve the chosen row limit while clearing ticker, source, decision, availability, alert, usefulness, and offset filters.",
             "Optional usefulness filters must clear case-insensitively for all, any, none, or blank input; alert-status and alert-route clear for all, none, or blank input.",
@@ -515,6 +518,7 @@ fn automation_manifest() -> AutomationManifest {
             "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
             "The current page title is exposed through data-testid=page-title.",
             "The exact selected page, parent nav page, and provider-call count are exposed through data-testid=automation-state.",
+            "The active ticker, scan, availability, alert, source-gap, decision-gap, usefulness, limit, and offset filters are exposed through data-testid=filter-state.",
             "The dashboard main region exposes data-current-page and data-current-nav-page for dynamic detail pages.",
             "Before the first snapshot loads, the main region exposes loading-dashboard, loading-metric-strip, and loading-preview-queue instead of a blank box.",
             "The right rail exposes keys-panel and snapshot-panel, including snapshot-source, snapshot-refresh, snapshot-page, and snapshot-mode.",
@@ -699,7 +703,7 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "capture",
             action: "Capture screenshot and accessibility text for the selected window.",
             target: "MarketRadar Command Center",
-            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, automation-state, loading-dashboard before first data, next-safe-action, keys-panel, snapshot-panel, page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and provider_calls=0.",
+            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, automation-state, filter-state, loading-dashboard before first data, next-safe-action, keys-panel, snapshot-panel, page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "focus-command",
@@ -750,10 +754,16 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             expected: "usefulness is cleared case-insensitively, command-status reports Usefulness filter cleared, and provider_calls=0.",
         },
         ComputerUseStep {
-            step: "page-command",
+            step: "ready-filter-command",
             action: "Type ready and press Return.",
+            target: "filter-state",
+            expected: "filter-state reports scan_mode=actionable and usefulness=decision_useful, dashboard-page reports page=review, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "page-command",
+            action: "Type review and press Return.",
             target: "command-input",
-            expected: "dashboard-page reports page=review and the selected tab is Review.",
+            expected: "dashboard-page reports page=review, the selected tab is Review, filter-state is still exposed, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "row-open",
@@ -845,6 +855,7 @@ mod tests {
 
         assert!(manifest.landmark_test_ids.contains(&"command-input"));
         assert!(manifest.landmark_test_ids.contains(&"automation-state"));
+        assert!(manifest.landmark_test_ids.contains(&"filter-state"));
         assert!(manifest.landmark_test_ids.contains(&"loading-dashboard"));
         assert!(manifest.landmark_test_ids.contains(&"loading-metric-strip"));
         assert!(
@@ -893,6 +904,10 @@ mod tests {
                 .iter()
                 .any(|shortcut| shortcut.contains("Q closes the native desktop window"))
         );
+        assert!(manifest.keyboard_shortcuts.iter().any(|shortcut| {
+            shortcut.contains("ready applies the decision-ready scan filter")
+                && shortcut.contains("review opens the Review page")
+        }));
         assert!(manifest.command_box_commands.iter().any(|command| {
             command.command == "bars saved capture/validate/import"
                 && command.safety == "preview_only_confirm_execute_external"
@@ -911,6 +926,11 @@ mod tests {
         assert!(manifest.notes.iter().any(
             |note| note.contains("data-current-page") && note.contains("data-current-nav-page")
         ));
+        assert!(manifest.notes.iter().any(|note| {
+            note.contains("data-testid=filter-state")
+                && note.contains("ticker")
+                && note.contains("offset")
+        }));
         assert!(
             manifest.notes.iter().any(
                 |note| note.contains("nav-page-candidates") && note.contains("nav-page-alerts")
@@ -1030,6 +1050,20 @@ mod tests {
                 .any(|step| step.step == "optional-filter-clear-command"
                     && step.expected.contains("Usefulness filter cleared"))
         );
+        assert!(manifest.computer_use_steps.iter().any(|step| {
+            step.step == "ready-filter-command"
+                && step.target == "filter-state"
+                && step.expected.contains("scan_mode=actionable")
+                && step.expected.contains("usefulness=decision_useful")
+                && step.expected.contains("page=review")
+        }));
+        assert!(manifest.computer_use_steps.iter().any(|step| {
+            step.step == "page-command"
+                && step.action.contains("Type review")
+                && step.expected.contains("page=review")
+                && step.expected.contains("filter-state")
+                && step.expected.contains("provider_calls=0")
+        }));
         assert!(
             manifest
                 .computer_use_steps
@@ -1075,6 +1109,7 @@ mod tests {
                 && step
                     .expected
                     .contains("loading-dashboard before first data")
+                && step.expected.contains("filter-state")
                 && step.expected.contains("keys-panel")
                 && step.expected.contains("snapshot-panel")
                 && step.expected.contains("snapshot-page=<PAGE>")
@@ -1103,6 +1138,11 @@ mod tests {
                 .any(|assertion| assertion.contains("Invalid offset")
                     && assertion.contains("must not refresh"))
         );
+        assert!(manifest.zero_call_assertions.iter().any(|assertion| {
+            assertion.contains("ready must update filter-state")
+                && assertion.contains("scan_mode=actionable")
+                && assertion.contains("review must open the Review page")
+        }));
         assert!(
             manifest
                 .zero_call_assertions

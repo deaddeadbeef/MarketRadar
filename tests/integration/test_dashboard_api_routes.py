@@ -364,6 +364,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert "workflow-nav" in payload["automation"]["landmarks"]
     assert "command-input" in payload["automation"]["landmarks"]
     assert "automation-state" in payload["automation"]["landmarks"]
+    assert "filter-state" in payload["automation"]["landmarks"]
     assert "loading-dashboard" in payload["automation"]["landmarks"]
     assert "loading-metric-strip" in payload["automation"]["landmarks"]
     assert "loading-preview-queue" in payload["automation"]["landmarks"]
@@ -436,6 +437,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "ready applies the decision-ready scan filter" in shortcut
+        and "review opens the Review page" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "batch SOURCE opens an Ops source plan" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -483,6 +489,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         command["command"] == "json"
         and command["safety"] == "zero_provider_calls"
         and command["route"] == "local_snapshot_view"
+        for command in command_catalog
+    )
+    assert any(
+        command["command"] == "ready / full / mismatches / stocks"
+        and "Apply decision-useful" in command["meaning"]
+        and command["route"] == "local_filter"
         for command in command_catalog
     )
     assert any(
@@ -574,12 +586,29 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
+        step["step"] == "ready-filter-command"
+        and step["target"] == "filter-state"
+        and "scan_mode=actionable" in step["expected"]
+        and "usefulness=decision_useful" in step["expected"]
+        and "page=review" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "page-command"
+        and "Type review" in step["action"]
+        and "page=review" in step["expected"]
+        and "filter-state" in step["expected"]
+        and "provider_calls=0" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
         step["step"] == "powershell-command"
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
         step["step"] == "capture"
         and "loading-dashboard before first data" in step["expected"]
+        and "filter-state" in step["expected"]
         and "keys-panel" in step["expected"]
         and "snapshot-panel" in step["expected"]
         and "snapshot-page=<PAGE>" in step["expected"]
@@ -640,6 +669,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
+        "ready must update filter-state" in assertion
+        and "scan_mode=actionable" in assertion
+        and "review must open the Review page" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
         "Pagination commands" in assertion
         and "priced_in_queue.total_count" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
@@ -671,6 +706,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         "Local broker, feedback, value-ledger, and outcome commands" in note
         and "provider preview/status commands use the guarded dashboard backend" in note
         and "run execute uses the guarded radar-run" in note
+        for note in payload["automation"]["notes"]
+    )
+    assert any(
+        "data-testid=filter-state" in note
+        and "ticker" in note
+        and "offset" in note
         for note in payload["automation"]["notes"]
     )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")

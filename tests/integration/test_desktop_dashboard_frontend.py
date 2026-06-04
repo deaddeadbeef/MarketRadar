@@ -13,6 +13,8 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     assert 'data-current-nav-page="overview"' in source
     assert 'data-testid="automation-state"' in source
     assert "page=overview nav=overview status=loading provider_calls=0" in source
+    assert 'data-testid="filter-state"' in source
+    assert "ticker=all scan_mode=all stocks_only=false limit=50 offset=0" in source
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:
@@ -357,6 +359,34 @@ def test_tauri_dashboard_optional_filters_clear_case_insensitively() -> None:
     assert "state.alertRoute = isOptionalClearValue(value) ? null : value;" in source
     assert "['', 'all', 'any', 'none']" in source
     assert "['', 'all', 'none']" in source
+
+
+def test_tauri_dashboard_ready_command_exposes_filter_state_for_automation() -> None:
+    html = Path("apps/radar-desktop/frontend/index.html").read_text(
+        encoding="utf-8",
+    )
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'data-testid="filter-state"' in html
+    assert "function updateFilterState()" in source
+    assert "['scan_mode', qs('#filter-scan-mode')?.value || 'all']" in source
+    assert "['usefulness', state.usefulness || 'all']" in source
+    assert "setText('#filter-state'" in source
+    assert "updateFilterState();" in source
+    assert (
+        "['d', 'ready', 'decision', 'decision-ready', 'decision_ready'].includes(command)"
+        in source
+    )
+    assert "setCommandStatus('Decision-ready review filter.');" in source
+    assert "await setPage('review');" in source
+    assert "Apply decision-useful, full universe, mismatch, and stock-only scan filters." in source
+    ready_branch = source.index(
+        "['d', 'ready', 'decision', 'decision-ready', 'decision_ready'].includes(command)",
+    )
+    generic_page_branch = source.index("const page = pageFromCommand(raw);")
+    assert ready_branch < generic_page_branch
 
 
 def test_tauri_dashboard_run_execute_uses_backend_command() -> None:
