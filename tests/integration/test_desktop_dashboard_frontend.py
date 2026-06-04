@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
 
@@ -17,6 +19,18 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     assert "ticker=all scan_mode=all stocks_only=false limit=50 offset=0" in source
     assert 'data-testid="command-state"' in source
     assert 'last_command=none page=overview nav=overview provider_calls=0' in source
+    assert 'data-testid="automation-json"' in source
+    match = re.search(
+        r'<pre id="automation-json"[^>]*>(?P<payload>.*?)</pre>',
+        source,
+    )
+    assert match is not None
+    automation_payload = json.loads(match.group("payload"))
+    assert automation_payload["contract_version"] == "market-radar-desktop-automation-v1"
+    assert automation_payload["page"] == "overview"
+    assert automation_payload["provider_calls"] == 0
+    assert automation_payload["filters"]["scan_mode"] == "all"
+    assert automation_payload["filters"]["stocks_only"] is False
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:
@@ -374,16 +388,24 @@ def test_tauri_dashboard_ready_command_exposes_filter_state_for_automation() -> 
     assert 'data-testid="filter-state"' in html
     assert "function updateFilterState()" in source
     assert "function updateCommandState()" in source
+    assert "function updateAutomationJson(" in source
+    assert "function automationFilterState()" in source
     assert "state.lastCommand = raw || 'refresh';" in source
     assert "['last_command', state.lastCommand || 'none']" in source
     assert "['page', state.page || 'overview']" in source
     assert "['nav', navigationPageKey(state.page || 'overview')]" in source
     assert "setText(\n    '#command-state'," in source
-    assert "['scan_mode', qs('#filter-scan-mode')?.value || 'all']" in source
-    assert "['usefulness', state.usefulness || 'all']" in source
+    assert "setText('#automation-json', JSON.stringify(payload));" in source
+    assert "contract_version: state.config?.automation?.contract_version" in source
+    assert "filters: automationFilterState()" in source
+    assert "last_command: state.lastCommand || 'none'" in source
+    assert "provider_calls: Number.isFinite(providerCalls) ? providerCalls : 0" in source
+    assert "['scan_mode', filterState.scan_mode]" in source
+    assert "['usefulness', filterState.usefulness]" in source
     assert "setText('#filter-state'" in source
     assert "updateFilterState();" in source
     assert "updateCommandState();" in source
+    assert "updateAutomationJson();" in source
     assert (
         "['d', 'ready', 'decision', 'decision-ready', 'decision_ready'].includes(command)"
         in source

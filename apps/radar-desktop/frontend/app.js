@@ -461,6 +461,7 @@ function renderSnapshot() {
   updateAutomationState(snapshot, status, pageInfo);
   updateFilterState();
   updateCommandState();
+  updateAutomationJson(snapshot, status, pageInfo);
   renderContent(snapshot);
   bindQueueRows();
 }
@@ -475,6 +476,7 @@ function renderLoadingDashboard() {
   setText('#snapshot-mode', 'snapshot pending');
   updateFilterState();
   updateCommandState();
+  updateAutomationJson();
   qs('#content').innerHTML = `
     <section class="panel wide loading-dashboard" data-testid="loading-dashboard">
       <h2>Market Command Center</h2>
@@ -550,20 +552,37 @@ function updateAutomationState(snapshot, status, pageInfo) {
 }
 
 function updateFilterState() {
+  const filterState = automationFilterState();
   const fields = [
-    ['ticker', qs('#filter-ticker')?.value.trim() || 'all'],
-    ['scan_mode', qs('#filter-scan-mode')?.value || 'all'],
-    ['stocks_only', qs('#filter-stocks-only')?.checked ? 'true' : 'false'],
-    ['limit', qs('#filter-limit')?.value || '50'],
-    ['offset', String(state.scanOffset || 0)],
-    ['usefulness', state.usefulness || 'all'],
-    ['source_gap', state.sourceGap.length ? state.sourceGap.join(',') : 'all'],
-    ['decision_gap', state.decisionGap.length ? state.decisionGap.join(',') : 'all'],
-    ['available_at', state.availableAt || 'latest'],
-    ['alert_status', state.alertStatus || 'all'],
-    ['alert_route', state.alertRoute || 'all'],
+    ['ticker', filterState.ticker],
+    ['scan_mode', filterState.scan_mode],
+    ['stocks_only', filterState.stocks_only ? 'true' : 'false'],
+    ['limit', String(filterState.limit)],
+    ['offset', String(filterState.offset)],
+    ['usefulness', filterState.usefulness],
+    ['source_gap', filterState.source_gap.length ? filterState.source_gap.join(',') : 'all'],
+    ['decision_gap', filterState.decision_gap.length ? filterState.decision_gap.join(',') : 'all'],
+    ['available_at', filterState.available_at],
+    ['alert_status', filterState.alert_status],
+    ['alert_route', filterState.alert_route],
   ];
   setText('#filter-state', fields.map(([key, value]) => `${key}=${value}`).join(' '));
+}
+
+function automationFilterState() {
+  return {
+    ticker: qs('#filter-ticker')?.value.trim() || 'all',
+    scan_mode: qs('#filter-scan-mode')?.value || 'all',
+    stocks_only: Boolean(qs('#filter-stocks-only')?.checked),
+    limit: Number(qs('#filter-limit')?.value || 50),
+    offset: Number(state.scanOffset || 0),
+    usefulness: state.usefulness || 'all',
+    source_gap: [...state.sourceGap],
+    decision_gap: [...state.decisionGap],
+    available_at: state.availableAt || 'latest',
+    alert_status: state.alertStatus || 'all',
+    alert_route: state.alertRoute || 'all',
+  };
 }
 
 function updateCommandState() {
@@ -579,6 +598,28 @@ function updateCommandState() {
     '#command-state',
     `${fields.map(([key, value]) => `${key}=${value}`).join(' ')} result="${result}"`,
   );
+}
+
+function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pageInfo = null) {
+  const navPage = navigationPageKey(state.page || 'overview');
+  const label = pageLabelFor(state.page || 'overview', pageInfo);
+  const providerCalls = Number(snapshot?.external_calls_made || 0);
+  const payload = {
+    contract_version: state.config?.automation?.contract_version || 'market-radar-desktop-automation-v1',
+    page: state.page || 'overview',
+    nav: navPage,
+    label,
+    status: status || compact(snapshot?.status || at(snapshot, ['readiness', 'status']), 'loading'),
+    provider_calls: Number.isFinite(providerCalls) ? providerCalls : 0,
+    snapshot_page: qs('#snapshot-page')?.textContent?.trim() || navPage,
+    snapshot_mode: compact(snapshot?.snapshot_mode, 'snapshot pending'),
+    last_command: state.lastCommand || 'none',
+    command_result: qs('#command-status')?.textContent?.trim() || 'command=ready',
+    filters: automationFilterState(),
+    next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
+    next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
+  };
+  setText('#automation-json', JSON.stringify(payload));
 }
 
 function pageLabelFor(page, pageInfo) {
@@ -1733,6 +1774,7 @@ function setCommandStatus(message) {
   setText('#command-status', `command=${message}`);
   updateFilterState();
   updateCommandState();
+  updateAutomationJson();
 }
 
 async function closeDashboardWindow() {

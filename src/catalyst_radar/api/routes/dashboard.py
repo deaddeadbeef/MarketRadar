@@ -376,6 +376,7 @@ def manifest() -> dict[str, object]:
                 "command-status",
                 "command-state",
                 "automation-state",
+                "automation-json",
                 "filter-state",
                 "attention-queue",
                 "loading-dashboard",
@@ -470,8 +471,9 @@ def manifest() -> dict[str, object]:
                     "target": "MarketRadar Command Center",
                     "expected": (
                         "The window exposes MarketRadar workflow tabs, dashboard-page, "
-                        "command-input, command-state, automation-state, filter-state, "
-                        "loading-dashboard before first data, next-safe-action, "
+                        "command-input, command-state, automation-state, "
+                        "automation-json, filter-state, loading-dashboard "
+                        "before first data, next-safe-action, "
                         "keys-panel, snapshot-panel, and page=<PAGE>, "
                         "nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and "
                         "provider_calls=0."
@@ -562,8 +564,10 @@ def manifest() -> dict[str, object]:
                     "target": "filter-state",
                     "expected": (
                         "filter-state reports scan_mode=actionable and "
-                        "usefulness=decision_useful, command-state reports "
-                        "last_command=ready and page=review, and provider_calls=0."
+                        "usefulness=decision_useful, automation-json reports "
+                        "last_command=ready, filters.scan_mode=actionable, "
+                        "filters.usefulness=decision_useful, page=review, "
+                        "and provider_calls=0."
                     ),
                 },
                 {
@@ -762,6 +766,10 @@ def manifest() -> dict[str, object]:
                 (
                     "The exact selected page, parent nav page, and provider-call "
                     "count are exposed through data-testid=automation-state."
+                ),
+                (
+                    "The aggregate automation state is exposed as machine-readable "
+                    "JSON through data-testid=automation-json."
                 ),
                 (
                     "The active ticker, scan, availability, alert, source-gap, "
