@@ -178,6 +178,7 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["priced_in_source_workflow"]["priority_scope"] == (
         "full_scan_coverage"
     )
+
     assert payload["priced_in_source_workflow"]["decision_priority_scope"] == (
         "visible_priced_in_rows"
     )
@@ -321,6 +322,43 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["readiness"]["market_radar_usefulness"]["status"] == (
         direct_readiness["market_radar_usefulness"]["status"]
     )
+
+
+def test_dashboard_command_cli_outputs_headless_command_result(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "false")
+    monkeypatch.setenv("CATALYST_LLM_PROVIDER", "none")
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "dashboard-command",
+                "--command",
+                "run",
+                "--page",
+                "overview",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+    assert output.err == ""
+
+    payload = json.loads(output.out)
+    assert payload["schema_version"] == "dashboard-command-result-v1"
+    assert payload["command"] == "run"
+    assert payload["page"] == "run"
+    assert "Run is guarded" in payload["message"]
+    assert payload["snapshot"]["schema_version"] == "dashboard-cli-snapshot-v1"
 
 
 def test_overview_renders_minimum_product_approval_stop_line() -> None:

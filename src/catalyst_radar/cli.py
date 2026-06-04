@@ -5,7 +5,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -94,6 +94,7 @@ from catalyst_radar.dashboard.source_batches import (
 from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
+    apply_dashboard_command,
     dashboard_filters_for_page,
     dashboard_json_default,
     dashboard_snapshot_payload,
@@ -973,6 +974,70 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_snapshot.add_argument("--page", default="overview")
     dashboard_snapshot.add_argument("--json", action="store_true")
 
+    dashboard_command = subparsers.add_parser("dashboard-command")
+    dashboard_command.add_argument("--database-url")
+    dashboard_command.add_argument("--ticker")
+    dashboard_command.add_argument("--available-at", type=_parse_aware_datetime)
+    dashboard_command.add_argument("--alert-status")
+    dashboard_command.add_argument("--alert-route")
+    dashboard_command.add_argument(
+        "--scan-mode",
+        "--priced-in-status",
+        dest="priced_in_status",
+        default="all",
+        help="Insights queue mode: actionable/mismatches or all/full.",
+    )
+    dashboard_command.add_argument("--telemetry-limit", type=int, default=8)
+    dashboard_command.add_argument(
+        "--scan-limit",
+        type=int,
+        default=50,
+        help="Insights rows per page for full-scan/mismatch queue views.",
+    )
+    dashboard_command.add_argument(
+        "--scan-offset",
+        type=int,
+        default=0,
+        help="Zero-based Insights row offset for paging through the scan.",
+    )
+    dashboard_command.add_argument(
+        "--usefulness",
+        help=(
+            "Filter Insights rows by usefulness verdict: useful, research_useful, "
+            "decision_useful, blocked, monitor_only, not_useful."
+        ),
+    )
+    dashboard_command.add_argument(
+        "--source-gap",
+        action="append",
+        help=(
+            "Filter Insights rows missing or stale for a source class. Repeat or "
+            "comma-separate: market_bars,catalyst_events,local_text,options,"
+            "theme_peer_sector,broker_context."
+        ),
+    )
+    dashboard_command.add_argument(
+        "--decision-gap",
+        action="append",
+        help=(
+            "Filter Insights rows by missing decision evidence. Repeat or "
+            "comma-separate: candidate_packet,decision_card,options,broker_context."
+        ),
+    )
+    dashboard_command.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Show only common-stock and ADR rows from the ranked priced-in scan.",
+    )
+    dashboard_command.add_argument(
+        "--fast",
+        action="store_true",
+        help="Compatibility no-op for command-mode desktop calls.",
+    )
+    dashboard_command.add_argument("--page", default="overview")
+    dashboard_command.add_argument("--command", dest="dashboard_command", required=True)
+    dashboard_command.add_argument("--json", action="store_true")
+
     priced_in = subparsers.add_parser("priced-in-queue")
     priced_in.add_argument("--database-url")
     priced_in.add_argument("--limit", type=int, default=20)
@@ -1382,6 +1447,23 @@ def _write_dashboard_screenshot(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(asyncio.run(capture()), encoding="utf-8")
     return output_path
+
+
+def _dashboard_filters_from_args(args: argparse.Namespace) -> DashboardFilters:
+    return DashboardFilters(
+        ticker=args.ticker,
+        available_at=args.available_at,
+        alert_status=args.alert_status,
+        alert_route=args.alert_route,
+        priced_in_status=args.priced_in_status,
+        priced_in_usefulness=args.usefulness,
+        priced_in_source_gap=args.source_gap,
+        priced_in_decision_gap=args.decision_gap,
+        priced_in_stocks_only=args.stocks_only,
+        priced_in_limit=args.scan_limit,
+        priced_in_offset=args.scan_offset,
+        telemetry_limit=args.telemetry_limit,
+    )
 
 
 def _print_ops_run_summary(payload: Mapping[str, object]) -> None:
@@ -2025,20 +2107,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "dashboard-snapshot":
         create_schema(engine)
-        filters = DashboardFilters(
-            ticker=args.ticker,
-            available_at=args.available_at,
-            alert_status=args.alert_status,
-            alert_route=args.alert_route,
-            priced_in_status=args.priced_in_status,
-            priced_in_usefulness=args.usefulness,
-            priced_in_source_gap=args.source_gap,
-            priced_in_decision_gap=args.decision_gap,
-            priced_in_stocks_only=args.stocks_only,
-            priced_in_limit=args.scan_limit,
-            priced_in_offset=args.scan_offset,
-            telemetry_limit=args.telemetry_limit,
-        )
+        filters = _dashboard_filters_from_args(args)
         payload = dashboard_snapshot_payload(
             engine=engine,
             config=config,
@@ -2050,6 +2119,39 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             print(render_dashboard_tui(payload, page=args.page))
+        return 0
+
+    if args.command == "dashboard-command":
+        create_schema(engine)
+        filters = _dashboard_filters_from_args(args)
+        payload = dashboard_snapshot_payload(
+            engine=engine,
+            config=config,
+            dotenv_loaded=dotenv_loaded,
+            filters=filters,
+            fast_view=True,
+        )
+        update = apply_dashboard_command(
+            args.dashboard_command,
+            payload,
+            args.page,
+            filters,
+            engine=engine,
+            config=config,
+        )
+        result = {
+            "schema_version": "dashboard-command-result-v1",
+            "command": args.dashboard_command,
+            "page": update.page,
+            "exit_requested": update.exit_requested,
+            "message": update.message,
+            "filters": asdict(update.filters),
+            "snapshot": payload,
+        }
+        if args.json:
+            print(json.dumps(result, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(update.message)
         return 0
 
     if args.command == "priced-in-queue":

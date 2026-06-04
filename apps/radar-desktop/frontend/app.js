@@ -102,7 +102,6 @@ const executeClassCommands = new Set([
   'ledger record',
   'options import execute',
   'outcome update',
-  'run execute',
   'ticket',
   'trigger',
 ]);
@@ -1044,6 +1043,10 @@ async function applyCommand(raw) {
     await setPage('ops');
     return;
   }
+  if (command === 'run') {
+    await handleRunCommand(value);
+    return;
+  }
   if (['ledger', 'value-ledger', 'value_ledger', 'outcome', 'outcomes', 'value-outcome', 'value_outcome'].includes(command)) {
     setCommandStatus(costCommandMessage(command, value));
     await setPage('costs');
@@ -1367,6 +1370,48 @@ function costCommandMessage(command, value) {
     return 'Opened Costs. Review value-outcome coverage and rows from the local snapshot.';
   }
   return 'Value-outcome writes stay outside dashboard browsing. Run the matching outcome command in PowerShell only after reviewing the write boundary.';
+}
+
+async function handleRunCommand(value) {
+  if (String(value || '').trim().toLowerCase() !== 'execute') {
+    setCommandStatus('Run is guarded. Review the call plan, then type run execute to start one capped radar cycle.');
+    await setPage('run');
+    return;
+  }
+  state.page = 'run';
+  renderNav();
+  setCommandStatus('Starting guarded radar run through the dashboard backend...');
+  try {
+    const result = await invoke('execute_dashboard_command', {
+      command: 'run execute',
+      input: filterInput(),
+    });
+    const message = radarRunResultMessage(result);
+    await refreshSnapshot();
+    setCommandStatus(message);
+  } catch (error) {
+    setCommandStatus(`Radar run failed: ${error?.message || error}`);
+    await refreshSnapshot();
+  }
+}
+
+function radarRunResultMessage(result) {
+  if (result?.message) return result.message;
+  const detail = result?.detail;
+  if (detail) {
+    if (typeof detail === 'string') return `Radar run blocked: ${detail}`;
+    if (detail.retry_after_seconds !== undefined) {
+      return `Radar run rate limited for ${detail.retry_after_seconds} second(s).`;
+    }
+    return `Radar run blocked: ${compact(detail.reason || detail.status || JSON.stringify(detail), 'Review run response.')}`;
+  }
+  const daily = result?.daily_result || {};
+  const status = compact(daily.status || result?.reason, 'unknown');
+  const requiredDone = compact(daily.required_completed_count, '0');
+  const requiredTotal = compact(daily.required_step_count, '0');
+  const callPlan = at(result?.discovery_snapshot || state.snapshot || {}, ['call_plan'], {});
+  const maxExternal = compact(callPlan?.max_external_call_count, '0');
+  return `Radar run finished: status=${status}; required=${requiredDone}/${requiredTotal}; call_plan_max_external=${maxExternal}. Refresh to inspect updated readiness.`;
 }
 
 function guardedCommandMessage(normalized) {

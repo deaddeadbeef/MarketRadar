@@ -2,7 +2,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::model::Page;
 
@@ -82,6 +82,81 @@ pub fn fetch_snapshot(source: &SnapshotSource, request: &SnapshotRequest) -> Res
     }
 }
 
+pub fn execute_dashboard_command(
+    source: &SnapshotSource,
+    command_text: &str,
+    request: &SnapshotRequest,
+) -> Result<Value> {
+    match source {
+        SnapshotSource::Api {
+            base_url,
+            role,
+            allow_invalid_certs,
+        } => execute_api_dashboard_command(
+            base_url,
+            role.as_deref(),
+            *allow_invalid_certs,
+            command_text,
+        ),
+        SnapshotSource::Command { command } => {
+            execute_command_dashboard_command(command, command_text, request)
+        }
+    }
+}
+
+fn execute_api_dashboard_command(
+    base_url: &str,
+    role: Option<&str>,
+    allow_invalid_certs: bool,
+    command_text: &str,
+) -> Result<Value> {
+    if !is_run_execute_command(command_text) {
+        bail!("API dashboard command is only implemented for run execute");
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .danger_accept_invalid_certs(allow_invalid_certs)
+        .build()
+        .context("failed to build HTTP client")?;
+    let url = format!("{}/api/radar/runs", base_url.trim_end_matches('/'));
+    let mut request = client.post(url).json(&json!({
+        "run_llm": true,
+        "llm_dry_run": true,
+        "dry_run_alerts": true,
+    }));
+    if let Some(role) = role {
+        request = request.header("x-catalyst-role", role);
+    }
+    let response = request.send().context("radar run request failed")?;
+    let status = response.status();
+    let text = response
+        .text()
+        .context("radar run response body could not be read")?;
+    if !status.is_success() {
+        bail!(
+            "radar run endpoint returned {status}: {}",
+            response_error_detail(&text)
+        );
+    }
+    serde_json::from_str::<Value>(&text).context("radar run response was not valid JSON")
+}
+
+fn execute_command_dashboard_command(
+    command: &str,
+    command_text: &str,
+    request: &SnapshotRequest,
+) -> Result<Value> {
+    let command_line = command_line_for_dashboard_command(command, command_text, request)?;
+    let output = shell_command(&command_line)
+        .with_context(|| format!("dashboard command failed to start: {command_line}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("dashboard command failed: {}", stderr.trim());
+    }
+    let stdout = String::from_utf8(output.stdout).context("dashboard command emitted non-UTF8")?;
+    serde_json::from_str::<Value>(&stdout).context("dashboard command did not emit JSON")
+}
+
 fn fetch_api_snapshot(
     base_url: &str,
     role: Option<&str>,
@@ -147,6 +222,57 @@ fn command_line_for_snapshot(command: &str, request: &SnapshotRequest) -> String
     } else {
         format!("{command} --page {}", shell_quote(page))
     }
+}
+
+fn command_line_for_dashboard_command(
+    command: &str,
+    command_text: &str,
+    request: &SnapshotRequest,
+) -> Result<String> {
+    if !command.contains("dashboard-snapshot") {
+        bail!("snapshot command cannot be adapted to dashboard-command");
+    }
+    let mut command_line = command.replacen("dashboard-snapshot", "dashboard-command", 1);
+    if command_line.contains("{command}") {
+        command_line = command_line.replace("{command}", &shell_quote(command_text));
+    } else {
+        command_line.push_str(" --command ");
+        command_line.push_str(&shell_quote(command_text));
+    }
+    let page = request_page(request);
+    if command_line.contains("{page}") {
+        command_line = command_line.replace("{page}", page);
+    } else {
+        command_line.push_str(" --page ");
+        command_line.push_str(&shell_quote(page));
+    }
+    append_command_filters(&mut command_line, &request.filters);
+    Ok(command_line)
+}
+
+fn is_run_execute_command(command_text: &str) -> bool {
+    command_text
+        .split_whitespace()
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>()
+        .join(" ")
+        == "run execute"
+}
+
+fn response_error_detail(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return "empty response body".to_string();
+    }
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        if let Some(detail) = value.get("detail") {
+            return match detail {
+                Value::String(text) => text.clone(),
+                other => other.to_string(),
+            };
+        }
+    }
+    trimmed.to_string()
 }
 
 fn api_query(request: &SnapshotRequest) -> Vec<(String, String)> {
@@ -410,5 +536,53 @@ mod tests {
         );
 
         assert!(command.contains("--page safe-run"));
+    }
+
+    #[test]
+    fn dashboard_command_reuses_snapshot_command_and_filters() {
+        let request = SnapshotRequest {
+            page: Page::Run,
+            requested_page: None,
+            filters: SnapshotFilters {
+                ticker: Some("MSFT".to_string()),
+                priced_in_status: "actionable".to_string(),
+                scan_limit: 25,
+                ..SnapshotFilters::default()
+            },
+        };
+
+        let command = command_line_for_dashboard_command(
+            "catalyst-radar dashboard-snapshot --json --fast",
+            "run execute",
+            &request,
+        )
+        .unwrap();
+
+        assert!(command.contains("catalyst-radar dashboard-command --json --fast"));
+        assert!(command.contains("--command 'run execute'"));
+        assert!(command.contains("--page 'run'"));
+        assert!(command.contains("--ticker 'MSFT'"));
+        assert!(command.contains("--scan-mode 'actionable'"));
+        assert!(command.contains("--scan-limit '25'"));
+    }
+
+    #[test]
+    fn dashboard_command_rejects_non_snapshot_command_templates() {
+        let request = SnapshotRequest {
+            page: Page::Run,
+            requested_page: None,
+            filters: SnapshotFilters::default(),
+        };
+
+        assert!(
+            command_line_for_dashboard_command("python custom.py", "run execute", &request)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn run_execute_command_normalizes_whitespace_and_case() {
+        assert!(is_run_execute_command(" RUN   Execute "));
+        assert!(!is_run_execute_command("agent execute"));
     }
 }

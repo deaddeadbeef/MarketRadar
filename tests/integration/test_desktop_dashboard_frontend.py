@@ -206,6 +206,25 @@ def test_tauri_dashboard_optional_filters_clear_case_insensitively() -> None:
     assert "['', 'all', 'none']" in source
 
 
+def test_tauri_dashboard_run_execute_uses_backend_command() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "async function handleRunCommand(value)" in source
+    assert "command === 'run'" in source
+    assert "await handleRunCommand(value);" in source
+    assert "invoke('execute_dashboard_command'" in source
+    assert "command: 'run execute'" in source
+    assert "function radarRunResultMessage(result)" in source
+    assert "Radar run finished: status=" in source
+    execute_set = source.split("const executeClassCommands = new Set([", 1)[1].split(
+        "]);",
+        1,
+    )[0]
+    assert "'run execute'" not in execute_set
+
+
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",

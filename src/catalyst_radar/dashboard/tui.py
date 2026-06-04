@@ -4139,6 +4139,25 @@ def _apply_command(
     )
 
 
+def apply_dashboard_command(
+    raw: str,
+    payload: Mapping[str, object],
+    page: str,
+    filters: DashboardFilters,
+    *,
+    engine: Engine,
+    config: AppConfig,
+) -> _CommandUpdate:
+    return _apply_command(
+        raw,
+        payload,
+        page,
+        filters,
+        engine=engine,
+        config=config,
+    )
+
+
 def _priced_in_source_batch_message(
     engine: Engine,
     config: AppConfig,

@@ -204,6 +204,10 @@ def manifest() -> dict[str, object]:
                     "batch SOURCE opens an Ops source plan; batch SOURCE all "
                     "and batch SOURCE execute N show PowerShell boundaries"
                 ),
+                (
+                    "run opens Safe Run; run execute starts the guarded "
+                    "radar-run API/CLI backend path"
+                ),
                 "q, quit, or exit closes the native desktop window",
                 (
                     "Full catalyst-radar commands show a PowerShell boundary "
@@ -356,6 +360,19 @@ def manifest() -> dict[str, object]:
                     ),
                 },
                 {
+                    "step": "safe-run-execute-command",
+                    "action": (
+                        "Type run execute and press Return only after reviewing "
+                        "the Safe Run call plan."
+                    ),
+                    "target": "command-input",
+                    "expected": (
+                        "dashboard-page reports page=run, command-status reports "
+                        "Radar run finished, blocked, or rate limited, and the "
+                        "backend returns the radar_run telemetry contract."
+                    ),
+                },
+                {
                     "step": "powershell-command",
                     "action": (
                         "Type catalyst-radar priced-in-queue --full-scan "
@@ -395,9 +412,10 @@ def manifest() -> dict[str, object]:
                     "and raw JSON inspection must leave provider_calls=0."
                 ),
                 (
-                    "Execute-class commands must show the external PowerShell command "
-                    "boundary instead of running provider, OpenAI, broker, or DB-write "
-                    "actions from the desktop command box."
+                    "Non-run execute-class commands must show the external "
+                    "PowerShell command boundary instead of running provider, "
+                    "OpenAI, broker, or DB-write actions from the desktop "
+                    "command box."
                 ),
                 (
                     "Source batch plan commands may read the current snapshot, "
@@ -468,8 +486,9 @@ def manifest() -> dict[str, object]:
                     "makes zero provider calls."
                 ),
                 (
-                    "Execute-class commands remain external and require the "
-                    "normal PowerShell command boundary."
+                    "Non-run execute-class commands remain external and require "
+                    "the normal PowerShell command boundary; run execute uses "
+                    "the guarded radar-run API/CLI backend path."
                 ),
             ],
         },
