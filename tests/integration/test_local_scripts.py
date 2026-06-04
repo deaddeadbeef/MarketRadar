@@ -69,6 +69,31 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "CATALYST_MARKET_PROVIDER=polygon" not in readme
 
 
+def test_dashboard_docs_name_tauri_as_primary_operator_surface() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    inventory = Path("docs/dashboard-feature-inventory.md").read_text(encoding="utf-8")
+    dashboard_api = Path("src/catalyst_radar/api/routes/dashboard.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "The primary operator dashboard is the Tauri desktop command center" in readme
+    assert '"default": "tauri_desktop"' in dashboard_api
+    assert "Tauri desktop command center is the primary" in inventory
+    assert "operator dashboard" in inventory
+    assert "Tauri desktop command center as the primary operational surface" in inventory
+    assert "desktop, terminal, CLI, and API coverage" in readme
+
+    stale_primary_claims = [
+        "The TUI is the operational replacement surface",
+        "Keep using the TUI as the primary operational surface",
+        "inventory and TUI coverage",
+        "where the terminal dashboard exposes them",
+    ]
+    for claim in stale_primary_claims:
+        assert claim not in readme
+        assert claim not in inventory
+
+
 def test_dashboard_launcher_manages_child_process_tree() -> None:
     script = Path("scripts/run-dashboard-tui.ps1")
     text = script.read_text(encoding="utf-8")
