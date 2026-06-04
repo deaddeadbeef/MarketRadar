@@ -235,6 +235,11 @@ def manifest() -> dict[str, object]:
                     "commands use the guarded dashboard backend for local "
                     "DB-only operations"
                 ),
+                (
+                    "agent, bars, options, and cik/sec planning commands use "
+                    "the guarded dashboard backend for preview/status output; "
+                    "execute and confirm variants stay external boundaries"
+                ),
                 "q, quit, or exit closes the native desktop window",
                 (
                     "Full catalyst-radar commands show a PowerShell boundary "
@@ -401,6 +406,16 @@ def manifest() -> dict[str, object]:
                     ),
                 },
                 {
+                    "step": "provider-preview-command",
+                    "action": "Type bars status and press Return.",
+                    "target": "command-input",
+                    "expected": (
+                        "dashboard-page reports page=run, command-status "
+                        "reports Market-bar status from the dashboard backend, "
+                        "and provider_calls=0 after refresh."
+                    ),
+                },
+                {
                     "step": "safe-run-execute-command",
                     "action": (
                         "Type run execute and press Return only after reviewing "
@@ -458,6 +473,13 @@ def manifest() -> dict[str, object]:
                     "backend, but must not make provider, OpenAI, broker, "
                     "order, or external calls unless the command explicitly "
                     "reports an external-call budget."
+                ),
+                (
+                    "Agent, market-bar, options, and SEC CIK preview/status "
+                    "commands may use the dashboard backend, but execute or "
+                    "confirm variants must remain external PowerShell "
+                    "boundaries unless the backend command explicitly reports "
+                    "an accepted external-call budget."
                 ),
                 (
                     "Source batch plan commands may read the current snapshot, "
@@ -530,9 +552,10 @@ def manifest() -> dict[str, object]:
                 (
                     "Local broker, feedback, value-ledger, and outcome commands "
                     "use the guarded dashboard backend; source-batch execute "
-                    "and provider import commands remain external PowerShell "
-                    "boundaries; run execute uses the guarded radar-run "
-                    "API/CLI backend path."
+                    "and provider execute/confirm commands remain external "
+                    "PowerShell boundaries; provider preview/status commands "
+                    "use the guarded dashboard backend; run execute uses the "
+                    "guarded radar-run API/CLI backend path."
                 ),
             ],
         },

@@ -265,6 +265,54 @@ def test_tauri_dashboard_local_commands_use_backend_command() -> None:
     assert "Run guarded local value-outcome commands through the dashboard backend" in source
 
 
+def test_tauri_dashboard_provider_preview_commands_use_backend_with_execute_guard() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    boundary_handler = source.index(
+        "const boundaryMessage = guardedExecutionBoundaryMessage(normalized);",
+    )
+    backend_handler = source.index("if (backendCommandWords.has(command))")
+    execute_set = source.split("const executeClassCommands = new Set([", 1)[1].split(
+        "]);",
+        1,
+    )[0]
+
+    assert boundary_handler < backend_handler
+    assert "function guardedExecutionBoundaryMessage(normalized)" in source
+    assert "function providerBackendCommandWords()" in source
+    assert (
+        "providerBackendCommandWords().has(command) && /\\bexecute\\b/.test(normalized)"
+        in source
+    )
+    for command in (
+        "'agent'",
+        "'bars'",
+        "'market-bars'",
+        "'options'",
+        "'options-flow'",
+        "'cik'",
+        "'sec'",
+        "'sec-cik'",
+    ):
+        assert command in source
+    for command in (
+        "'agent execute'",
+        "'bars manual import execute'",
+        "'bars saved capture confirm'",
+        "'bars saved import execute'",
+        "'cik import execute'",
+        "'options import execute'",
+    ):
+        assert command in execute_set
+    assert "Preview market-bar repair commands through the dashboard backend" in source
+    assert "Preview saved grouped-daily commands through the dashboard backend" in source
+    assert "Preview point-in-time options commands through the dashboard backend" in source
+    assert "Preview SEC CIK override commands through the dashboard backend" in source
+    assert "Preview agent gates through the dashboard backend" in source
+
+
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",

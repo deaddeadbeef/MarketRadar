@@ -419,6 +419,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "agent, bars, options, and cik/sec planning commands" in shortcut
+        and "preview/status output" in shortcut
+        and "execute and confirm variants" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "catalyst-radar commands" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -450,6 +456,13 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         and "Local only" in step["expected"]
         and "db_writes=1" in step["expected"]
         and "no provider" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "provider-preview-command"
+        and "Market-bar status" in step["expected"]
+        and "dashboard backend" in step["expected"]
+        and "provider_calls=0" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
@@ -529,6 +542,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
+        "Agent, market-bar, options, and SEC CIK preview/status commands" in assertion
+        and "execute or confirm variants" in assertion
+        and "external PowerShell boundaries" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
         "Invalid source-gap or decision-gap" in assertion
         and "must not refresh" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
@@ -568,6 +587,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         "Local broker, feedback, value-ledger, and outcome commands" in note
+        and "provider preview/status commands use the guarded dashboard backend" in note
         and "run execute uses the guarded radar-run" in note
         for note in payload["automation"]["notes"]
     )
