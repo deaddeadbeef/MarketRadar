@@ -464,9 +464,9 @@ fn automation_manifest() -> AutomationManifest {
             "V opens Costs",
             "F opens Features",
             "? opens Help",
-            "ArrowRight/ArrowDown moves forward",
-            "ArrowLeft/ArrowUp moves backward",
-            "F5 refreshes the local snapshot",
+            "ArrowRight/ArrowDown/Tab/J moves forward",
+            "ArrowLeft/ArrowUp/Shift+Tab/K moves backward",
+            "F5 or R refreshes the local snapshot",
             "Home opens Start, End opens Help",
             "Esc focuses the command box",
             "next and prev page through scan rows without walking past the end",
@@ -479,7 +479,7 @@ fn automation_manifest() -> AutomationManifest {
             "run opens Safe Run; run execute starts the guarded radar-run API/CLI backend path",
             "action, trigger, ticket, feedback, ledger, and outcome commands use the guarded dashboard backend for local DB-only operations",
             "agent, bars, options, and cik/sec planning commands use the guarded dashboard backend for preview/status output; execute and confirm variants stay external boundaries",
-            "q, quit, or exit closes the native desktop window",
+            "Q closes the native desktop window; q, quit, or exit also close from the command box",
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
         ],
         command_box_commands: command_box_commands(),
@@ -843,6 +843,30 @@ mod tests {
         assert!(manifest.keyboard_shortcuts.iter().any(|shortcut| {
             shortcut.contains("Ctrl+N moves forward") && shortcut.contains("Ctrl+P moves backward")
         }));
+        assert!(
+            manifest
+                .keyboard_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("Tab/J moves forward"))
+        );
+        assert!(
+            manifest
+                .keyboard_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("Shift+Tab/K moves backward"))
+        );
+        assert!(
+            manifest
+                .keyboard_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("F5 or R refreshes"))
+        );
+        assert!(
+            manifest
+                .keyboard_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("Q closes the native desktop window"))
+        );
         assert!(manifest.command_box_commands.iter().any(|command| {
             command.command == "bars saved capture/validate/import"
                 && command.safety == "preview_only_confirm_execute_external"
