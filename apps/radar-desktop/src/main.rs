@@ -22,12 +22,30 @@ struct PageInfo {
 
 #[derive(Clone, Debug, Serialize)]
 struct DesktopConfig {
+    schema_version: &'static str,
+    external_calls_made: u16,
+    surfaces: DashboardSurfaces,
     app_name: &'static str,
     initial_page: String,
     source_label: String,
     repo_root: String,
     pages: Vec<PageInfo>,
     automation: AutomationManifest,
+    data_contract: DashboardDataContract,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct DashboardSurfaces {
+    default: &'static str,
+    terminal: &'static str,
+    legacy: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct DashboardDataContract {
+    snapshot_endpoint: &'static str,
+    snapshot_command: &'static str,
+    provider_calls_for_browsing: u16,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -220,12 +238,16 @@ fn main() {
     let repo_root = find_repo_root().unwrap_or_else(|| env::current_dir().unwrap_or_default());
     let source = snapshot_source(&args, &repo_root);
     let config = DesktopConfig {
+        schema_version: "dashboard-ui-manifest-v1",
+        external_calls_made: 0,
+        surfaces: dashboard_surfaces(),
         app_name: "MarketRadar",
         initial_page: initial_page_key(args.page.as_deref()),
         source_label: source.label(),
         repo_root: repo_root.display().to_string(),
         pages: page_infos(),
         automation: automation_manifest(),
+        data_contract: dashboard_data_contract(),
     };
 
     tauri::Builder::default()
@@ -361,6 +383,22 @@ fn default_snapshot_command(repo_root: &Path) -> String {
             shell_quote(&src_path.display().to_string()),
             shell_quote(&python)
         )
+    }
+}
+
+fn dashboard_surfaces() -> DashboardSurfaces {
+    DashboardSurfaces {
+        default: "tauri_desktop",
+        terminal: "rust_tui",
+        legacy: "python_textual",
+    }
+}
+
+fn dashboard_data_contract() -> DashboardDataContract {
+    DashboardDataContract {
+        snapshot_endpoint: "/api/dashboard/snapshot?fast=true",
+        snapshot_command: "catalyst-radar dashboard-snapshot --json --fast",
+        provider_calls_for_browsing: 0,
     }
 }
 
@@ -1250,6 +1288,43 @@ mod tests {
                 .expect("landmarks array")
                 .iter()
                 .any(|value| value == "automation-json")
+        );
+    }
+
+    #[test]
+    fn desktop_config_serializes_api_manifest_compatible_top_level_fields() {
+        let config = DesktopConfig {
+            schema_version: "dashboard-ui-manifest-v1",
+            external_calls_made: 0,
+            surfaces: dashboard_surfaces(),
+            app_name: "MarketRadar",
+            initial_page: "overview".to_string(),
+            source_label: "command dashboard-snapshot --json --fast".to_string(),
+            repo_root: "C:\\repo\\MarketRadar".to_string(),
+            pages: page_infos(),
+            automation: automation_manifest(),
+            data_contract: dashboard_data_contract(),
+        };
+        let payload = serde_json::to_value(&config).expect("serialize desktop config");
+
+        assert_eq!(payload["schema_version"], "dashboard-ui-manifest-v1");
+        assert_eq!(payload["external_calls_made"], 0);
+        assert_eq!(payload["surfaces"]["default"], "tauri_desktop");
+        assert_eq!(payload["surfaces"]["terminal"], "rust_tui");
+        assert_eq!(payload["surfaces"]["legacy"], "python_textual");
+        assert_eq!(
+            payload["data_contract"]["snapshot_endpoint"],
+            "/api/dashboard/snapshot?fast=true"
+        );
+        assert_eq!(
+            payload["data_contract"]["snapshot_command"],
+            "catalyst-radar dashboard-snapshot --json --fast"
+        );
+        assert_eq!(payload["data_contract"]["provider_calls_for_browsing"], 0);
+        assert!(payload["automation"]["landmarks"].is_array());
+        assert_eq!(
+            payload["automation"]["automation_recipe"]["schema_version"],
+            "dashboard-computer-use-recipe-v1"
         );
     }
 
