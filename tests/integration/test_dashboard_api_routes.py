@@ -302,6 +302,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "next and prev page through scan rows" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "offset, limit, and available-at commands reject invalid values" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -350,6 +354,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
+        step["step"] == "pagination-boundary-command"
+        and "Already at the end" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
         step["step"] == "powershell-command"
         for step in payload["automation"]["computer_use_steps"]
     )
@@ -393,6 +402,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         "Invalid offset, limit, or available-at" in assertion
         and "must not refresh" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
+        "Pagination commands" in assertion
+        and "priced_in_queue.total_count" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(

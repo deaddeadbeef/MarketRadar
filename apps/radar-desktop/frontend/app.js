@@ -918,8 +918,14 @@ async function applyCommand(raw) {
     return;
   }
   if (['next', 'more'].includes(command)) {
-    const limit = Math.max(1, Number(qs('#filter-limit').value || 50));
-    state.scanOffset += limit;
+    const pagination = paginationStateFromSnapshot();
+    const nextOffset = pagination.offset + Math.max(1, pagination.limit);
+    if (pagination.total && nextOffset >= pagination.total) {
+      setCommandStatus('Already at the end of the current scan filter.');
+      await setPage('overview');
+      return;
+    }
+    state.scanOffset = nextOffset;
     setCommandStatus(`Rows starting at ${state.scanOffset + 1}.`);
     await setPage('overview');
     return;
@@ -1100,6 +1106,16 @@ function normalizeFilterName(value, aliases) {
 
 function unique(values) {
   return [...new Set(values)];
+}
+
+function paginationStateFromSnapshot() {
+  const queue = at(state.snapshot || {}, ['priced_in_queue'], {});
+  const queueFilters = queue?.filters && typeof queue.filters === 'object' ? queue.filters : {};
+  return {
+    total: Math.max(0, Number(queue?.total_count || 0)),
+    offset: Math.max(0, Number(queue?.offset ?? state.scanOffset ?? 0)),
+    limit: Math.max(1, Number(queueFilters?.limit || qs('#filter-limit')?.value || 50)),
+  };
 }
 
 function isPositiveIntegerText(value) {

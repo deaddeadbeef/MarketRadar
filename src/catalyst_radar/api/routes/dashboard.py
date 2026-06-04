@@ -185,6 +185,7 @@ def manifest() -> dict[str, object]:
                 "F5 refreshes the local snapshot",
                 "Home opens Start, End opens Help",
                 "Esc focuses the command box",
+                "next and prev page through scan rows without walking past the end",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
                 (
                     "offset, limit, and available-at commands reject invalid "
@@ -269,6 +270,18 @@ def manifest() -> dict[str, object]:
                     "expected": (
                         "command-status reports Invalid timestamp, "
                         "available_at is unchanged, and provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "pagination-boundary-command",
+                    "action": (
+                        "When the current scan page is at the end, type next "
+                        "and press Return."
+                    ),
+                    "target": "command-input",
+                    "expected": (
+                        "command-status reports Already at the end of the "
+                        "current scan filter and provider_calls=0."
                     ),
                 },
                 {
@@ -371,6 +384,10 @@ def manifest() -> dict[str, object]:
                 (
                     "Invalid offset, limit, or available-at commands must not "
                     "refresh the snapshot or change filters."
+                ),
+                (
+                    "Pagination commands must not advance scan_offset beyond "
+                    "priced_in_queue.total_count."
                 ),
                 (
                     "Full catalyst-radar commands typed into the desktop command box "
