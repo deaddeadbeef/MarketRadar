@@ -187,6 +187,10 @@ def manifest() -> dict[str, object]:
                 "Esc focuses the command box",
                 "next and prev page through scan rows without walking past the end",
                 "clear-filters resets filters while preserving the row limit",
+                (
+                    "usefulness clears with all, any, none, or blank; alert "
+                    "filters clear with all, none, or blank"
+                ),
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
                 (
                     "offset, limit, and available-at commands reject invalid "
@@ -298,6 +302,16 @@ def manifest() -> dict[str, object]:
                     ),
                 },
                 {
+                    "step": "optional-filter-clear-command",
+                    "action": "Type usefulness ANY and press Return.",
+                    "target": "command-input",
+                    "expected": (
+                        "usefulness is cleared case-insensitively, "
+                        "command-status reports Usefulness filter cleared, "
+                        "and provider_calls=0."
+                    ),
+                },
+                {
                     "step": "page-command",
                     "action": "Type ready and press Return.",
                     "target": "command-input",
@@ -406,6 +420,11 @@ def manifest() -> dict[str, object]:
                     "clear-filters must preserve the chosen row limit while "
                     "clearing ticker, source, decision, availability, alert, "
                     "usefulness, and offset filters."
+                ),
+                (
+                    "Optional usefulness filters must clear case-insensitively "
+                    "for all, any, none, or blank input; alert-status and "
+                    "alert-route clear for all, none, or blank input."
                 ),
                 (
                     "Full catalyst-radar commands typed into the desktop command box "

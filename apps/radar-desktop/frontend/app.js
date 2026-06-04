@@ -993,7 +993,7 @@ async function applyCommand(raw) {
     return;
   }
   if (['usefulness', 'useful'].includes(command)) {
-    state.usefulness = ['', 'all', 'none'].includes(value) ? null : value;
+    state.usefulness = normalizeOptionalFilterValue(value);
     state.scanOffset = 0;
     setCommandStatus(state.usefulness ? `Usefulness: ${state.usefulness}.` : 'Usefulness filter cleared.');
     await setPage('overview');
@@ -1012,13 +1012,13 @@ async function applyCommand(raw) {
     return;
   }
   if (command === 'alert-status') {
-    state.alertStatus = ['', 'all', 'none'].includes(value) ? null : value;
+    state.alertStatus = isOptionalClearValue(value) ? null : value;
     setCommandStatus(state.alertStatus ? `Alert status: ${state.alertStatus}.` : 'Alert-status filter cleared.');
     await setPage('alerts');
     return;
   }
   if (command === 'alert-route') {
-    state.alertRoute = ['', 'all', 'none'].includes(value) ? null : value;
+    state.alertRoute = isOptionalClearValue(value) ? null : value;
     setCommandStatus(state.alertRoute ? `Alert route: ${state.alertRoute}.` : 'Alert-route filter cleared.');
     await setPage('alerts');
     return;
@@ -1121,6 +1121,16 @@ function paginationStateFromSnapshot() {
 
 function isPositiveIntegerText(value) {
   return /^[0-9]+$/.test(String(value || '').trim());
+}
+
+function isOptionalClearValue(value, includeAny = false) {
+  const clearValues = includeAny ? ['', 'all', 'any', 'none'] : ['', 'all', 'none'];
+  return clearValues.includes(String(value || '').trim().toLowerCase());
+}
+
+function normalizeOptionalFilterValue(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return isOptionalClearValue(normalized, true) ? null : normalized;
 }
 
 function parseAvailableAtCommand(value) {

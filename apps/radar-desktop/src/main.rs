@@ -431,6 +431,7 @@ fn automation_manifest() -> AutomationManifest {
             "Esc focuses the command box",
             "next and prev page through scan rows without walking past the end",
             "clear-filters resets filters while preserving the row limit",
+            "usefulness clears with all, any, none, or blank; alert filters clear with all, none, or blank",
             "Command box accepts safe page, filter, refresh, help, and JSON commands",
             "offset, limit, and available-at commands reject invalid values before refreshing",
             "source-gap and decision-gap commands reject unsupported values before refreshing",
@@ -449,6 +450,7 @@ fn automation_manifest() -> AutomationManifest {
             "Invalid offset, limit, or available-at commands must not refresh the snapshot or change filters.",
             "Pagination commands must not advance scan_offset beyond priced_in_queue.total_count.",
             "clear-filters must preserve the chosen row limit while clearing ticker, source, decision, availability, alert, usefulness, and offset filters.",
+            "Optional usefulness filters must clear case-insensitively for all, any, none, or blank input; alert-status and alert-route clear for all, none, or blank input.",
             "Full catalyst-radar commands typed into the desktop command box must stay external and leave provider_calls=0.",
             "Clicking or pressing Enter on queue rows must open local candidate/alert detail without provider calls.",
             "Dynamic detail pages must expose both page=<candidate|alert detail> and nav=<parent workflow page> for automation.",
@@ -522,6 +524,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             action: "Type limit 25, press Return, then type clear-filters and press Return.",
             target: "command-input",
             expected: "filter-limit remains 25, non-limit filters are reset, scan_offset returns to 0, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "optional-filter-clear-command",
+            action: "Type usefulness ANY and press Return.",
+            target: "command-input",
+            expected: "usefulness is cleared case-insensitively, command-status reports Usefulness filter cleared, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "page-command",
@@ -716,6 +724,13 @@ mod tests {
             manifest
                 .computer_use_steps
                 .iter()
+                .any(|step| step.step == "optional-filter-clear-command"
+                    && step.expected.contains("Usefulness filter cleared"))
+        );
+        assert!(
+            manifest
+                .computer_use_steps
+                .iter()
                 .any(|step| step.step == "guarded-command"
                     && step.expected.contains("source-specific Ops plan"))
         );
@@ -760,6 +775,10 @@ mod tests {
         assert!(manifest.zero_call_assertions.iter().any(|assertion| {
             assertion.contains("clear-filters must preserve")
                 && assertion.contains("clearing ticker")
+        }));
+        assert!(manifest.zero_call_assertions.iter().any(|assertion| {
+            assertion.contains("Optional usefulness filters")
+                && assertion.contains("alert-status and alert-route clear")
         }));
         assert!(
             manifest
