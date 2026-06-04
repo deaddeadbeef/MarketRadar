@@ -13,6 +13,7 @@ const state = {
   availableAt: null,
   alertStatus: null,
   alertRoute: null,
+  lastCommand: 'none',
 };
 
 const keyAliases = new Map([
@@ -459,6 +460,7 @@ function renderSnapshot() {
   renderSnapshotMeta(snapshot, pageInfo);
   updateAutomationState(snapshot, status, pageInfo);
   updateFilterState();
+  updateCommandState();
   renderContent(snapshot);
   bindQueueRows();
 }
@@ -472,6 +474,7 @@ function renderLoadingDashboard() {
   setText('#snapshot-page', navigationPageKey(state.page));
   setText('#snapshot-mode', 'snapshot pending');
   updateFilterState();
+  updateCommandState();
   qs('#content').innerHTML = `
     <section class="panel wide loading-dashboard" data-testid="loading-dashboard">
       <h2>Market Command Center</h2>
@@ -561,6 +564,21 @@ function updateFilterState() {
     ['alert_route', state.alertRoute || 'all'],
   ];
   setText('#filter-state', fields.map(([key, value]) => `${key}=${value}`).join(' '));
+}
+
+function updateCommandState() {
+  const providerCalls = compact(state.snapshot?.external_calls_made, '0');
+  const result = qs('#command-status')?.textContent?.trim() || 'command=ready';
+  const fields = [
+    ['last_command', state.lastCommand || 'none'],
+    ['page', state.page || 'overview'],
+    ['nav', navigationPageKey(state.page || 'overview')],
+    ['provider_calls', providerCalls],
+  ];
+  setText(
+    '#command-state',
+    `${fields.map(([key, value]) => `${key}=${value}`).join(' ')} result="${result}"`,
+  );
 }
 
 function pageLabelFor(page, pageInfo) {
@@ -999,6 +1017,7 @@ async function handleCommandInputKeydown(event) {
 }
 
 async function applyCommand(raw) {
+  state.lastCommand = raw || 'refresh';
   if (!raw) {
     setCommandStatus('Refreshed.');
     await refreshSnapshot();
@@ -1713,6 +1732,7 @@ function guardedCommandPage(command) {
 function setCommandStatus(message) {
   setText('#command-status', `command=${message}`);
   updateFilterState();
+  updateCommandState();
 }
 
 async function closeDashboardWindow() {

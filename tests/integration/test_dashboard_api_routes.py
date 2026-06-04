@@ -363,6 +363,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(page["key"] == "costs" and page["shortcut"] == "V" for page in payload["pages"])
     assert "workflow-nav" in payload["automation"]["landmarks"]
     assert "command-input" in payload["automation"]["landmarks"]
+    assert "command-state" in payload["automation"]["landmarks"]
     assert "automation-state" in payload["automation"]["landmarks"]
     assert "filter-state" in payload["automation"]["landmarks"]
     assert "loading-dashboard" in payload["automation"]["landmarks"]
@@ -590,6 +591,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         and step["target"] == "filter-state"
         and "scan_mode=actionable" in step["expected"]
         and "usefulness=decision_useful" in step["expected"]
+        and "last_command=ready" in step["expected"]
         and "page=review" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
     )
@@ -608,6 +610,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         step["step"] == "capture"
         and "loading-dashboard before first data" in step["expected"]
+        and "command-state" in step["expected"]
         and "filter-state" in step["expected"]
         and "keys-panel" in step["expected"]
         and "snapshot-panel" in step["expected"]
@@ -712,6 +715,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         "data-testid=filter-state" in note
         and "ticker" in note
         and "offset" in note
+        for note in payload["automation"]["notes"]
+    )
+    assert any(
+        "data-testid=command-state" in note
+        and "latest command" in note
+        and "provider-call count" in note
         for note in payload["automation"]["notes"]
     )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")
