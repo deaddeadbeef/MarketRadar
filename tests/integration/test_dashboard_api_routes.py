@@ -310,6 +310,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "usefulness clears with all, any, none, or blank" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "offset, limit, and available-at commands reject invalid values" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -369,6 +373,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
+        step["step"] == "optional-filter-clear-command"
+        and "Usefulness filter cleared" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
         step["step"] == "powershell-command"
         for step in payload["automation"]["computer_use_steps"]
     )
@@ -422,6 +431,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         "clear-filters must preserve the chosen row limit" in assertion
         and "clearing ticker" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
+        "Optional usefulness filters" in assertion
+        and "alert-status and alert-route clear" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(

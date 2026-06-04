@@ -191,6 +191,21 @@ def test_tauri_dashboard_clear_filters_preserves_row_limit() -> None:
     assert "qs('#filter-limit').value = '50';" not in source
 
 
+def test_tauri_dashboard_optional_filters_clear_case_insensitively() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "function isOptionalClearValue(value, includeAny = false)" in source
+    assert "function normalizeOptionalFilterValue(value)" in source
+    assert "state.usefulness = normalizeOptionalFilterValue(value);" in source
+    assert "isOptionalClearValue(normalized, true)" in source
+    assert "state.alertStatus = isOptionalClearValue(value) ? null : value;" in source
+    assert "state.alertRoute = isOptionalClearValue(value) ? null : value;" in source
+    assert "['', 'all', 'any', 'none']" in source
+    assert "['', 'all', 'none']" in source
+
+
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",
