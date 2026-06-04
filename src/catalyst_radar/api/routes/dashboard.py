@@ -154,7 +154,7 @@ DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
 
 DASHBOARD_COMMAND_BOX_COMMANDS: tuple[dict[str, str], ...] = (
     {
-        "command": "0..9, Ctrl+A, V, F, ?, or page name",
+        "command": "0..9, Ctrl+A, Ctrl+N/P, Tab, J/K, V, F, ?, or page name",
         "meaning": "Switch pages; Ctrl+A opens Agent and V opens Costs.",
         "safety": "zero_provider_calls",
         "route": "local_navigation",
@@ -377,6 +377,13 @@ def manifest() -> dict[str, object]:
                 "automation-state",
                 "attention-queue",
                 "next-safe-action",
+                "keys-panel",
+                "keys-list",
+                "snapshot-panel",
+                "snapshot-source",
+                "snapshot-refresh",
+                "snapshot-page",
+                "snapshot-mode",
                 "snapshot-json",
                 "snapshot-json-output",
             ],
@@ -454,8 +461,9 @@ def manifest() -> dict[str, object]:
                     "target": "MarketRadar Command Center",
                     "expected": (
                         "The window exposes MarketRadar workflow tabs, dashboard-page, "
-                        "command-input, automation-state, next-safe-action, and "
-                        "page=<PAGE>, nav=<WORKFLOW_PAGE>, and provider_calls=0."
+                        "command-input, automation-state, next-safe-action, keys-panel, "
+                        "snapshot-panel, and page=<PAGE>, nav=<WORKFLOW_PAGE>, "
+                        "snapshot-page=<PAGE>, and provider_calls=0."
                     ),
                 },
                 {
@@ -726,6 +734,11 @@ def manifest() -> dict[str, object]:
                 (
                     "The dashboard main region exposes data-current-page and "
                     "data-current-nav-page for dynamic detail pages."
+                ),
+                (
+                    "The right rail exposes keys-panel and snapshot-panel, "
+                    "including snapshot-source, snapshot-refresh, "
+                    "snapshot-page, and snapshot-mode."
                 ),
                 (
                     "Candidate detail pages keep nav-page-candidates selected; "

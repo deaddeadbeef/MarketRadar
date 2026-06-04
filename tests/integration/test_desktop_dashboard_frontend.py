@@ -15,6 +15,60 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     assert "page=overview nav=overview status=loading provider_calls=0" in source
 
 
+def test_tauri_dashboard_right_rail_matches_rust_tui_metadata() -> None:
+    html = Path("apps/radar-desktop/frontend/index.html").read_text(
+        encoding="utf-8",
+    )
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+    styles = Path("apps/radar-desktop/frontend/styles.css").read_text(
+        encoding="utf-8",
+    )
+    tui_source = Path("crates/radar-tui/src/ui.rs").read_text(
+        encoding="utf-8",
+    )
+
+    assert "fn render_keys" in tui_source
+    assert "fn render_snapshot_meta" in tui_source
+    assert "q / Esc     quit" in tui_source
+    assert "r / F5      refresh" in tui_source
+    assert 'Span::styled("Source: "' in tui_source
+    assert 'Span::styled("Refresh: "' in tui_source
+    assert 'Span::styled("Page: "' in tui_source
+
+    for test_id in (
+        'data-testid="keys-panel"',
+        'data-testid="keys-list"',
+        'data-testid="snapshot-panel"',
+        'data-testid="snapshot-source"',
+        'data-testid="snapshot-refresh"',
+        'data-testid="snapshot-page"',
+        'data-testid="snapshot-mode"',
+    ):
+        assert test_id in html
+
+    assert "function renderKeys()" in source
+    assert "renderKeys();" in source
+    assert "['q / Esc', 'quit']" in source
+    assert "['r / F5', 'refresh']" in source
+    assert "['Tab/Arrows', 'next/prev']" in source
+    assert "function renderSnapshotMeta(snapshot, pageInfo)" in source
+    assert "friendlySource(state.config?.source_label || 'pending')" in source
+    assert "setText('#snapshot-refresh', state.lastRefresh ? '0s ago' : 'pending');" in source
+    assert "setText('#snapshot-page', navigationPageKey(state.page));" in source
+    assert (
+        "setText('#snapshot-mode', compact(snapshot.snapshot_mode, 'snapshot pending'));"
+        in source
+    )
+    assert "data-current-page" in source
+    assert "data-current-mode" in source
+    assert "data-page-label" in source
+    assert "value.startsWith('command ') ? 'local snapshot command' : value" in source
+    assert ".keys kbd" in styles
+    assert ".rail-kv" in styles
+
+
 def test_tauri_dashboard_json_command_targets_focusable_output() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",

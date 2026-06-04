@@ -331,7 +331,9 @@ async function boot() {
   state.page = state.config.initial_page || 'overview';
   renderNav();
   renderAutomation();
+  renderKeys();
   setText('#source-label', `source=${state.config.source_label}`);
+  setText('#snapshot-source', friendlySource(state.config.source_label));
   await refreshSnapshot();
 }
 
@@ -378,6 +380,21 @@ function renderAutomation() {
   qs('#automation-list').innerHTML = notes.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
 }
 
+function renderKeys() {
+  const keys = [
+    ['q / Esc', 'quit'],
+    ['r / F5', 'refresh'],
+    ['Up/Down', 'workflow'],
+    ['Tab/Arrows', 'next/prev'],
+    ['Home/End', 'first/help'],
+    ['0-9 letters', 'jump'],
+    ['Ctrl+A', 'agent'],
+  ];
+  qs('#keys-list').innerHTML = keys.map(([shortcut, action]) => `
+    <li><kbd>${escapeHtml(shortcut)}</kbd><span>${escapeHtml(action)}</span></li>
+  `).join('');
+}
+
 async function setPage(page) {
   if (!page) return;
   if (page === state.page) {
@@ -394,6 +411,7 @@ async function setPage(page) {
 async function refreshSnapshot() {
   state.loading = true;
   setStatus('refreshing');
+  setText('#snapshot-refresh', 'refreshing');
   try {
     const snapshot = await invoke('dashboard_snapshot', { input: filterInput() });
     state.snapshot = snapshot;
@@ -437,9 +455,25 @@ function renderSnapshot() {
   setText('#next-action', compact(snapshot.next_action || snapshot.canonical_next_action, 'Review the current page.'));
   setText('#next-command', compact(snapshot.next_command || snapshot.canonical_next_command, 'No command reported.'));
   setText('#boundary-copy', `Snapshot mode ${compact(snapshot.snapshot_mode, 'unknown')}; provider calls reported ${compact(snapshot.external_calls_made, '0')}.`);
+  renderSnapshotMeta(snapshot, pageInfo);
   updateAutomationState(snapshot, status, pageInfo);
   renderContent(snapshot);
   bindQueueRows();
+}
+
+function renderSnapshotMeta(snapshot, pageInfo) {
+  setText('#snapshot-source', friendlySource(state.config?.source_label || 'pending'));
+  setText('#snapshot-refresh', state.lastRefresh ? '0s ago' : 'pending');
+  setText('#snapshot-page', navigationPageKey(state.page));
+  setText('#snapshot-mode', compact(snapshot.snapshot_mode, 'snapshot pending'));
+  qs('#snapshot-panel')?.setAttribute('data-current-page', navigationPageKey(state.page));
+  qs('#snapshot-panel')?.setAttribute('data-current-mode', compact(snapshot.snapshot_mode, 'snapshot_pending'));
+  qs('#snapshot-panel')?.setAttribute('data-page-label', pageLabelFor(state.page, pageInfo));
+}
+
+function friendlySource(source) {
+  const value = String(source || 'pending');
+  return value.startsWith('command ') ? 'local snapshot command' : value;
 }
 
 function updateAutomationState(snapshot, status, pageInfo) {
