@@ -194,7 +194,7 @@ const powershellCommandPrefixes = new Set([
 ]);
 
 const fallbackCommandReference = [
-  ['0..9, Ctrl+A, V, F, ?, or page name', 'Switch pages; Ctrl+A opens Agent and V opens Costs.'],
+  ['0..9, Ctrl+A, Ctrl+N/P, Tab, J/K, V, F, ?, or page name', 'Switch pages; Ctrl+A opens Agent and V opens Costs.'],
   ['themes / validation / costs / features', 'Open local evidence pages for clustered themes, validation, costs, and feature inventory.'],
   ['setup / first', 'Show the first setup command and where to run it.'],
   ['open #|TICKER', 'Open a row from Candidate Review or show its next command.'],
@@ -237,6 +237,17 @@ function commandReference() {
 
 function catalogLabel(value) {
   return compact(String(value || '').replaceAll('_', ' '), 'local');
+}
+
+function isFormControlTarget(target) {
+  return target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement;
+}
+
+function shouldPreserveNativeTab(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.id === 'dashboard-main' || target === document.body) return false;
+  return Boolean(target.closest('button, a[href], input, select, textarea, [role="button"], [tabindex]'));
 }
 
 function qs(selector) {
@@ -1638,7 +1649,7 @@ function handleKeyboard(event) {
     setCommandStatus('Command box focused.');
     return;
   }
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement) {
+  if (isFormControlTarget(event.target)) {
     return;
   }
   if (event.ctrlKey && event.key.toLowerCase() === 'a') {
@@ -1654,6 +1665,11 @@ function handleKeyboard(event) {
   if (event.ctrlKey && event.key.toLowerCase() === 'p') {
     event.preventDefault();
     stepPage(-1);
+    return;
+  }
+  if (event.key === 'Tab' && !shouldPreserveNativeTab(event)) {
+    event.preventDefault();
+    stepPage(event.shiftKey ? -1 : 1);
     return;
   }
   if (event.key === 'F5') {
@@ -1681,10 +1697,36 @@ function handleKeyboard(event) {
     setPage('help');
     return;
   }
-  const alias = keyAliases.get(event.key.toLowerCase());
-  if (alias) {
-    event.preventDefault();
-    setPage(alias);
+  const commandModifier = event.ctrlKey || event.altKey || event.metaKey;
+  const plainKey = event.key.length === 1 ? event.key.toLowerCase() : '';
+  if (!commandModifier) {
+    if (plainKey === 'q') {
+      event.preventDefault();
+      setCommandStatus('Closing MarketRadar.');
+      closeDashboardWindow();
+      return;
+    }
+    if (plainKey === 'r') {
+      event.preventDefault();
+      setCommandStatus('Refreshed.');
+      refreshSnapshot();
+      return;
+    }
+    if (plainKey === 'j') {
+      event.preventDefault();
+      stepPage(1);
+      return;
+    }
+    if (plainKey === 'k') {
+      event.preventDefault();
+      stepPage(-1);
+      return;
+    }
+    const alias = keyAliases.get(plainKey);
+    if (alias) {
+      event.preventDefault();
+      setPage(alias);
+    }
   }
 }
 

@@ -54,16 +54,16 @@ def test_tauri_dashboard_escape_focuses_command_from_form_controls() -> None:
     )
 
     escape_handler = source.index("if (event.key === 'Escape')")
-    form_control_guard = source.index(
-        "event.target instanceof HTMLInputElement",
-    )
+    form_control_guard = source.index("if (isFormControlTarget(event.target))")
 
     assert escape_handler < form_control_guard
+    assert "function isFormControlTarget(target)" in source
+    assert "target instanceof HTMLInputElement" in source
     assert "qs('#command-input').focus();" in source
     assert "setCommandStatus('Command box focused.');" in source
 
 
-def test_tauri_dashboard_ctrl_navigation_matches_rust_tui() -> None:
+def test_tauri_dashboard_global_keys_match_rust_tui() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",
     )
@@ -76,11 +76,32 @@ def test_tauri_dashboard_ctrl_navigation_matches_rust_tui() -> None:
 
     assert "Some('n') => return KeyAction::NextPage" in tui_source
     assert "Some('p') => return KeyAction::PreviousPage" in tui_source
+    assert "KeyCode::Tab | KeyCode::Right | KeyCode::Down | KeyCode::PageDown" in tui_source
+    assert "KeyCode::BackTab | KeyCode::Left | KeyCode::Up | KeyCode::PageUp" in tui_source
+    assert "'q' => KeyAction::Quit" in tui_source
+    assert "'r' => KeyAction::Refresh" in tui_source
+    assert "'j' => KeyAction::NextPage" in tui_source
+    assert "'k' => KeyAction::PreviousPage" in tui_source
     assert "event.ctrlKey && event.key.toLowerCase() === 'n'" in source
     assert "event.ctrlKey && event.key.toLowerCase() === 'p'" in source
+    assert "event.key === 'Tab' && !shouldPreserveNativeTab(event)" in source
+    assert "stepPage(event.shiftKey ? -1 : 1);" in source
+    assert "const commandModifier = event.ctrlKey || event.altKey || event.metaKey;" in source
+    assert "if (plainKey === 'q')" in source
+    assert "if (plainKey === 'r')" in source
+    assert "if (plainKey === 'j')" in source
+    assert "if (plainKey === 'k')" in source
+    assert "setCommandStatus('Closing MarketRadar.');" in source
+    assert "closeDashboardWindow();" in source
+    assert "setCommandStatus('Refreshed.');" in source
+    assert "refreshSnapshot();" in source
     assert "stepPage(1);" in source
     assert "stepPage(-1);" in source
     assert "Ctrl+N moves forward; Ctrl+P moves backward" in rust_source
+    assert "ArrowRight/ArrowDown/Tab/J moves forward" in rust_source
+    assert "ArrowLeft/ArrowUp/Shift+Tab/K moves backward" in rust_source
+    assert "F5 or R refreshes the local snapshot" in rust_source
+    assert "Q closes the native desktop window" in rust_source
 
 
 def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:

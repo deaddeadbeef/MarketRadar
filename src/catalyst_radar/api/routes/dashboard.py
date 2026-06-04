@@ -388,8 +388,9 @@ def manifest() -> dict[str, object]:
                 "V opens Costs",
                 "F opens Features",
                 "? opens Help",
-                "Arrow keys move through workflow pages",
-                "F5 refreshes the local snapshot",
+                "ArrowRight/ArrowDown/Tab/J moves forward",
+                "ArrowLeft/ArrowUp/Shift+Tab/K moves backward",
+                "F5 or R refreshes the local snapshot",
                 "Home opens Start, End opens Help",
                 "Esc focuses the command box",
                 "next and prev page through scan rows without walking past the end",
@@ -425,7 +426,10 @@ def manifest() -> dict[str, object]:
                     "the guarded dashboard backend for preview/status output; "
                     "execute and confirm variants stay external boundaries"
                 ),
-                "q, quit, or exit closes the native desktop window",
+                (
+                    "Q closes the native desktop window; q, quit, or exit "
+                    "also close from the command box"
+                ),
                 (
                     "Full catalyst-radar commands show a PowerShell boundary "
                     "instead of executing in-app"

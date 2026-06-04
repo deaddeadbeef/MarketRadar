@@ -386,6 +386,22 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "ArrowRight/ArrowDown/Tab/J moves forward" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
+        "ArrowLeft/ArrowUp/Shift+Tab/K moves backward" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
+        "F5 or R refreshes the local snapshot" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
+        "Q closes the native desktop window" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "themes or validation" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
