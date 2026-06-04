@@ -186,6 +186,10 @@ def manifest() -> dict[str, object]:
                 "Home opens Start, End opens Help",
                 "Esc focuses the command box",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
+                (
+                    "batch SOURCE opens an Ops source plan; batch SOURCE all "
+                    "and batch SOURCE execute N show PowerShell boundaries"
+                ),
                 "q, quit, or exit closes the native desktop window",
                 (
                     "Full catalyst-radar commands show a PowerShell boundary "
@@ -259,8 +263,21 @@ def manifest() -> dict[str, object]:
                     "action": "Type batch catalyst_events and press Return.",
                     "target": "command-input",
                     "expected": (
-                        "dashboard-page reports page=ops, command-status shows an "
-                        "external command boundary, and provider_calls=0."
+                        "dashboard-page reports page=ops, command-status shows "
+                        "a source-specific Ops plan or workflow status, and "
+                        "provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "source-batch-execute-boundary",
+                    "action": (
+                        "Type batch catalyst_events execute 3 and press Return."
+                    ),
+                    "target": "command-input",
+                    "expected": (
+                        "dashboard-page reports page=ops, command-status shows "
+                        "the PowerShell command with --execute-batches 3 and "
+                        "provider_calls=0."
                     ),
                 },
                 {
@@ -306,6 +323,11 @@ def manifest() -> dict[str, object]:
                     "Execute-class commands must show the external PowerShell command "
                     "boundary instead of running provider, OpenAI, broker, or DB-write "
                     "actions from the desktop command box."
+                ),
+                (
+                    "Source batch plan commands may read the current snapshot, "
+                    "but execute variants must remain external PowerShell "
+                    "boundaries and leave provider_calls=0."
                 ),
                 (
                     "Full catalyst-radar commands typed into the desktop command box "

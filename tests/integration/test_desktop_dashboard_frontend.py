@@ -83,7 +83,7 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     for command in (
         "themes / validation / costs / features",
         "export full / export current",
-        "batch SOURCE / batch SOURCE execute",
+        "batch SOURCE / batch SOURCE all / batch SOURCE execute 3",
         "catalyst-radar COMMAND",
         "bars manual template/import",
         "options template/validate/import",
@@ -92,6 +92,33 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
         "outcome coverage / update",
     ):
         assert command in source
+
+
+def test_tauri_dashboard_batch_commands_are_first_class_safe_ops_commands() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    batch_handler = source.index(
+        "['batch', 'batches', 'source-batch', 'source-batches'].includes(command)",
+    )
+    guarded_handler = source.index("const guardedMessage = guardedCommandMessage")
+
+    assert batch_handler < guarded_handler
+    assert "function parseSourceBatchCommand(value)" in source
+    assert "function normalizeSourceName(value)" in source
+    assert "sourceAliases = new Map" in source
+    assert "['events', 'catalyst_events']" in source
+    assert "['broker', 'broker_context']" in source
+    assert "function sourceBatchCommandMessage(value)" in source
+    assert "function sourceWorkflowStep(source)" in source
+    assert "priced_in_source_workflow" in source
+    assert "catalyst-radar priced-in-source-batches --source ${source} --all" in source
+    assert "--execute-batches ${parsed.maxBatches}" in source
+    assert "--execute-next" in source
+    assert "batch all is plan-only" in source
+    assert "No provider calls made in the desktop app" in source
+    assert "provider_calls=0 in the desktop app" in source
 
 
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:

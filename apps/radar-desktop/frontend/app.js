@@ -107,6 +107,29 @@ const executeClassCommands = new Set([
   'trigger',
 ]);
 
+const sourceAliases = new Map([
+  ['bars', 'market_bars'],
+  ['market', 'market_bars'],
+  ['market_data', 'market_bars'],
+  ['events', 'catalyst_events'],
+  ['event', 'catalyst_events'],
+  ['catalysts', 'catalyst_events'],
+  ['catalyst', 'catalyst_events'],
+  ['text', 'local_text'],
+  ['local', 'local_text'],
+  ['news', 'local_text'],
+  ['narrative', 'local_text'],
+  ['option', 'options'],
+  ['options_flow', 'options'],
+  ['theme', 'theme_peer_sector'],
+  ['themes', 'theme_peer_sector'],
+  ['peer', 'theme_peer_sector'],
+  ['sector', 'theme_peer_sector'],
+  ['broker', 'broker_context'],
+  ['schwab', 'broker_context'],
+  ['portfolio', 'broker_context'],
+]);
+
 const powershellCommandPrefixes = new Set([
   'build-decision-cards',
   'build-packets',
@@ -129,7 +152,7 @@ const commandReference = [
   ['decision-gap GAP|all', 'Filter Inbox by missing decision evidence.'],
   ['next / prev / offset ROW / limit 1-200', 'Page through current Inbox scan rows.'],
   ['export full / export current', 'Show JSON export commands without running them.'],
-  ['batch SOURCE / batch SOURCE execute', 'Plan source fills or show the external execution boundary.'],
+  ['batch SOURCE / batch SOURCE all / batch SOURCE execute 3', 'Plan source fills or show the external execution boundary.'],
   ['catalyst-radar COMMAND', 'Show where to run full CLI commands without executing them in the dashboard.'],
   ['bars manual template/import', 'Show market-bar repair command boundaries.'],
   ['bars saved capture/validate/import', 'Show saved grouped-daily command boundaries.'],
@@ -966,6 +989,11 @@ async function applyCommand(raw) {
     await openDashboardTarget(value);
     return;
   }
+  if (['batch', 'batches', 'source-batch', 'source-batches'].includes(command)) {
+    setCommandStatus(sourceBatchCommandMessage(value));
+    await setPage('ops');
+    return;
+  }
   if (['ledger', 'value-ledger', 'value_ledger', 'outcome', 'outcomes', 'value-outcome', 'value_outcome'].includes(command)) {
     setCommandStatus(costCommandMessage(command, value));
     await setPage('costs');
@@ -1006,6 +1034,111 @@ function listFilter(value) {
   return ['', 'all', 'none'].includes(value)
     ? []
     : value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function parseSourceBatchCommand(value) {
+  const parts = String(value || '').split(/\s+/).map((part) => part.trim()).filter(Boolean);
+  const executeWords = new Set(['execute', 'exec', 'run']);
+  const fullPlanWords = new Set(['all', 'full', 'full-scan', 'fullscan', 'plan']);
+  const sourceParts = [];
+  let execute = false;
+  let allBatches = false;
+  let maxBatches = 1;
+
+  parts.forEach((part) => {
+    const lowered = part.toLowerCase();
+    if (executeWords.has(lowered)) {
+      execute = true;
+      return;
+    }
+    if (fullPlanWords.has(lowered)) {
+      allBatches = true;
+      return;
+    }
+    if (/^\d+$/.test(lowered)) {
+      maxBatches = Math.max(1, Number(lowered));
+      return;
+    }
+    sourceParts.push(part);
+  });
+
+  const sourceText = sourceParts.join(' ');
+  return {
+    source: sourceText ? normalizeSourceName(sourceText) : (allBatches ? 'all' : ''),
+    execute,
+    allBatches,
+    maxBatches,
+  };
+}
+
+function normalizeSourceName(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return sourceAliases.get(normalized) || normalized;
+}
+
+function sourceBatchCommandMessage(value) {
+  const parsed = parseSourceBatchCommand(value);
+  if (!parsed.source) {
+    return 'Usage: batch SOURCE. Try: batch catalyst_events, batch local_text, batch options, batch SOURCE all, or batch SOURCE execute 3. No calls made.';
+  }
+  if (parsed.source === 'all') {
+    if (parsed.execute) {
+      return 'batch all is plan-only. Choose one source before running execute, for example: batch catalyst_events execute. No calls made.';
+    }
+    return allSourceBatchPlanMessage();
+  }
+  if (parsed.execute) return sourceBatchExecuteBoundary(parsed);
+  if (parsed.allBatches) return sourceBatchAllPlanMessage(parsed.source);
+  return sourceBatchPlanMessage(parsed.source);
+}
+
+function allSourceBatchPlanMessage() {
+  const workflow = at(state.snapshot || {}, ['priced_in_source_workflow'], {});
+  const command = compact(workflow?.overview_command, 'catalyst-radar priced-in-source-batches --source all');
+  const headline = compact(workflow?.headline || workflow?.next_action, 'Review full-scan source coverage.');
+  return `All-source plan: ${headline} PowerShell command: ${command}. No provider calls made in the desktop app.`;
+}
+
+function sourceBatchPlanMessage(source) {
+  const step = sourceWorkflowStep(source);
+  const fallbackCommand = `catalyst-radar priced-in-source-batches --source ${source}`;
+  if (!step) {
+    return `${sourceLabel(source)}: no source workflow row is available in the current snapshot. PowerShell command: ${fallbackCommand}. No provider calls made in the desktop app.`;
+  }
+  const status = compact(step.status, 'unknown');
+  const action = compact(step.action || step.next_action, 'Review the source plan before execution.');
+  const command = compact(step.command || step.batch_plan_command, fallbackCommand);
+  const gapText = sourceGapText(step);
+  return `${sourceLabel(source)}: ${status}; ${gapText}. ${action} PowerShell command: ${command}. No provider calls made in the desktop app.`;
+}
+
+function sourceBatchAllPlanMessage(source) {
+  return `${sourceLabel(source)} full batch plan stays external. PowerShell command: catalyst-radar priced-in-source-batches --source ${source} --all. No provider calls made in the desktop app.`;
+}
+
+function sourceBatchExecuteBoundary(parsed) {
+  const command = parsed.maxBatches > 1
+    ? `catalyst-radar priced-in-source-batches --source ${parsed.source} --execute-batches ${parsed.maxBatches}`
+    : `catalyst-radar priced-in-source-batches --source ${parsed.source} --execute-next`;
+  const step = sourceWorkflowStep(parsed.source);
+  const review = step ? ` Review first: ${compact(step.action || step.next_action, 'inspect the source plan')}.` : '';
+  return `${sourceLabel(parsed.source)} execute stays outside dashboard browsing. Run this in PowerShell only after accepting the provider/write boundary: ${command}.${review} provider_calls=0 in the desktop app.`;
+}
+
+function sourceWorkflowStep(source) {
+  return arrayAt(state.snapshot || {}, ['priced_in_source_workflow', 'steps']).find((step) => (
+    normalizeSourceName(step?.source) === source
+  ));
+}
+
+function sourceGapText(step) {
+  const gap = step?.gap_rows ?? step?.actionable_gap_rows ?? step?.decision_useful_gap_rows;
+  if (gap === null || gap === undefined || gap === '') return 'gap rows unknown';
+  return `${gap} gap row(s)`;
+}
+
+function sourceLabel(source) {
+  return String(source || 'source').replaceAll('_', ' ');
 }
 
 function pageFromCommand(raw) {
