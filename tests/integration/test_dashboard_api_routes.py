@@ -364,6 +364,9 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert "workflow-nav" in payload["automation"]["landmarks"]
     assert "command-input" in payload["automation"]["landmarks"]
     assert "automation-state" in payload["automation"]["landmarks"]
+    assert "loading-dashboard" in payload["automation"]["landmarks"]
+    assert "loading-metric-strip" in payload["automation"]["landmarks"]
+    assert "loading-preview-queue" in payload["automation"]["landmarks"]
     assert "keys-panel" in payload["automation"]["landmarks"]
     assert "keys-list" in payload["automation"]["landmarks"]
     assert "snapshot-panel" in payload["automation"]["landmarks"]
@@ -491,6 +494,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "loading-dashboard" in note
+        and "loading-metric-strip" in note
+        and "loading-preview-queue" in note
+        for note in payload["automation"]["notes"]
+    )
+    assert any(
         "keys-panel" in note
         and "snapshot-panel" in note
         and "snapshot-source" in note
@@ -570,6 +579,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         step["step"] == "capture"
+        and "loading-dashboard before first data" in step["expected"]
         and "keys-panel" in step["expected"]
         and "snapshot-panel" in step["expected"]
         and "snapshot-page=<PAGE>" in step["expected"]

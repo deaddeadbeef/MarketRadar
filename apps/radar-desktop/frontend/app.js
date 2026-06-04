@@ -412,6 +412,7 @@ async function refreshSnapshot() {
   state.loading = true;
   setStatus('refreshing');
   setText('#snapshot-refresh', 'refreshing');
+  if (!state.snapshot) renderLoadingDashboard();
   try {
     const snapshot = await invoke('dashboard_snapshot', { input: filterInput() });
     state.snapshot = snapshot;
@@ -459,6 +460,51 @@ function renderSnapshot() {
   updateAutomationState(snapshot, status, pageInfo);
   renderContent(snapshot);
   bindQueueRows();
+}
+
+function renderLoadingDashboard() {
+  setText('#page-title', 'Command Center');
+  setText('#next-action', 'Loading local snapshot.');
+  setText('#next-command', 'dashboard-snapshot --json --fast');
+  setText('#boundary-copy', 'Rendering remains local and makes zero provider calls.');
+  setText('#provider-calls', 'provider_calls=0');
+  setText('#snapshot-page', navigationPageKey(state.page));
+  setText('#snapshot-mode', 'snapshot pending');
+  qs('#content').innerHTML = `
+    <section class="panel wide loading-dashboard" data-testid="loading-dashboard">
+      <h2>Market Command Center</h2>
+      <p>Loading market snapshot</p>
+      <p>MarketRadar is reading the local dashboard contract.</p>
+      <p>Rendering remains local and makes zero provider calls.</p>
+    </section>
+    <div class="metric-grid" data-testid="loading-metric-strip" aria-label="Loading dashboard metrics">
+      ${loadingMetric('Decision status', 'pending')}
+      ${loadingMetric('Next safe action', 'loading')}
+      ${loadingMetric('Provider calls', '0')}
+    </div>
+    <section class="panel wide loading-preview" data-testid="loading-preview-queue">
+      <h2>Attention Queue</h2>
+      <div class="table-wrap">
+        <table aria-label="Loading attention queue preview">
+          <thead><tr><th>Ticker</th><th>State</th><th>Signal</th><th>Next</th></tr></thead>
+          <tbody>
+            <tr><td>[loading]</td><td>local snapshot</td><td>resolving dashboard contract</td><td>refresh</td></tr>
+            <tr><td>[loading]</td><td>zero-call read</td><td>waiting for data rows</td><td>inspect</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function loadingMetric(label, value) {
+  return `
+    <article class="metric placeholder" data-testid="loading-${label.toLowerCase().replaceAll(' ', '-')}">
+      <span>${escapeHtml(label)}</span>
+      <b>${escapeHtml(value)}</b>
+      <p>snapshot loading</p>
+    </article>
+  `;
 }
 
 function renderSnapshotMeta(snapshot, pageInfo) {

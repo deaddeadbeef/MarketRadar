@@ -292,6 +292,10 @@ h3 {
   gap: 12px;
 }
 
+.metric-grid[data-testid="loading-metric-strip"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .metric {
   min-height: 104px;
   padding: 16px;
@@ -316,6 +320,10 @@ h3 {
   font-size: 25px;
   line-height: 1.15;
   overflow-wrap: anywhere;
+}
+
+.metric.placeholder b {
+  color: var(--amber);
 }
 
 .panel {

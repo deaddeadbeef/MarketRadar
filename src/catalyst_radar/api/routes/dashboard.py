@@ -376,6 +376,9 @@ def manifest() -> dict[str, object]:
                 "command-status",
                 "automation-state",
                 "attention-queue",
+                "loading-dashboard",
+                "loading-metric-strip",
+                "loading-preview-queue",
                 "next-safe-action",
                 "keys-panel",
                 "keys-list",
@@ -461,9 +464,10 @@ def manifest() -> dict[str, object]:
                     "target": "MarketRadar Command Center",
                     "expected": (
                         "The window exposes MarketRadar workflow tabs, dashboard-page, "
-                        "command-input, automation-state, next-safe-action, keys-panel, "
-                        "snapshot-panel, and page=<PAGE>, nav=<WORKFLOW_PAGE>, "
-                        "snapshot-page=<PAGE>, and provider_calls=0."
+                        "command-input, automation-state, loading-dashboard before "
+                        "first data, next-safe-action, keys-panel, snapshot-panel, "
+                        "and page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, "
+                        "and provider_calls=0."
                     ),
                 },
                 {
@@ -734,6 +738,11 @@ def manifest() -> dict[str, object]:
                 (
                     "The dashboard main region exposes data-current-page and "
                     "data-current-nav-page for dynamic detail pages."
+                ),
+                (
+                    "Before the first snapshot loads, the main region exposes "
+                    "loading-dashboard, loading-metric-strip, and "
+                    "loading-preview-queue instead of a blank box."
                 ),
                 (
                     "The right rail exposes keys-panel and snapshot-panel, "
