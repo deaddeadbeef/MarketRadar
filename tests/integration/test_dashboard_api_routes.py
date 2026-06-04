@@ -322,6 +322,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "run execute starts the guarded" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "catalyst-radar commands" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -341,6 +345,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         step["step"] == "source-batch-execute-boundary"
         and "--execute-batches 3" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "safe-run-execute-command"
+        and "radar_run telemetry contract" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
@@ -414,6 +423,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
+        "Non-run execute-class commands" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
         "Invalid source-gap or decision-gap" in assertion
         and "must not refresh" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
@@ -450,6 +463,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         "q, quit, and exit close" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
+        "run execute uses the guarded radar-run" in note
+        for note in payload["automation"]["notes"]
     )
     assert payload["data_contract"]["snapshot_command"].endswith("--json --fast")
 

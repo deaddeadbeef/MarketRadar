@@ -2,7 +2,10 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use radar_tui::client::{SnapshotFilters, SnapshotRequest, SnapshotSource, fetch_snapshot};
+use radar_tui::client::{
+    SnapshotFilters, SnapshotRequest, SnapshotSource,
+    execute_dashboard_command as execute_client_dashboard_command, fetch_snapshot,
+};
 use radar_tui::model::Page;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -130,6 +133,32 @@ fn last_dashboard_snapshot(state: State<'_, DesktopState>) -> Option<Value> {
 }
 
 #[tauri::command]
+fn execute_dashboard_command(
+    state: State<'_, DesktopState>,
+    command: String,
+    input: SnapshotInput,
+) -> Result<Value, String> {
+    let page_request = page_request(
+        input
+            .page
+            .as_deref()
+            .unwrap_or(state.config.initial_page.as_str()),
+    );
+    let mut filters = snapshot_filters(input);
+    if let Some(ticker) = page_request.detail_ticker.clone() {
+        filters.ticker = Some(ticker);
+        filters.scan_offset = 0;
+    }
+    let request = SnapshotRequest {
+        page: page_request.snapshot_page,
+        requested_page: Some(page_request.selected_page),
+        filters,
+    };
+    execute_client_dashboard_command(&state.source, &command, &request)
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 fn close_dashboard_window(app: AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
@@ -160,6 +189,7 @@ fn main() {
             desktop_config,
             dashboard_snapshot,
             last_dashboard_snapshot,
+            execute_dashboard_command,
             close_dashboard_window
         ])
         .run(tauri::generate_context!())
@@ -436,6 +466,7 @@ fn automation_manifest() -> AutomationManifest {
             "offset, limit, and available-at commands reject invalid values before refreshing",
             "source-gap and decision-gap commands reject unsupported values before refreshing",
             "batch SOURCE opens an Ops source plan; batch SOURCE all and batch SOURCE execute N show PowerShell boundaries",
+            "run opens Safe Run; run execute starts the guarded radar-run API/CLI backend path",
             "q, quit, or exit closes the native desktop window",
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
         ],
@@ -444,7 +475,7 @@ fn automation_manifest() -> AutomationManifest {
         computer_use_steps: computer_use_steps(),
         zero_call_assertions: vec![
             "Dashboard browsing, command-box navigation, filtering, copy, and raw JSON inspection must leave provider_calls=0.",
-            "Execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
+            "Non-run execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
             "Source batch plan commands may read the current snapshot, but execute variants must remain external PowerShell boundaries and leave provider_calls=0.",
             "Invalid source-gap or decision-gap filter commands must not refresh the snapshot or change filters.",
             "Invalid offset, limit, or available-at commands must not refresh the snapshot or change filters.",
@@ -464,7 +495,7 @@ fn automation_manifest() -> AutomationManifest {
             "Candidate detail pages keep nav-page-candidates selected; alert detail pages keep nav-page-alerts selected.",
             "Rows use data-testid=queue-row, are keyboard focusable, and include ticker-specific labels when available.",
             "Refreshing reads the existing dashboard JSON contract and makes zero provider calls.",
-            "Execute-class commands remain external and require the normal PowerShell command boundary.",
+            "Non-run execute-class commands remain external and require the normal PowerShell command boundary; run execute uses the guarded radar-run API/CLI backend path.",
         ],
     }
 }
@@ -554,6 +585,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             action: "Type batch catalyst_events execute 3 and press Return.",
             target: "command-input",
             expected: "dashboard-page reports page=ops, command-status shows the PowerShell command with --execute-batches 3 and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "safe-run-execute-command",
+            action: "Type run execute and press Return only after reviewing the Safe Run call plan.",
+            target: "command-input",
+            expected: "dashboard-page reports page=run, command-status reports Radar run finished, blocked, or rate limited, and the backend returns the radar_run telemetry contract.",
         },
         ComputerUseStep {
             step: "powershell-command",
@@ -745,6 +782,13 @@ mod tests {
             manifest
                 .computer_use_steps
                 .iter()
+                .any(|step| step.step == "safe-run-execute-command"
+                    && step.expected.contains("radar_run telemetry contract"))
+        );
+        assert!(
+            manifest
+                .computer_use_steps
+                .iter()
                 .any(|step| step.step == "row-open"
                     && step.target == "queue-row"
                     && step.expected.contains("candidate:<TICKER>")
@@ -791,7 +835,13 @@ mod tests {
             manifest
                 .zero_call_assertions
                 .iter()
-                .any(|assertion| assertion.contains("provider_calls=0"))
+                .any(|assertion| assertion.contains("Non-run execute-class commands"))
+        );
+        assert!(
+            manifest
+                .notes
+                .iter()
+                .any(|note| note.contains("run execute uses the guarded radar-run"))
         );
         assert!(
             manifest
