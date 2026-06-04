@@ -121,6 +121,29 @@ def test_tauri_dashboard_batch_commands_are_first_class_safe_ops_commands() -> N
     assert "provider_calls=0 in the desktop app" in source
 
 
+def test_tauri_dashboard_gap_filters_reject_unsupported_values() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "const allowedSourceGaps = new Set" in source
+    assert "const allowedDecisionGaps = new Set" in source
+    assert "const decisionGapAliases = new Map" in source
+    assert "function validatedListFilter(value, aliases, allowed, commandLabel)" in source
+    assert "function normalizeFilterName(value, aliases)" in source
+    assert "Unsupported ${commandLabel} value" in source
+    assert "No calls made; filter unchanged" in source
+    assert "validatedListFilter(value, sourceAliases, allowedSourceGaps, 'source-gap')" in source
+    assert (
+        "validatedListFilter(value, decisionGapAliases, allowedDecisionGaps, "
+        "'decision-gap')"
+    ) in source
+    assert "if (sourceGap.error)" in source
+    assert "if (decisionGap.error)" in source
+    assert "['candidate_packet', 'candidate_packet']" in source
+    assert "['broker', 'broker_context']" in source
+
+
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",

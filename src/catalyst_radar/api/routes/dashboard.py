@@ -187,6 +187,10 @@ def manifest() -> dict[str, object]:
                 "Esc focuses the command box",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
                 (
+                    "source-gap and decision-gap commands reject unsupported "
+                    "values before refreshing"
+                ),
+                (
                     "batch SOURCE opens an Ops source plan; batch SOURCE all "
                     "and batch SOURCE execute N show PowerShell boundaries"
                 ),
@@ -234,6 +238,15 @@ def manifest() -> dict[str, object]:
                     "expected": (
                         "filter-ticker is MSFT, automation-state remains page=overview, "
                         "and provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "filter-validation-command",
+                    "action": "Type source-gap nonsense and press Return.",
+                    "target": "command-input",
+                    "expected": (
+                        "command-status reports Unsupported source-gap value, "
+                        "the filter is unchanged, and provider_calls=0."
                     ),
                 },
                 {
@@ -328,6 +341,10 @@ def manifest() -> dict[str, object]:
                     "Source batch plan commands may read the current snapshot, "
                     "but execute variants must remain external PowerShell "
                     "boundaries and leave provider_calls=0."
+                ),
+                (
+                    "Invalid source-gap or decision-gap filter commands must "
+                    "not refresh the snapshot or change filters."
                 ),
                 (
                     "Full catalyst-radar commands typed into the desktop command box "

@@ -430,6 +430,7 @@ fn automation_manifest() -> AutomationManifest {
             "Home opens Start, End opens Help",
             "Esc focuses the command box",
             "Command box accepts safe page, filter, refresh, help, and JSON commands",
+            "source-gap and decision-gap commands reject unsupported values before refreshing",
             "batch SOURCE opens an Ops source plan; batch SOURCE all and batch SOURCE execute N show PowerShell boundaries",
             "q, quit, or exit closes the native desktop window",
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
@@ -441,6 +442,7 @@ fn automation_manifest() -> AutomationManifest {
             "Dashboard browsing, command-box navigation, filtering, copy, and raw JSON inspection must leave provider_calls=0.",
             "Execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
             "Source batch plan commands may read the current snapshot, but execute variants must remain external PowerShell boundaries and leave provider_calls=0.",
+            "Invalid source-gap or decision-gap filter commands must not refresh the snapshot or change filters.",
             "Full catalyst-radar commands typed into the desktop command box must stay external and leave provider_calls=0.",
             "Clicking or pressing Enter on queue rows must open local candidate/alert detail without provider calls.",
             "Dynamic detail pages must expose both page=<candidate|alert detail> and nav=<parent workflow page> for automation.",
@@ -484,6 +486,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             action: "Type ticker MSFT and press Return.",
             target: "command-input",
             expected: "filter-ticker is MSFT, automation-state remains page=overview, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "filter-validation-command",
+            action: "Type source-gap nonsense and press Return.",
+            target: "command-input",
+            expected: "command-status reports Unsupported source-gap value, the filter is unchanged, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "page-command",
@@ -639,6 +647,14 @@ mod tests {
             manifest
                 .computer_use_steps
                 .iter()
+                .any(|step| step.step == "filter-validation-command"
+                    && step.expected.contains("Unsupported source-gap value")
+                    && step.expected.contains("filter is unchanged"))
+        );
+        assert!(
+            manifest
+                .computer_use_steps
+                .iter()
                 .any(|step| step.step == "guarded-command"
                     && step.expected.contains("source-specific Ops plan"))
         );
@@ -658,6 +674,13 @@ mod tests {
                     && step.expected.contains("candidate:<TICKER>")
                     && step.expected.contains("nav=candidates")
                     && step.expected.contains("nav=alerts"))
+        );
+        assert!(
+            manifest
+                .zero_call_assertions
+                .iter()
+                .any(|assertion| assertion.contains("Invalid source-gap")
+                    && assertion.contains("must not refresh"))
         );
         assert!(
             manifest
