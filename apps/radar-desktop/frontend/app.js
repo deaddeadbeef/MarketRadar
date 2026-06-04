@@ -932,22 +932,22 @@ async function applyCommand(raw) {
     return;
   }
   if (command === 'offset') {
-    const offset = Number(value);
-    if (!Number.isFinite(offset) || offset < 1) {
+    if (!isPositiveIntegerText(value)) {
       setCommandStatus('Usage: offset ROW.');
       return;
     }
+    const offset = Number(value);
     state.scanOffset = Math.floor(offset) - 1;
     setCommandStatus(`Rows starting at ${state.scanOffset + 1}.`);
     await setPage('overview');
     return;
   }
   if (command === 'limit') {
-    const limit = Number(value);
-    if (!Number.isFinite(limit)) {
+    if (!isPositiveIntegerText(value)) {
       setCommandStatus('Usage: limit 1-200.');
       return;
     }
+    const limit = Number(value);
     qs('#filter-limit').value = String(Math.min(200, Math.max(1, Math.floor(limit))));
     state.scanOffset = 0;
     setCommandStatus(`Rows per page: ${qs('#filter-limit').value}.`);
@@ -994,7 +994,12 @@ async function applyCommand(raw) {
     return;
   }
   if (['available-at', 'cutoff'].includes(command)) {
-    state.availableAt = ['', 'latest', 'all', 'none'].includes(value) ? null : value;
+    const availableAt = parseAvailableAtCommand(value);
+    if (availableAt.error) {
+      setCommandStatus(availableAt.error);
+      return;
+    }
+    state.availableAt = availableAt.value;
     state.scanOffset = 0;
     setCommandStatus(state.availableAt ? `Available-at: ${state.availableAt}.` : 'Available-at filter cleared.');
     await refreshSnapshot();
@@ -1095,6 +1100,30 @@ function normalizeFilterName(value, aliases) {
 
 function unique(values) {
   return [...new Set(values)];
+}
+
+function isPositiveIntegerText(value) {
+  return /^[0-9]+$/.test(String(value || '').trim());
+}
+
+function parseAvailableAtCommand(value) {
+  const raw = String(value || '').trim();
+  const normalized = raw.toLowerCase();
+  if (['', 'latest', 'all', 'none'].includes(normalized)) {
+    return { value: null, error: '' };
+  }
+  if (!isIsoDateTimeText(raw)) {
+    return { value: null, error: 'Invalid timestamp. No calls made; filter unchanged.' };
+  }
+  return { value: raw, error: '' };
+}
+
+function isIsoDateTimeText(value) {
+  const normalized = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T ][0-9:.+-]+|T[0-9:.+-]+Z)?$/.test(normalized)) {
+    return false;
+  }
+  return !Number.isNaN(Date.parse(normalized.replace(/Z$/, '+00:00')));
 }
 
 function parseSourceBatchCommand(value) {
