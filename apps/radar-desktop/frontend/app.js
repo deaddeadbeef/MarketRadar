@@ -102,12 +102,28 @@ const executeClassCommands = new Set([
 
 const backendCommandWords = new Set([
   'action',
+  'agent',
+  'agent-brief',
+  'agents',
+  'bar',
+  'bars',
+  'cik',
+  'ciks',
   'eval-triggers',
   'evaluate-triggers',
   'feedback',
   'ledger',
+  'market-bars',
+  'market_bars',
+  'option',
+  'options',
+  'options-flow',
+  'options_flow',
   'outcome',
   'outcomes',
+  'sec',
+  'sec-cik',
+  'sec_cik',
   'ticket',
   'trigger',
   'value-ledger',
@@ -192,11 +208,11 @@ const commandReference = [
   ['export full / export current', 'Show JSON export commands without running them.'],
   ['batch SOURCE / batch SOURCE all / batch SOURCE execute 3', 'Plan source fills or show the external execution boundary.'],
   ['catalyst-radar COMMAND', 'Show where to run full CLI commands without executing them in the dashboard.'],
-  ['bars manual template/import', 'Show market-bar repair command boundaries.'],
-  ['bars saved capture/validate/import', 'Show saved grouped-daily command boundaries.'],
-  ['options template/validate/import', 'Show point-in-time options command boundaries.'],
-  ['cik template/validate/import', 'Show SEC CIK override command boundaries.'],
-  ['agent / agent execute', 'Preview agent gates or show the OpenAI execution boundary.'],
+  ['bars manual template/import', 'Preview market-bar repair commands through the dashboard backend; execute stays external.'],
+  ['bars saved capture/validate/import', 'Preview saved grouped-daily commands through the dashboard backend; confirm/execute stays external.'],
+  ['options template/validate/import', 'Preview point-in-time options commands through the dashboard backend; execute stays external.'],
+  ['cik template/validate/import', 'Preview SEC CIK override commands through the dashboard backend; execute stays external.'],
+  ['agent / agent execute', 'Preview agent gates through the dashboard backend; execute stays external.'],
   ['alert-status STATUS|all / alert-route ROUTE|all', 'Filter alerts.'],
   ['run / run execute', 'Open Safe Run or show the capped run execution boundary.'],
   ['action / trigger / ticket / feedback', 'Run guarded local Broker or Alert commands through the dashboard backend.'],
@@ -1057,6 +1073,13 @@ async function applyCommand(raw) {
     await handleRunCommand(value);
     return;
   }
+  const boundaryMessage = guardedExecutionBoundaryMessage(normalized);
+  if (boundaryMessage) {
+    setCommandStatus(boundaryMessage);
+    const boundaryPage = guardedCommandPage(command);
+    if (boundaryPage) await setPage(boundaryPage);
+    return;
+  }
   if (backendCommandWords.has(command)) {
     await handleBackendDashboardCommand(raw);
     return;
@@ -1429,6 +1452,40 @@ function applyBackendDashboardFilters(filters) {
 
 function dashboardCommandResultMessage(result) {
   return result?.message || 'Dashboard command completed.';
+}
+
+function guardedExecutionBoundaryMessage(normalized) {
+  const command = normalized.split(' ')[0];
+  const powershellMessage = powershellCommandMessage(normalized);
+  if (powershellMessage) return powershellMessage;
+  if (executeClassCommands.has(normalized)) {
+    return 'Execute commands stay outside dashboard browsing. Copy the displayed command and run it in PowerShell after reviewing call/write boundaries.';
+  }
+  if (providerBackendCommandWords().has(command) && /\bexecute\b/.test(normalized)) {
+    return 'Execute commands stay outside dashboard browsing. Copy the displayed command and run it in PowerShell after reviewing call/write boundaries.';
+  }
+  return '';
+}
+
+function providerBackendCommandWords() {
+  return new Set([
+    'agent',
+    'agent-brief',
+    'agents',
+    'bar',
+    'bars',
+    'cik',
+    'ciks',
+    'market-bars',
+    'market_bars',
+    'option',
+    'options',
+    'options-flow',
+    'options_flow',
+    'sec',
+    'sec-cik',
+    'sec_cik',
+  ]);
 }
 
 function radarRunResultMessage(result) {
