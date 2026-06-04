@@ -453,6 +453,13 @@ fn automation_manifest() -> AutomationManifest {
             "automation-state",
             "attention-queue",
             "next-safe-action",
+            "keys-panel",
+            "keys-list",
+            "snapshot-panel",
+            "snapshot-source",
+            "snapshot-refresh",
+            "snapshot-page",
+            "snapshot-mode",
             "snapshot-json",
             "snapshot-json-output",
         ],
@@ -506,6 +513,7 @@ fn automation_manifest() -> AutomationManifest {
             "The current page title is exposed through data-testid=page-title.",
             "The exact selected page, parent nav page, and provider-call count are exposed through data-testid=automation-state.",
             "The dashboard main region exposes data-current-page and data-current-nav-page for dynamic detail pages.",
+            "The right rail exposes keys-panel and snapshot-panel, including snapshot-source, snapshot-refresh, snapshot-page, and snapshot-mode.",
             "Candidate detail pages keep nav-page-candidates selected; alert detail pages keep nav-page-alerts selected.",
             "Rows use data-testid=queue-row, are keyboard focusable, and include ticker-specific labels when available.",
             "Refreshing reads the existing dashboard JSON contract and makes zero provider calls.",
@@ -517,7 +525,7 @@ fn automation_manifest() -> AutomationManifest {
 fn command_box_commands() -> Vec<CommandBoxCommand> {
     vec![
         CommandBoxCommand {
-            command: "0..9, Ctrl+A, V, F, ?, or page name",
+            command: "0..9, Ctrl+A, Ctrl+N/P, Tab, J/K, V, F, ?, or page name",
             meaning: "Switch pages; Ctrl+A opens Agent and V opens Costs.",
             safety: "zero_provider_calls",
             route: "local_navigation",
@@ -687,7 +695,7 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "capture",
             action: "Capture screenshot and accessibility text for the selected window.",
             target: "MarketRadar Command Center",
-            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, automation-state, next-safe-action, page=<PAGE>, nav=<WORKFLOW_PAGE>, and provider_calls=0.",
+            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, automation-state, next-safe-action, keys-panel, snapshot-panel, page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "focus-command",
@@ -833,6 +841,13 @@ mod tests {
 
         assert!(manifest.landmark_test_ids.contains(&"command-input"));
         assert!(manifest.landmark_test_ids.contains(&"automation-state"));
+        assert!(manifest.landmark_test_ids.contains(&"keys-panel"));
+        assert!(manifest.landmark_test_ids.contains(&"keys-list"));
+        assert!(manifest.landmark_test_ids.contains(&"snapshot-panel"));
+        assert!(manifest.landmark_test_ids.contains(&"snapshot-source"));
+        assert!(manifest.landmark_test_ids.contains(&"snapshot-refresh"));
+        assert!(manifest.landmark_test_ids.contains(&"snapshot-page"));
+        assert!(manifest.landmark_test_ids.contains(&"snapshot-mode"));
         assert!(manifest.landmark_test_ids.contains(&"snapshot-json-output"));
         assert!(
             manifest
@@ -890,6 +905,12 @@ mod tests {
                 |note| note.contains("nav-page-candidates") && note.contains("nav-page-alerts")
             )
         );
+        assert!(manifest.notes.iter().any(|note| {
+            note.contains("keys-panel")
+                && note.contains("snapshot-panel")
+                && note.contains("snapshot-source")
+                && note.contains("snapshot-page")
+        }));
     }
 
     #[test]
@@ -1033,6 +1054,15 @@ mod tests {
             && step.expected.contains("Market-bar status")
             && step.expected.contains("dashboard backend")
             && step.expected.contains("provider_calls=0")));
+        assert!(
+            manifest
+                .computer_use_steps
+                .iter()
+                .any(|step| step.step == "capture"
+                    && step.expected.contains("keys-panel")
+                    && step.expected.contains("snapshot-panel")
+                    && step.expected.contains("snapshot-page=<PAGE>"))
+        );
         assert!(
             manifest
                 .computer_use_steps

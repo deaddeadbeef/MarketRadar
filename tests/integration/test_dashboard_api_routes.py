@@ -364,6 +364,13 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert "workflow-nav" in payload["automation"]["landmarks"]
     assert "command-input" in payload["automation"]["landmarks"]
     assert "automation-state" in payload["automation"]["landmarks"]
+    assert "keys-panel" in payload["automation"]["landmarks"]
+    assert "keys-list" in payload["automation"]["landmarks"]
+    assert "snapshot-panel" in payload["automation"]["landmarks"]
+    assert "snapshot-source" in payload["automation"]["landmarks"]
+    assert "snapshot-refresh" in payload["automation"]["landmarks"]
+    assert "snapshot-page" in payload["automation"]["landmarks"]
+    assert "snapshot-mode" in payload["automation"]["landmarks"]
     assert "snapshot-json-output" in payload["automation"]["landmarks"]
     assert any(
         "data-current-page" in note and "data-current-nav-page" in note
@@ -483,6 +490,13 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         "Home opens Start, End opens Help" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
+    assert any(
+        "keys-panel" in note
+        and "snapshot-panel" in note
+        and "snapshot-source" in note
+        and "snapshot-page" in note
+        for note in payload["automation"]["notes"]
+    )
     assert payload["automation"]["native_window_title"] == "MarketRadar Command Center"
     assert payload["automation"]["native_executable"].endswith(
         "radar-desktop.exe"
@@ -552,6 +566,13 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         step["step"] == "powershell-command"
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "capture"
+        and "keys-panel" in step["expected"]
+        and "snapshot-panel" in step["expected"]
+        and "snapshot-page=<PAGE>" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
