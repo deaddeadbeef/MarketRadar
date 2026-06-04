@@ -699,16 +699,18 @@ For legacy visual QA, `radar --python-tui --screenshot-out <path>` writes a
 Textual SVG of the selected page and exits without provider, OpenAI, Schwab, or
 broker calls.
 
-### Terminal dashboard basics
+### Terminal dashboard companion
 
-The TUI is the operational replacement surface for the web dashboard. It loads
-the same command-center data helpers and opens as a Market Inbox: scan results
-arrive as messages to triage instead of raw backend rows. The first screen now
-answers: what MarketRadar is trying to decide, whether you can act, the best
-next step, how many scan messages exist, and the zero-call browsing boundary.
+The Rust terminal dashboard is the terminal-only companion to the Tauri command
+center, not the primary replacement surface. It loads the same command-center
+data helpers and opens as a Market Inbox: scan results arrive as messages to
+triage instead of raw backend rows. The first screen answers: what MarketRadar
+is trying to decide, whether you can act, the best next step, how many scan
+messages exist, and the zero-call browsing boundary.
 Navigation labels use workflow language: `0 Start`, `1 Inbox`,
 `2 Evidence Gaps`, `3 Safe Run`, `4 Candidate Review`, and `Ctrl+A Agent Coach`.
-Press `0` or run `radar --page tutorial` for the walkthrough.
+Press `0`, run `radar --once --page tutorial` for a terminal smoke view, or run
+`radar --page tutorial` for the primary desktop walkthrough.
 
 The Inbox is the full-market priced-in queue by default. It groups messages into
 `Urgent`, `Worth Reading`, `Waiting Evidence`, `Blocked`, and `Monitor`, then
@@ -722,17 +724,19 @@ import or fetch a universe, fill fresh market bars, then run a capped scan.
 The first-run wording is literal: `No market scan yet` means MarketRadar has
 not analyzed the market, not that it found zero opportunities. Run the displayed
 `PowerShell setup command` in a normal PowerShell prompt after reviewing the
-provider-call/database-write note. The dashboard command box is only for TUI
-commands such as `refresh`, `help`, page names, and `q`.
+provider-call/database-write note. The dashboard command box accepts only
+terminal and desktop browsing commands such as `refresh`, `help`, page names,
+and `q`.
 Click or press `Enter` on an inbox message to open the right operational view.
-Inside the TUI, the left sidebar is the primary navigation: click a sidebar row,
-press a page number, use `Ctrl+N` / `Ctrl+P`, or focus the sidebar and use
-`Up` / `Down` plus `Enter`. The compact `KEYS` / `MOUSE` guide keeps shortcuts visible
-without adding a second navigation system. Candidate and alert rows are
-mouse-selectable in Windows Terminal. The `NEXT SAFE ACTION` card shows the useful
-operator move for the current page; the `LAST RESPONSE` card shows what the
-dashboard just did. The footer always shows cost before execute so action,
-response, and spend are visually separate. Type `now` or `what-now` for the single priced-in action,
+Inside the terminal dashboard, the left sidebar mirrors the desktop workflow:
+click a sidebar row, press a page number, use `Ctrl+N` / `Ctrl+P`, or focus the
+sidebar and use `Up` / `Down` plus `Enter`. The compact `KEYS` / `MOUSE` guide
+keeps shortcuts visible without adding a second navigation system. Candidate and
+alert rows are mouse-selectable in Windows Terminal. The `NEXT SAFE ACTION` card
+shows the useful operator move for the current page; the `LAST RESPONSE` card
+shows what the dashboard just did. The footer always shows cost before execute
+so action, response, and spend are visually separate. Type `now` or `what-now`
+for the single priced-in action,
 expected response, approval requirement, provider-call count, and database-write
 count. Use `ticker <SYMBOL|all>` and `available-at <ISO|latest>`
 to filter, `json` to print the redacted machine-readable snapshot, `refresh`
@@ -978,7 +982,7 @@ SCHWAB_ORDER_SUBMISSION_ENABLED=false
 ```
 
 See `docs/dashboard-feature-inventory.md` for the current dashboard feature
-inventory and TUI coverage.
+inventory and desktop, terminal, CLI, and API coverage.
 
 ## 4. Readiness And Market-Bar Repair
 
@@ -1790,7 +1794,7 @@ execution, and exposes only specialist agents as tools. `--real` previews the
 gates with zero OpenAI calls; `--real --execute` is required before the Agents
 SDK is invoked. It does not grant model
 access to market-data providers, Schwab, local files, shell, web browsing, or
-order submission. The CLI/API payload and Agent TUI page expose this as
+order submission. The CLI/API payload and Agent dashboard page expose this as
 `runtime.orchestrator=openai_agents_sdk`,
 `runtime.copilot_dependency=absent`, and zero market-data/broker/shell/web
 tool flags so the operator can verify the boundary without reading source.
