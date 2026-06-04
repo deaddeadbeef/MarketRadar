@@ -147,6 +147,7 @@ struct DesktopArgs {
     api_role: Option<String>,
     allow_invalid_certs: bool,
     snapshot_command: Option<String>,
+    print_config_json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -236,24 +237,20 @@ fn close_dashboard_window(app: AppHandle) -> Result<(), String> {
 fn main() {
     let args = parse_args(env::args().skip(1));
     let repo_root = find_repo_root().unwrap_or_else(|| env::current_dir().unwrap_or_default());
-    let source = snapshot_source(&args, &repo_root);
-    let config = DesktopConfig {
-        schema_version: "dashboard-ui-manifest-v1",
-        external_calls_made: 0,
-        surfaces: dashboard_surfaces(),
-        app_name: "MarketRadar",
-        initial_page: initial_page_key(args.page.as_deref()),
-        source_label: source.label(),
-        repo_root: repo_root.display().to_string(),
-        pages: page_infos(),
-        automation: automation_manifest(),
-        data_contract: dashboard_data_contract(),
-    };
+    let config = build_desktop_config(&args, &repo_root);
+
+    if args.print_config_json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&config).expect("serialize desktop config")
+        );
+        return;
+    }
 
     tauri::Builder::default()
         .manage(DesktopState {
             config,
-            source,
+            source: snapshot_source(&args, &repo_root),
             last_snapshot: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
@@ -265,6 +262,22 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running MarketRadar desktop dashboard");
+}
+
+fn build_desktop_config(args: &DesktopArgs, repo_root: &Path) -> DesktopConfig {
+    let source = snapshot_source(args, repo_root);
+    DesktopConfig {
+        schema_version: "dashboard-ui-manifest-v1",
+        external_calls_made: 0,
+        surfaces: dashboard_surfaces(),
+        app_name: "MarketRadar",
+        initial_page: initial_page_key(args.page.as_deref()),
+        source_label: source.label(),
+        repo_root: repo_root.display().to_string(),
+        pages: page_infos(),
+        automation: automation_manifest(),
+        data_contract: dashboard_data_contract(),
+    }
 }
 
 fn snapshot_filters(input: SnapshotInput) -> SnapshotFilters {
@@ -424,6 +437,7 @@ where
             "--api-role" => parsed.api_role = args.next(),
             "--allow-invalid-certs" => parsed.allow_invalid_certs = true,
             "--snapshot-command" => parsed.snapshot_command = args.next(),
+            "--print-config-json" => parsed.print_config_json = true,
             _ => {}
         }
     }
@@ -1151,6 +1165,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_recognizes_headless_desktop_config_export() {
+        let args = parse_args(
+            [
+                "--print-config-json",
+                "--page",
+                "alerts",
+                "--snapshot-command",
+                "catalyst-radar dashboard-snapshot --json --fast",
+            ]
+            .into_iter()
+            .map(str::to_string),
+        );
+
+        assert!(args.print_config_json);
+        assert_eq!(args.page.as_deref(), Some("alerts"));
+        assert_eq!(
+            args.snapshot_command.as_deref(),
+            Some("catalyst-radar dashboard-snapshot --json --fast")
+        );
+    }
+
+    #[test]
     fn page_manifest_exposes_stable_automation_ids() {
         let pages = page_infos();
 
@@ -1293,22 +1329,21 @@ mod tests {
 
     #[test]
     fn desktop_config_serializes_api_manifest_compatible_top_level_fields() {
-        let config = DesktopConfig {
-            schema_version: "dashboard-ui-manifest-v1",
-            external_calls_made: 0,
-            surfaces: dashboard_surfaces(),
-            app_name: "MarketRadar",
-            initial_page: "overview".to_string(),
-            source_label: "command dashboard-snapshot --json --fast".to_string(),
-            repo_root: "C:\\repo\\MarketRadar".to_string(),
-            pages: page_infos(),
-            automation: automation_manifest(),
-            data_contract: dashboard_data_contract(),
+        let args = DesktopArgs {
+            snapshot_command: Some("catalyst-radar dashboard-snapshot --json --fast".to_string()),
+            ..DesktopArgs::default()
         };
+        let config = build_desktop_config(&args, Path::new("C:\\repo\\MarketRadar"));
         let payload = serde_json::to_value(&config).expect("serialize desktop config");
 
         assert_eq!(payload["schema_version"], "dashboard-ui-manifest-v1");
         assert_eq!(payload["external_calls_made"], 0);
+        assert_eq!(payload["initial_page"], "overview");
+        assert_eq!(
+            payload["source_label"],
+            "command catalyst-radar dashboard-snapshot --json --fast"
+        );
+        assert_eq!(payload["repo_root"], "C:\\repo\\MarketRadar");
         assert_eq!(payload["surfaces"]["default"], "tauri_desktop");
         assert_eq!(payload["surfaces"]["terminal"], "rust_tui");
         assert_eq!(payload["surfaces"]["legacy"], "python_textual");
