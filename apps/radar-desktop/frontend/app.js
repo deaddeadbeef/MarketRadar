@@ -235,6 +235,10 @@ function commandReference() {
   return fallbackCommandReference.map(([command, meaning]) => [command, meaning, '', '']);
 }
 
+function catalogLabel(value) {
+  return compact(String(value || '').replaceAll('_', ' '), 'local');
+}
+
 function qs(selector) {
   return document.querySelector(selector);
 }
@@ -828,11 +832,20 @@ function renderHelp() {
       </div>
       <div class="table-wrap command-reference" data-testid="command-reference">
         <table aria-label="Dashboard command reference">
-          <thead><tr><th>Command</th><th>Meaning</th></tr></thead>
-          <tbody>${commandReference().map(([command, meaning]) => `
-            <tr>
+          <thead><tr><th>Command</th><th>Meaning</th><th>Safety</th><th>Route</th></tr></thead>
+          <tbody>${commandReference().map(([command, meaning, safety, route]) => `
+            <tr
+              data-testid="command-reference-row"
+              data-command="${escapeHtml(command)}"
+              data-safety="${escapeHtml(safety)}"
+              data-route="${escapeHtml(route)}"
+              tabindex="0"
+              aria-label="${escapeHtml(`${command}: ${meaning} Safety ${catalogLabel(safety)}. Route ${catalogLabel(route)}.`)}"
+            >
               <td class="ticker">${escapeHtml(command)}</td>
               <td>${escapeHtml(meaning)}</td>
+              <td class="state">${escapeHtml(catalogLabel(safety))}</td>
+              <td class="command-route">${escapeHtml(catalogLabel(route))}</td>
             </tr>
           `).join('')}</tbody>
         </table>
