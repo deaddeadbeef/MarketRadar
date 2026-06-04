@@ -1067,10 +1067,11 @@ async function applyCommand(raw) {
 }
 
 function clearFilters() {
+  const preservedLimit = qs('#filter-limit').value || '50';
   qs('#filter-ticker').value = '';
   qs('#filter-scan-mode').value = 'all';
   qs('#filter-stocks-only').checked = false;
-  qs('#filter-limit').value = '50';
+  qs('#filter-limit').value = preservedLimit;
   state.availableAt = null;
   state.alertStatus = null;
   state.alertRoute = null;

@@ -177,6 +177,20 @@ def test_tauri_dashboard_next_command_stops_at_scan_end() -> None:
     assert "state.scanOffset = nextOffset;" in source
 
 
+def test_tauri_dashboard_clear_filters_preserves_row_limit() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "const preservedLimit = qs('#filter-limit').value || '50';" in source
+    assert "qs('#filter-limit').value = preservedLimit;" in source
+    assert "state.sourceGap = [];" in source
+    assert "state.decisionGap = [];" in source
+    assert "state.usefulness = null;" in source
+    assert "state.scanOffset = 0;" in source
+    assert "qs('#filter-limit').value = '50';" not in source
+
+
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",

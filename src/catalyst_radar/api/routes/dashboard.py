@@ -186,6 +186,7 @@ def manifest() -> dict[str, object]:
                 "Home opens Start, End opens Help",
                 "Esc focuses the command box",
                 "next and prev page through scan rows without walking past the end",
+                "clear-filters resets filters while preserving the row limit",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
                 (
                     "offset, limit, and available-at commands reject invalid "
@@ -282,6 +283,18 @@ def manifest() -> dict[str, object]:
                     "expected": (
                         "command-status reports Already at the end of the "
                         "current scan filter and provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "clear-filters-command",
+                    "action": (
+                        "Type limit 25, press Return, then type clear-filters "
+                        "and press Return."
+                    ),
+                    "target": "command-input",
+                    "expected": (
+                        "filter-limit remains 25, non-limit filters are reset, "
+                        "scan_offset returns to 0, and provider_calls=0."
                     ),
                 },
                 {
@@ -388,6 +401,11 @@ def manifest() -> dict[str, object]:
                 (
                     "Pagination commands must not advance scan_offset beyond "
                     "priced_in_queue.total_count."
+                ),
+                (
+                    "clear-filters must preserve the chosen row limit while "
+                    "clearing ticker, source, decision, availability, alert, "
+                    "usefulness, and offset filters."
                 ),
                 (
                     "Full catalyst-radar commands typed into the desktop command box "
