@@ -382,6 +382,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "Ctrl+N moves forward; Ctrl+P moves backward" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "themes or validation" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )

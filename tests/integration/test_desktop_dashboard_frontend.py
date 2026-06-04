@@ -63,6 +63,26 @@ def test_tauri_dashboard_escape_focuses_command_from_form_controls() -> None:
     assert "setCommandStatus('Command box focused.');" in source
 
 
+def test_tauri_dashboard_ctrl_navigation_matches_rust_tui() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+    rust_source = Path("apps/radar-desktop/src/main.rs").read_text(
+        encoding="utf-8",
+    )
+    tui_source = Path("crates/radar-tui/src/main.rs").read_text(
+        encoding="utf-8",
+    )
+
+    assert "Some('n') => return KeyAction::NextPage" in tui_source
+    assert "Some('p') => return KeyAction::PreviousPage" in tui_source
+    assert "event.ctrlKey && event.key.toLowerCase() === 'n'" in source
+    assert "event.ctrlKey && event.key.toLowerCase() === 'p'" in source
+    assert "stepPage(1);" in source
+    assert "stepPage(-1);" in source
+    assert "Ctrl+N moves forward; Ctrl+P moves backward" in rust_source
+
+
 def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",
