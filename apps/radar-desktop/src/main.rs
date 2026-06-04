@@ -33,6 +33,7 @@ struct DesktopConfig {
 #[derive(Clone, Debug, Serialize)]
 struct AutomationManifest {
     contract_version: &'static str,
+    #[serde(rename = "landmarks")]
     landmark_test_ids: Vec<&'static str>,
     keyboard_shortcuts: Vec<&'static str>,
     command_box_commands: Vec<CommandBoxCommand>,
@@ -1234,6 +1235,22 @@ mod tests {
                 && note.contains("snapshot-source")
                 && note.contains("snapshot-page")
         }));
+    }
+
+    #[test]
+    fn automation_manifest_serializes_api_compatible_landmarks_key() {
+        let manifest = automation_manifest();
+        let payload = serde_json::to_value(&manifest).expect("serialize automation manifest");
+
+        assert!(payload.get("landmarks").is_some());
+        assert!(payload.get("landmark_test_ids").is_none());
+        assert!(
+            payload["landmarks"]
+                .as_array()
+                .expect("landmarks array")
+                .iter()
+                .any(|value| value == "automation-json")
+        );
     }
 
     #[test]
