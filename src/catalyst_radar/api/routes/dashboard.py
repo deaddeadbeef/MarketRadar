@@ -152,6 +152,186 @@ DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
     },
 )
 
+DASHBOARD_COMMAND_BOX_COMMANDS: tuple[dict[str, str], ...] = (
+    {
+        "command": "0..9, Ctrl+A, V, F, ?, or page name",
+        "meaning": "Switch pages; Ctrl+A opens Agent and V opens Costs.",
+        "safety": "zero_provider_calls",
+        "route": "local_navigation",
+    },
+    {
+        "command": "themes / validation / costs / features",
+        "meaning": (
+            "Open local evidence pages for clustered themes, validation, costs, "
+            "and feature inventory."
+        ),
+        "safety": "zero_provider_calls",
+        "route": "local_navigation",
+    },
+    {
+        "command": "setup / first",
+        "meaning": "Show the first setup command and where to run it.",
+        "safety": "zero_provider_calls",
+        "route": "local_navigation",
+    },
+    {
+        "command": "open #|TICKER",
+        "meaning": "Open a row from Candidate Review or show its next command.",
+        "safety": "zero_provider_calls",
+        "route": "local_detail",
+    },
+    {
+        "command": "ticker SYMBOL|all",
+        "meaning": "Filter ticker-aware pages.",
+        "safety": "zero_provider_calls",
+        "route": "snapshot_refresh",
+    },
+    {
+        "command": "available-at ISO|latest",
+        "meaning": "Set or clear the point-in-time cutoff.",
+        "safety": "zero_provider_calls",
+        "route": "snapshot_refresh",
+    },
+    {
+        "command": "ready / full / mismatches / stocks",
+        "meaning": (
+            "Switch between decision-useful, full universe, mismatch, and "
+            "stock-only scan views."
+        ),
+        "safety": "zero_provider_calls",
+        "route": "local_filter",
+    },
+    {
+        "command": "usefulness STATUS|all",
+        "meaning": "Filter Inbox by usefulness verdict.",
+        "safety": "zero_provider_calls",
+        "route": "local_filter",
+    },
+    {
+        "command": "source-gap SOURCE|all",
+        "meaning": "Filter Inbox by missing or stale source evidence.",
+        "safety": "zero_provider_calls",
+        "route": "local_filter",
+    },
+    {
+        "command": "decision-gap GAP|all",
+        "meaning": "Filter Inbox by missing decision evidence.",
+        "safety": "zero_provider_calls",
+        "route": "local_filter",
+    },
+    {
+        "command": "next / prev / offset ROW / limit 1-200",
+        "meaning": "Page through current Inbox scan rows.",
+        "safety": "zero_provider_calls",
+        "route": "local_pagination",
+    },
+    {
+        "command": "export full / export current",
+        "meaning": "Show JSON export commands without running them.",
+        "safety": "external_boundary",
+        "route": "command_preview",
+    },
+    {
+        "command": "batch SOURCE / batch SOURCE all / batch SOURCE execute 3",
+        "meaning": "Plan source fills or show the external execution boundary.",
+        "safety": "plan_only_execute_external",
+        "route": "local_plan",
+    },
+    {
+        "command": "catalyst-radar COMMAND",
+        "meaning": (
+            "Show where to run full CLI commands without executing them in the "
+            "dashboard."
+        ),
+        "safety": "external_boundary",
+        "route": "powershell_boundary",
+    },
+    {
+        "command": "bars manual template/import",
+        "meaning": (
+            "Preview market-bar repair commands through the dashboard backend; "
+            "execute stays external."
+        ),
+        "safety": "preview_only_execute_external",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "bars saved capture/validate/import",
+        "meaning": (
+            "Preview saved grouped-daily commands through the dashboard backend; "
+            "confirm/execute stays external."
+        ),
+        "safety": "preview_only_confirm_execute_external",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "options template/validate/import",
+        "meaning": (
+            "Preview point-in-time options commands through the dashboard backend; "
+            "execute stays external."
+        ),
+        "safety": "preview_only_execute_external",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "cik template/validate/import",
+        "meaning": (
+            "Preview SEC CIK override commands through the dashboard backend; "
+            "execute stays external."
+        ),
+        "safety": "preview_only_execute_external",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "agent / agent execute",
+        "meaning": "Preview agent gates through the dashboard backend; execute stays external.",
+        "safety": "preview_only_execute_external",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "alert-status STATUS|all / alert-route ROUTE|all",
+        "meaning": "Filter alerts.",
+        "safety": "zero_provider_calls",
+        "route": "local_filter",
+    },
+    {
+        "command": "run / run execute",
+        "meaning": "Open Safe Run or show the capped run execution boundary.",
+        "safety": "guarded_execution",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "action / trigger / ticket / feedback",
+        "meaning": "Run guarded local Broker or Alert commands through the dashboard backend.",
+        "safety": "local_db_only",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "ledger coverage / record",
+        "meaning": "Run guarded local value-ledger commands through the dashboard backend.",
+        "safety": "local_db_only",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "outcome coverage / update",
+        "meaning": "Run guarded local value-outcome commands through the dashboard backend.",
+        "safety": "local_db_only",
+        "route": "dashboard_backend",
+    },
+    {
+        "command": "json",
+        "meaning": "Open and focus the raw JSON snapshot.",
+        "safety": "zero_provider_calls",
+        "route": "local_snapshot_view",
+    },
+    {
+        "command": "clear-filters / refresh / q",
+        "meaning": "Reset filters, reload, or close the native window.",
+        "safety": "zero_provider_calls",
+        "route": "local_navigation",
+    },
+)
+
 
 def _engine():
     engine = engine_from_url(AppConfig.from_env().database_url)
@@ -167,6 +347,10 @@ def _desktop_pages() -> list[dict[str, str]]:
         }
         for page in DASHBOARD_DESKTOP_PAGES
     ]
+
+
+def _command_box_commands() -> list[dict[str, str]]:
+    return [dict(command) for command in DASHBOARD_COMMAND_BOX_COMMANDS]
 
 
 @router.get("/manifest", dependencies=[Depends(require_role(Role.VIEWER))])
@@ -246,6 +430,7 @@ def manifest() -> dict[str, object]:
                     "instead of executing in-app"
                 ),
             ],
+            "command_box_commands": _command_box_commands(),
             "native_window_title": "MarketRadar Command Center",
             "native_executable": "target\\release\\radar-desktop.exe",
             "computer_use_steps": [

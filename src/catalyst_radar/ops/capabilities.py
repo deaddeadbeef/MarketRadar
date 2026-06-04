@@ -169,7 +169,7 @@ def _operations() -> list[dict[str, object]]:
             "safety": "read_only",
             "ai_use": (
                 "Discover Tauri/Rust dashboard pages, automation landmarks, "
-                "and snapshot contract."
+                "structured command catalog, and snapshot contract."
             ),
             "external_calls_possible": False,
         },

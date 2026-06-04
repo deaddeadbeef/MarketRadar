@@ -35,11 +35,20 @@ struct AutomationManifest {
     contract_version: &'static str,
     landmark_test_ids: Vec<&'static str>,
     keyboard_shortcuts: Vec<&'static str>,
+    command_box_commands: Vec<CommandBoxCommand>,
     native_window_title: &'static str,
     native_executable: &'static str,
     computer_use_steps: Vec<ComputerUseStep>,
     zero_call_assertions: Vec<&'static str>,
     notes: Vec<&'static str>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct CommandBoxCommand {
+    command: &'static str,
+    meaning: &'static str,
+    safety: &'static str,
+    route: &'static str,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -472,6 +481,7 @@ fn automation_manifest() -> AutomationManifest {
             "q, quit, or exit closes the native desktop window",
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
         ],
+        command_box_commands: command_box_commands(),
         native_window_title: "MarketRadar Command Center",
         native_executable: "target\\release\\radar-desktop.exe",
         computer_use_steps: computer_use_steps(),
@@ -501,6 +511,167 @@ fn automation_manifest() -> AutomationManifest {
             "Local broker, feedback, value-ledger, and outcome commands use the guarded dashboard backend; source-batch execute and provider execute/confirm commands remain external PowerShell boundaries; provider preview/status commands use the guarded dashboard backend; run execute uses the guarded radar-run API/CLI backend path.",
         ],
     }
+}
+
+fn command_box_commands() -> Vec<CommandBoxCommand> {
+    vec![
+        CommandBoxCommand {
+            command: "0..9, Ctrl+A, V, F, ?, or page name",
+            meaning: "Switch pages; Ctrl+A opens Agent and V opens Costs.",
+            safety: "zero_provider_calls",
+            route: "local_navigation",
+        },
+        CommandBoxCommand {
+            command: "themes / validation / costs / features",
+            meaning: "Open local evidence pages for clustered themes, validation, costs, and feature inventory.",
+            safety: "zero_provider_calls",
+            route: "local_navigation",
+        },
+        CommandBoxCommand {
+            command: "setup / first",
+            meaning: "Show the first setup command and where to run it.",
+            safety: "zero_provider_calls",
+            route: "local_navigation",
+        },
+        CommandBoxCommand {
+            command: "open #|TICKER",
+            meaning: "Open a row from Candidate Review or show its next command.",
+            safety: "zero_provider_calls",
+            route: "local_detail",
+        },
+        CommandBoxCommand {
+            command: "ticker SYMBOL|all",
+            meaning: "Filter ticker-aware pages.",
+            safety: "zero_provider_calls",
+            route: "snapshot_refresh",
+        },
+        CommandBoxCommand {
+            command: "available-at ISO|latest",
+            meaning: "Set or clear the point-in-time cutoff.",
+            safety: "zero_provider_calls",
+            route: "snapshot_refresh",
+        },
+        CommandBoxCommand {
+            command: "ready / full / mismatches / stocks",
+            meaning: "Switch between decision-useful, full universe, mismatch, and stock-only scan views.",
+            safety: "zero_provider_calls",
+            route: "local_filter",
+        },
+        CommandBoxCommand {
+            command: "usefulness STATUS|all",
+            meaning: "Filter Inbox by usefulness verdict.",
+            safety: "zero_provider_calls",
+            route: "local_filter",
+        },
+        CommandBoxCommand {
+            command: "source-gap SOURCE|all",
+            meaning: "Filter Inbox by missing or stale source evidence.",
+            safety: "zero_provider_calls",
+            route: "local_filter",
+        },
+        CommandBoxCommand {
+            command: "decision-gap GAP|all",
+            meaning: "Filter Inbox by missing decision evidence.",
+            safety: "zero_provider_calls",
+            route: "local_filter",
+        },
+        CommandBoxCommand {
+            command: "next / prev / offset ROW / limit 1-200",
+            meaning: "Page through current Inbox scan rows.",
+            safety: "zero_provider_calls",
+            route: "local_pagination",
+        },
+        CommandBoxCommand {
+            command: "export full / export current",
+            meaning: "Show JSON export commands without running them.",
+            safety: "external_boundary",
+            route: "command_preview",
+        },
+        CommandBoxCommand {
+            command: "batch SOURCE / batch SOURCE all / batch SOURCE execute 3",
+            meaning: "Plan source fills or show the external execution boundary.",
+            safety: "plan_only_execute_external",
+            route: "local_plan",
+        },
+        CommandBoxCommand {
+            command: "catalyst-radar COMMAND",
+            meaning: "Show where to run full CLI commands without executing them in the dashboard.",
+            safety: "external_boundary",
+            route: "powershell_boundary",
+        },
+        CommandBoxCommand {
+            command: "bars manual template/import",
+            meaning: "Preview market-bar repair commands through the dashboard backend; execute stays external.",
+            safety: "preview_only_execute_external",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "bars saved capture/validate/import",
+            meaning: "Preview saved grouped-daily commands through the dashboard backend; confirm/execute stays external.",
+            safety: "preview_only_confirm_execute_external",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "options template/validate/import",
+            meaning: "Preview point-in-time options commands through the dashboard backend; execute stays external.",
+            safety: "preview_only_execute_external",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "cik template/validate/import",
+            meaning: "Preview SEC CIK override commands through the dashboard backend; execute stays external.",
+            safety: "preview_only_execute_external",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "agent / agent execute",
+            meaning: "Preview agent gates through the dashboard backend; execute stays external.",
+            safety: "preview_only_execute_external",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "alert-status STATUS|all / alert-route ROUTE|all",
+            meaning: "Filter alerts.",
+            safety: "zero_provider_calls",
+            route: "local_filter",
+        },
+        CommandBoxCommand {
+            command: "run / run execute",
+            meaning: "Open Safe Run or show the capped run execution boundary.",
+            safety: "guarded_execution",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "action / trigger / ticket / feedback",
+            meaning: "Run guarded local Broker or Alert commands through the dashboard backend.",
+            safety: "local_db_only",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "ledger coverage / record",
+            meaning: "Run guarded local value-ledger commands through the dashboard backend.",
+            safety: "local_db_only",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "outcome coverage / update",
+            meaning: "Run guarded local value-outcome commands through the dashboard backend.",
+            safety: "local_db_only",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "json",
+            meaning: "Open and focus the raw JSON snapshot.",
+            safety: "zero_provider_calls",
+            route: "local_snapshot_view",
+        },
+        CommandBoxCommand {
+            command: "clear-filters / refresh / q",
+            meaning: "Reset filters, reload, or close the native window.",
+            safety: "zero_provider_calls",
+            route: "local_navigation",
+        },
+    ]
 }
 
 fn computer_use_steps() -> Vec<ComputerUseStep> {
@@ -668,6 +839,21 @@ mod tests {
                 .iter()
                 .any(|shortcut| shortcut.contains("command box"))
         );
+        assert!(manifest.command_box_commands.iter().any(|command| {
+            command.command == "bars saved capture/validate/import"
+                && command.safety == "preview_only_confirm_execute_external"
+                && command.route == "dashboard_backend"
+        }));
+        assert!(manifest.command_box_commands.iter().any(|command| {
+            command.command == "action / trigger / ticket / feedback"
+                && command.safety == "local_db_only"
+                && command.route == "dashboard_backend"
+        }));
+        assert!(manifest.command_box_commands.iter().any(|command| {
+            command.command == "catalyst-radar COMMAND"
+                && command.safety == "external_boundary"
+                && command.route == "powershell_boundary"
+        }));
         assert!(manifest.notes.iter().any(
             |note| note.contains("data-current-page") && note.contains("data-current-nav-page")
         ));

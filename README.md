@@ -581,8 +581,8 @@ of executing it implicitly.
 
 Automation clients should read `GET /api/dashboard/manifest` before driving the
 desktop. The manifest publishes the native window title, release executable,
-stable landmarks, command-box shortcuts, native Computer Use recipe, and
-zero-call assertions that must hold during browsing and command navigation.
+stable landmarks, structured command-box catalog, native Computer Use recipe,
+and zero-call assertions that must hold during browsing and command navigation.
 
 Manual launch commands are also available:
 
