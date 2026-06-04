@@ -1646,6 +1646,16 @@ function handleKeyboard(event) {
     setPage('agent');
     return;
   }
+  if (event.ctrlKey && event.key.toLowerCase() === 'n') {
+    event.preventDefault();
+    stepPage(1);
+    return;
+  }
+  if (event.ctrlKey && event.key.toLowerCase() === 'p') {
+    event.preventDefault();
+    stepPage(-1);
+    return;
+  }
   if (event.key === 'F5') {
     event.preventDefault();
     refreshSnapshot();

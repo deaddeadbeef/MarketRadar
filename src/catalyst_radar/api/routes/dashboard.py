@@ -383,6 +383,7 @@ def manifest() -> dict[str, object]:
             "keyboard_shortcuts": [
                 "0-9 jump to numbered workflow pages",
                 "Ctrl+A opens Agent",
+                "Ctrl+N moves forward; Ctrl+P moves backward",
                 "Type themes or validation to open evidence pages",
                 "V opens Costs",
                 "F opens Features",

@@ -459,6 +459,7 @@ fn automation_manifest() -> AutomationManifest {
         keyboard_shortcuts: vec![
             "0-9 jump to numbered workflow pages",
             "Ctrl+A opens Agent",
+            "Ctrl+N moves forward; Ctrl+P moves backward",
             "Type themes or validation to open evidence pages",
             "V opens Costs",
             "F opens Features",
@@ -839,6 +840,9 @@ mod tests {
                 .iter()
                 .any(|shortcut| shortcut.contains("command box"))
         );
+        assert!(manifest.keyboard_shortcuts.iter().any(|shortcut| {
+            shortcut.contains("Ctrl+N moves forward") && shortcut.contains("Ctrl+P moves backward")
+        }));
         assert!(manifest.command_box_commands.iter().any(|command| {
             command.command == "bars saved capture/validate/import"
                 && command.safety == "preview_only_confirm_execute_external"
