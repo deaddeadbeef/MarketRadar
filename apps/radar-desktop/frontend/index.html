@@ -53,7 +53,43 @@
         <button id="apply-filters" data-testid="apply-filters">Apply</button>
       </section>
 
-      <section id="content" class="content-grid" aria-live="polite"></section>
+      <section id="content" class="content-grid" aria-live="polite">
+        <section class="panel wide loading-dashboard" data-testid="loading-dashboard">
+          <h2>Market Command Center</h2>
+          <p>Loading market snapshot</p>
+          <p>MarketRadar is reading the local dashboard contract.</p>
+          <p>Rendering remains local and makes zero provider calls.</p>
+        </section>
+        <div class="metric-grid" data-testid="loading-metric-strip" aria-label="Loading dashboard metrics">
+          <article class="metric placeholder" data-testid="loading-decision-status">
+            <span>Decision status</span>
+            <b>pending</b>
+            <p>snapshot loading</p>
+          </article>
+          <article class="metric placeholder" data-testid="loading-next-safe-action">
+            <span>Next safe action</span>
+            <b>loading</b>
+            <p>snapshot loading</p>
+          </article>
+          <article class="metric placeholder" data-testid="loading-provider-calls">
+            <span>Provider calls</span>
+            <b>0</b>
+            <p>snapshot loading</p>
+          </article>
+        </div>
+        <section class="panel wide loading-preview" data-testid="loading-preview-queue">
+          <h2>Attention Queue</h2>
+          <div class="table-wrap">
+            <table aria-label="Loading attention queue preview">
+              <thead><tr><th>Ticker</th><th>State</th><th>Signal</th><th>Next</th></tr></thead>
+              <tbody>
+                <tr><td>[loading]</td><td>local snapshot</td><td>resolving dashboard contract</td><td>refresh</td></tr>
+                <tr><td>[loading]</td><td>zero-call read</td><td>waiting for data rows</td><td>inspect</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
     </main>
 
     <aside class="right-rail" aria-label="Current operator state">

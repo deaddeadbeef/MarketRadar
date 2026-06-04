@@ -15,6 +15,49 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     assert "page=overview nav=overview status=loading provider_calls=0" in source
 
 
+def test_tauri_dashboard_loading_state_is_not_blank() -> None:
+    html = Path("apps/radar-desktop/frontend/index.html").read_text(
+        encoding="utf-8",
+    )
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+    tui_source = Path("crates/radar-tui/src/ui.rs").read_text(
+        encoding="utf-8",
+    )
+    rust_source = Path("apps/radar-desktop/src/main.rs").read_text(
+        encoding="utf-8",
+    )
+
+    assert "render_loading_state_is_a_real_dashboard_not_a_blank_box" in tui_source
+    assert "Loading market snapshot" in tui_source
+    assert "ZERO PROVIDER CALLS" in tui_source
+    assert "ATTENTION QUEUE" in tui_source
+    assert "DECISION STATUS" in tui_source
+
+    for text in (
+        'data-testid="loading-dashboard"',
+        'data-testid="loading-metric-strip"',
+        'data-testid="loading-preview-queue"',
+        "Loading market snapshot",
+        "Rendering remains local and makes zero provider calls.",
+        "[loading]",
+        "resolving dashboard contract",
+        "zero-call read",
+    ):
+        assert text in html
+
+    assert "function renderLoadingDashboard()" in source
+    assert "if (!state.snapshot) renderLoadingDashboard();" in source
+    assert "function loadingMetric(label, value)" in source
+    assert "setText('#next-action', 'Loading local snapshot.');" in source
+    assert "setText('#provider-calls', 'provider_calls=0');" in source
+    assert "data-testid=\"loading-dashboard\"" in source
+    assert "data-testid=\"loading-preview-queue\"" in source
+    assert "loading-dashboard" in rust_source
+    assert "loading-preview-queue" in rust_source
+
+
 def test_tauri_dashboard_right_rail_matches_rust_tui_metadata() -> None:
     html = Path("apps/radar-desktop/frontend/index.html").read_text(
         encoding="utf-8",
