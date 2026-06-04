@@ -200,7 +200,7 @@ const fallbackCommandReference = [
   ['open #|TICKER', 'Open a row from Candidate Review or show its next command.'],
   ['ticker SYMBOL|all', 'Filter ticker-aware pages.'],
   ['available-at ISO|latest', 'Set or clear the point-in-time cutoff.'],
-  ['ready / full / mismatches / stocks', 'Switch between decision-useful, full universe, mismatch, and stock-only scan views.'],
+  ['ready / full / mismatches / stocks', 'Apply decision-useful, full universe, mismatch, and stock-only scan filters.'],
   ['usefulness STATUS|all', 'Filter Inbox by usefulness verdict.'],
   ['source-gap SOURCE|all', 'Filter Inbox by missing or stale source evidence.'],
   ['decision-gap GAP|all', 'Filter Inbox by missing decision evidence.'],
@@ -458,6 +458,7 @@ function renderSnapshot() {
   setText('#boundary-copy', `Snapshot mode ${compact(snapshot.snapshot_mode, 'unknown')}; provider calls reported ${compact(snapshot.external_calls_made, '0')}.`);
   renderSnapshotMeta(snapshot, pageInfo);
   updateAutomationState(snapshot, status, pageInfo);
+  updateFilterState();
   renderContent(snapshot);
   bindQueueRows();
 }
@@ -470,6 +471,7 @@ function renderLoadingDashboard() {
   setText('#provider-calls', 'provider_calls=0');
   setText('#snapshot-page', navigationPageKey(state.page));
   setText('#snapshot-mode', 'snapshot pending');
+  updateFilterState();
   qs('#content').innerHTML = `
     <section class="panel wide loading-dashboard" data-testid="loading-dashboard">
       <h2>Market Command Center</h2>
@@ -542,6 +544,23 @@ function updateAutomationState(snapshot, status, pageInfo) {
       `next_command=${compact(snapshot.next_command || snapshot.canonical_next_command, 'none')}`,
     ].join(' ')
   );
+}
+
+function updateFilterState() {
+  const fields = [
+    ['ticker', qs('#filter-ticker')?.value.trim() || 'all'],
+    ['scan_mode', qs('#filter-scan-mode')?.value || 'all'],
+    ['stocks_only', qs('#filter-stocks-only')?.checked ? 'true' : 'false'],
+    ['limit', qs('#filter-limit')?.value || '50'],
+    ['offset', String(state.scanOffset || 0)],
+    ['usefulness', state.usefulness || 'all'],
+    ['source_gap', state.sourceGap.length ? state.sourceGap.join(',') : 'all'],
+    ['decision_gap', state.decisionGap.length ? state.decisionGap.join(',') : 'all'],
+    ['available_at', state.availableAt || 'latest'],
+    ['alert_status', state.alertStatus || 'all'],
+    ['alert_route', state.alertRoute || 'all'],
+  ];
+  setText('#filter-state', fields.map(([key, value]) => `${key}=${value}`).join(' '));
 }
 
 function pageLabelFor(page, pageInfo) {
@@ -1693,6 +1712,7 @@ function guardedCommandPage(command) {
 
 function setCommandStatus(message) {
   setText('#command-status', `command=${message}`);
+  updateFilterState();
 }
 
 async function closeDashboardWindow() {

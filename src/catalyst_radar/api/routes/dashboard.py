@@ -195,8 +195,8 @@ DASHBOARD_COMMAND_BOX_COMMANDS: tuple[dict[str, str], ...] = (
     {
         "command": "ready / full / mismatches / stocks",
         "meaning": (
-            "Switch between decision-useful, full universe, mismatch, and "
-            "stock-only scan views."
+            "Apply decision-useful, full universe, mismatch, and stock-only "
+            "scan filters."
         ),
         "safety": "zero_provider_calls",
         "route": "local_filter",
@@ -375,6 +375,7 @@ def manifest() -> dict[str, object]:
                 "command-input",
                 "command-status",
                 "automation-state",
+                "filter-state",
                 "attention-queue",
                 "loading-dashboard",
                 "loading-metric-strip",
@@ -417,6 +418,10 @@ def manifest() -> dict[str, object]:
                 (
                     "source-gap and decision-gap commands reject unsupported "
                     "values before refreshing"
+                ),
+                (
+                    "ready applies the decision-ready scan filter; review "
+                    "opens the Review page"
                 ),
                 (
                     "batch SOURCE opens an Ops source plan; batch SOURCE all "
@@ -464,10 +469,11 @@ def manifest() -> dict[str, object]:
                     "target": "MarketRadar Command Center",
                     "expected": (
                         "The window exposes MarketRadar workflow tabs, dashboard-page, "
-                        "command-input, automation-state, loading-dashboard before "
-                        "first data, next-safe-action, keys-panel, snapshot-panel, "
-                        "and page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, "
-                        "and provider_calls=0."
+                        "command-input, automation-state, filter-state, "
+                        "loading-dashboard before first data, next-safe-action, "
+                        "keys-panel, snapshot-panel, and page=<PAGE>, "
+                        "nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and "
+                        "provider_calls=0."
                     ),
                 },
                 {
@@ -550,12 +556,23 @@ def manifest() -> dict[str, object]:
                     ),
                 },
                 {
-                    "step": "page-command",
+                    "step": "ready-filter-command",
                     "action": "Type ready and press Return.",
+                    "target": "filter-state",
+                    "expected": (
+                        "filter-state reports scan_mode=actionable and "
+                        "usefulness=decision_useful, dashboard-page reports "
+                        "page=review, and provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "page-command",
+                    "action": "Type review and press Return.",
                     "target": "command-input",
                     "expected": (
-                        "dashboard-page reports page=review and the selected tab is "
-                        "Review."
+                        "dashboard-page reports page=review, the selected tab is "
+                        "Review, filter-state is still exposed, and "
+                        "provider_calls=0."
                     ),
                 },
                 {
@@ -697,6 +714,12 @@ def manifest() -> dict[str, object]:
                     "refresh the snapshot or change filters."
                 ),
                 (
+                    "ready must update filter-state to scan_mode=actionable "
+                    "and usefulness=decision_useful while opening Review "
+                    "without provider calls; review must open the Review page "
+                    "without changing filters."
+                ),
+                (
                     "Pagination commands must not advance scan_offset beyond "
                     "priced_in_queue.total_count."
                 ),
@@ -734,6 +757,11 @@ def manifest() -> dict[str, object]:
                 (
                     "The exact selected page, parent nav page, and provider-call "
                     "count are exposed through data-testid=automation-state."
+                ),
+                (
+                    "The active ticker, scan, availability, alert, source-gap, "
+                    "decision-gap, usefulness, limit, and offset filters are "
+                    "exposed through data-testid=filter-state."
                 ),
                 (
                     "The dashboard main region exposes data-current-page and "
