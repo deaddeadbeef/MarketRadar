@@ -187,6 +187,10 @@ def manifest() -> dict[str, object]:
                 "Esc focuses the command box",
                 "Command box accepts safe page, filter, refresh, help, and JSON commands",
                 (
+                    "offset, limit, and available-at commands reject invalid "
+                    "values before refreshing"
+                ),
+                (
                     "source-gap and decision-gap commands reject unsupported "
                     "values before refreshing"
                 ),
@@ -247,6 +251,24 @@ def manifest() -> dict[str, object]:
                     "expected": (
                         "command-status reports Unsupported source-gap value, "
                         "the filter is unchanged, and provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "numeric-validation-command",
+                    "action": "Type limit 1.5 and press Return.",
+                    "target": "command-input",
+                    "expected": (
+                        "command-status reports Usage: limit 1-200, "
+                        "the scan limit is unchanged, and provider_calls=0."
+                    ),
+                },
+                {
+                    "step": "time-validation-command",
+                    "action": "Type available-at nonsense and press Return.",
+                    "target": "command-input",
+                    "expected": (
+                        "command-status reports Invalid timestamp, "
+                        "available_at is unchanged, and provider_calls=0."
                     ),
                 },
                 {
@@ -345,6 +367,10 @@ def manifest() -> dict[str, object]:
                 (
                     "Invalid source-gap or decision-gap filter commands must "
                     "not refresh the snapshot or change filters."
+                ),
+                (
+                    "Invalid offset, limit, or available-at commands must not "
+                    "refresh the snapshot or change filters."
                 ),
                 (
                     "Full catalyst-radar commands typed into the desktop command box "

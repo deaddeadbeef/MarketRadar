@@ -430,6 +430,7 @@ fn automation_manifest() -> AutomationManifest {
             "Home opens Start, End opens Help",
             "Esc focuses the command box",
             "Command box accepts safe page, filter, refresh, help, and JSON commands",
+            "offset, limit, and available-at commands reject invalid values before refreshing",
             "source-gap and decision-gap commands reject unsupported values before refreshing",
             "batch SOURCE opens an Ops source plan; batch SOURCE all and batch SOURCE execute N show PowerShell boundaries",
             "q, quit, or exit closes the native desktop window",
@@ -443,6 +444,7 @@ fn automation_manifest() -> AutomationManifest {
             "Execute-class commands must show the external PowerShell command boundary instead of running provider, OpenAI, broker, or DB-write actions from the desktop command box.",
             "Source batch plan commands may read the current snapshot, but execute variants must remain external PowerShell boundaries and leave provider_calls=0.",
             "Invalid source-gap or decision-gap filter commands must not refresh the snapshot or change filters.",
+            "Invalid offset, limit, or available-at commands must not refresh the snapshot or change filters.",
             "Full catalyst-radar commands typed into the desktop command box must stay external and leave provider_calls=0.",
             "Clicking or pressing Enter on queue rows must open local candidate/alert detail without provider calls.",
             "Dynamic detail pages must expose both page=<candidate|alert detail> and nav=<parent workflow page> for automation.",
@@ -492,6 +494,18 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             action: "Type source-gap nonsense and press Return.",
             target: "command-input",
             expected: "command-status reports Unsupported source-gap value, the filter is unchanged, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "numeric-validation-command",
+            action: "Type limit 1.5 and press Return.",
+            target: "command-input",
+            expected: "command-status reports Usage: limit 1-200, the scan limit is unchanged, and provider_calls=0.",
+        },
+        ComputerUseStep {
+            step: "time-validation-command",
+            action: "Type available-at nonsense and press Return.",
+            target: "command-input",
+            expected: "command-status reports Invalid timestamp, available_at is unchanged, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "page-command",
@@ -655,6 +669,22 @@ mod tests {
             manifest
                 .computer_use_steps
                 .iter()
+                .any(|step| step.step == "numeric-validation-command"
+                    && step.expected.contains("Usage: limit 1-200")
+                    && step.expected.contains("scan limit is unchanged"))
+        );
+        assert!(
+            manifest
+                .computer_use_steps
+                .iter()
+                .any(|step| step.step == "time-validation-command"
+                    && step.expected.contains("Invalid timestamp")
+                    && step.expected.contains("available_at is unchanged"))
+        );
+        assert!(
+            manifest
+                .computer_use_steps
+                .iter()
                 .any(|step| step.step == "guarded-command"
                     && step.expected.contains("source-specific Ops plan"))
         );
@@ -680,6 +710,13 @@ mod tests {
                 .zero_call_assertions
                 .iter()
                 .any(|assertion| assertion.contains("Invalid source-gap")
+                    && assertion.contains("must not refresh"))
+        );
+        assert!(
+            manifest
+                .zero_call_assertions
+                .iter()
+                .any(|assertion| assertion.contains("Invalid offset")
                     && assertion.contains("must not refresh"))
         );
         assert!(

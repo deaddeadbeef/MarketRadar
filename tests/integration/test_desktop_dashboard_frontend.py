@@ -144,6 +144,23 @@ def test_tauri_dashboard_gap_filters_reject_unsupported_values() -> None:
     assert "['broker', 'broker_context']" in source
 
 
+def test_tauri_dashboard_numeric_and_time_commands_reject_invalid_values() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "function isPositiveIntegerText(value)" in source
+    assert "function parseAvailableAtCommand(value)" in source
+    assert "function isIsoDateTimeText(value)" in source
+    assert "if (!isPositiveIntegerText(value))" in source
+    assert "Usage: offset ROW." in source
+    assert "Usage: limit 1-200." in source
+    assert "const availableAt = parseAvailableAtCommand(value);" in source
+    assert "if (availableAt.error)" in source
+    assert "Invalid timestamp. No calls made; filter unchanged." in source
+    assert "state.availableAt = availableAt.value;" in source
+
+
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",
