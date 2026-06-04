@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard.tui import (
     PAGE_ALIASES,
     DashboardFilters,
+    apply_dashboard_command,
     dashboard_filters_for_page,
     dashboard_snapshot_payload,
 )
@@ -24,6 +26,26 @@ class DashboardPageRequest:
     snapshot_page: str
     selected_page: str
     detail_ticker: str | None = None
+
+
+class DashboardCommandRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    command: str = Field(min_length=1)
+    page: str = "overview"
+    ticker: str | None = Field(default=None, min_length=1, max_length=12)
+    available_at: datetime | None = None
+    alert_status: str | None = None
+    alert_route: str | None = None
+    priced_in_status: str = "all"
+    usefulness: str | None = None
+    source_gap: list[str] = Field(default_factory=list)
+    decision_gap: list[str] = Field(default_factory=list)
+    stocks_only: bool = False
+    scan_limit: int = Field(default=50, ge=1, le=200)
+    scan_offset: int = Field(default=0, ge=0)
+    telemetry_limit: int = Field(default=8, ge=1, le=200)
+
 
 DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
     {
@@ -208,6 +230,11 @@ def manifest() -> dict[str, object]:
                     "run opens Safe Run; run execute starts the guarded "
                     "radar-run API/CLI backend path"
                 ),
+                (
+                    "action, trigger, ticket, feedback, ledger, and outcome "
+                    "commands use the guarded dashboard backend for local "
+                    "DB-only operations"
+                ),
                 "q, quit, or exit closes the native desktop window",
                 (
                     "Full catalyst-radar commands show a PowerShell boundary "
@@ -360,6 +387,20 @@ def manifest() -> dict[str, object]:
                     ),
                 },
                 {
+                    "step": "local-dashboard-command",
+                    "action": (
+                        "Type action ACME watch Codex smoke and press Return "
+                        "only after intentional local write validation."
+                    ),
+                    "target": "command-input",
+                    "expected": (
+                        "dashboard-page reports page=broker, command-status "
+                        "reports Local only, db_writes=1, and no provider, "
+                        "OpenAI, broker, order, or external calls occur after "
+                        "refresh."
+                    ),
+                },
+                {
                     "step": "safe-run-execute-command",
                     "action": (
                         "Type run execute and press Return only after reviewing "
@@ -412,10 +453,11 @@ def manifest() -> dict[str, object]:
                     "and raw JSON inspection must leave provider_calls=0."
                 ),
                 (
-                    "Non-run execute-class commands must show the external "
-                    "PowerShell command boundary instead of running provider, "
-                    "OpenAI, broker, or DB-write actions from the desktop "
-                    "command box."
+                    "Local broker, feedback, value-ledger, and outcome commands "
+                    "may write the local DB through the guarded dashboard "
+                    "backend, but must not make provider, OpenAI, broker, "
+                    "order, or external calls unless the command explicitly "
+                    "reports an external-call budget."
                 ),
                 (
                     "Source batch plan commands may read the current snapshot, "
@@ -486,9 +528,11 @@ def manifest() -> dict[str, object]:
                     "makes zero provider calls."
                 ),
                 (
-                    "Non-run execute-class commands remain external and require "
-                    "the normal PowerShell command boundary; run execute uses "
-                    "the guarded radar-run API/CLI backend path."
+                    "Local broker, feedback, value-ledger, and outcome commands "
+                    "use the guarded dashboard backend; source-batch execute "
+                    "and provider import commands remain external PowerShell "
+                    "boundaries; run execute uses the guarded radar-run "
+                    "API/CLI backend path."
                 ),
             ],
         },
@@ -533,6 +577,39 @@ def _detail_page_suffix(page: str, prefix: str) -> str | None:
     return suffix or None
 
 
+def _dashboard_filters_from_values(
+    page_request: DashboardPageRequest,
+    *,
+    ticker: str | None,
+    available_at: datetime | None,
+    alert_status: str | None,
+    alert_route: str | None,
+    priced_in_status: str,
+    usefulness: str | None,
+    source_gap: list[str] | None,
+    decision_gap: list[str] | None,
+    stocks_only: bool,
+    scan_limit: int,
+    scan_offset: int,
+    telemetry_limit: int,
+) -> DashboardFilters:
+    filters = DashboardFilters(
+        ticker=page_request.detail_ticker or ticker,
+        available_at=available_at,
+        alert_status=alert_status,
+        alert_route=alert_route,
+        priced_in_status=priced_in_status,
+        priced_in_usefulness=usefulness,
+        priced_in_source_gap=source_gap,
+        priced_in_decision_gap=decision_gap,
+        priced_in_stocks_only=stocks_only,
+        priced_in_limit=scan_limit,
+        priced_in_offset=0 if page_request.detail_ticker else scan_offset,
+        telemetry_limit=telemetry_limit,
+    )
+    return dashboard_filters_for_page(filters, page_request.snapshot_page)
+
+
 @router.get("/snapshot", dependencies=[Depends(require_role(Role.VIEWER))])
 def snapshot(
     page: str = "overview",
@@ -551,21 +628,21 @@ def snapshot(
     fast: bool = True,
 ) -> dict[str, object]:
     page_request = _dashboard_page_request(page)
-    filters = DashboardFilters(
-        ticker=page_request.detail_ticker or ticker,
+    filters = _dashboard_filters_from_values(
+        page_request,
+        ticker=ticker,
         available_at=available_at,
         alert_status=alert_status,
         alert_route=alert_route,
         priced_in_status=priced_in_status,
-        priced_in_usefulness=usefulness,
-        priced_in_source_gap=source_gap,
-        priced_in_decision_gap=decision_gap,
-        priced_in_stocks_only=stocks_only,
-        priced_in_limit=scan_limit,
-        priced_in_offset=0 if page_request.detail_ticker else scan_offset,
+        usefulness=usefulness,
+        source_gap=source_gap,
+        decision_gap=decision_gap,
+        stocks_only=stocks_only,
+        scan_limit=scan_limit,
+        scan_offset=scan_offset,
         telemetry_limit=telemetry_limit,
     )
-    filters = dashboard_filters_for_page(filters, page_request.snapshot_page)
     payload = dashboard_snapshot_payload(
         engine=_engine(),
         config=AppConfig.from_env(),
@@ -575,6 +652,53 @@ def snapshot(
     )
     payload["selected_page"] = page_request.selected_page
     return payload
+
+
+@router.post("/command", dependencies=[Depends(require_role(Role.ANALYST))])
+def command(request: DashboardCommandRequest) -> dict[str, object]:
+    page_request = _dashboard_page_request(request.page)
+    filters = _dashboard_filters_from_values(
+        page_request,
+        ticker=request.ticker,
+        available_at=request.available_at,
+        alert_status=request.alert_status,
+        alert_route=request.alert_route,
+        priced_in_status=request.priced_in_status,
+        usefulness=request.usefulness,
+        source_gap=request.source_gap,
+        decision_gap=request.decision_gap,
+        stocks_only=request.stocks_only,
+        scan_limit=request.scan_limit,
+        scan_offset=request.scan_offset,
+        telemetry_limit=request.telemetry_limit,
+    )
+    engine = _engine()
+    config = AppConfig.from_env()
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=True,
+        filters=filters,
+        fast_view=True,
+    )
+    payload["selected_page"] = page_request.selected_page
+    update = apply_dashboard_command(
+        request.command,
+        payload,
+        page_request.selected_page,
+        filters,
+        engine=engine,
+        config=config,
+    )
+    return {
+        "schema_version": "dashboard-command-result-v1",
+        "command": request.command,
+        "page": update.page,
+        "exit_requested": update.exit_requested,
+        "message": update.message,
+        "filters": asdict(update.filters),
+        "snapshot": payload,
+    }
 
 
 __all__ = ["router"]

@@ -160,6 +160,14 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.dashboard", "snapshot", ("dashboard",)),
     (
         "GET",
+        "/api/dashboard/manifest",
+    ): ("catalyst_radar.api.routes.dashboard", "manifest", ("dashboard",)),
+    (
+        "POST",
+        "/api/dashboard/command",
+    ): ("catalyst_radar.api.routes.dashboard", "command", ("dashboard",)),
+    (
+        "GET",
         "/api/ops/capabilities",
     ): ("catalyst_radar.api.routes.ops", "ops_capabilities", ("ops",)),
     (

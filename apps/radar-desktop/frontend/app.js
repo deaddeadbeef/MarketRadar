@@ -91,19 +91,29 @@ const pagePaths = {
 };
 
 const executeClassCommands = new Set([
-  'action',
   'agent execute',
   'bars manual import execute',
   'bars saved capture confirm',
   'bars saved import execute',
   'batch execute',
   'cik import execute',
-  'feedback',
-  'ledger record',
   'options import execute',
-  'outcome update',
+]);
+
+const backendCommandWords = new Set([
+  'action',
+  'eval-triggers',
+  'evaluate-triggers',
+  'feedback',
+  'ledger',
+  'outcome',
+  'outcomes',
   'ticket',
   'trigger',
+  'value-ledger',
+  'value-outcome',
+  'value_ledger',
+  'value_outcome',
 ]);
 
 const sourceAliases = new Map([
@@ -189,9 +199,9 @@ const commandReference = [
   ['agent / agent execute', 'Preview agent gates or show the OpenAI execution boundary.'],
   ['alert-status STATUS|all / alert-route ROUTE|all', 'Filter alerts.'],
   ['run / run execute', 'Open Safe Run or show the capped run execution boundary.'],
-  ['action / trigger / ticket / feedback', 'Show local write boundaries on Broker or Alerts.'],
-  ['ledger coverage / record', 'Open Costs or show the value-ledger write boundary.'],
-  ['outcome coverage / update', 'Open Costs or show the value-outcome write boundary.'],
+  ['action / trigger / ticket / feedback', 'Run guarded local Broker or Alert commands through the dashboard backend.'],
+  ['ledger coverage / record', 'Run guarded local value-ledger commands through the dashboard backend.'],
+  ['outcome coverage / update', 'Run guarded local value-outcome commands through the dashboard backend.'],
   ['json', 'Open and focus the raw JSON snapshot.'],
   ['clear-filters / refresh / q', 'Reset filters, reload, or close the native window.'],
 ];
@@ -1047,9 +1057,8 @@ async function applyCommand(raw) {
     await handleRunCommand(value);
     return;
   }
-  if (['ledger', 'value-ledger', 'value_ledger', 'outcome', 'outcomes', 'value-outcome', 'value_outcome'].includes(command)) {
-    setCommandStatus(costCommandMessage(command, value));
-    await setPage('costs');
+  if (backendCommandWords.has(command)) {
+    await handleBackendDashboardCommand(raw);
     return;
   }
   const guardedMessage = guardedCommandMessage(normalized);
@@ -1357,21 +1366,6 @@ function exportCommandMessage(value) {
   return 'Usage: export full or export current. No calls made.';
 }
 
-function costCommandMessage(command, value) {
-  const family = command.includes('outcome') ? 'outcome' : 'ledger';
-  const action = value.split(' ')[0] || 'coverage';
-  if (family === 'ledger') {
-    if (['', 'coverage', 'summary', 'list', 'show'].includes(action)) {
-      return 'Opened Costs. Review value-ledger coverage and entries from the local snapshot.';
-    }
-    return 'Value-ledger writes stay outside dashboard browsing. Run the matching ledger command in PowerShell only after reviewing the write boundary.';
-  }
-  if (['', 'coverage', 'list', 'show'].includes(action)) {
-    return 'Opened Costs. Review value-outcome coverage and rows from the local snapshot.';
-  }
-  return 'Value-outcome writes stay outside dashboard browsing. Run the matching outcome command in PowerShell only after reviewing the write boundary.';
-}
-
 async function handleRunCommand(value) {
   if (String(value || '').trim().toLowerCase() !== 'execute') {
     setCommandStatus('Run is guarded. Review the call plan, then type run execute to start one capped radar cycle.');
@@ -1393,6 +1387,48 @@ async function handleRunCommand(value) {
     setCommandStatus(`Radar run failed: ${error?.message || error}`);
     await refreshSnapshot();
   }
+}
+
+async function handleBackendDashboardCommand(raw) {
+  setCommandStatus('Running dashboard command through backend...');
+  try {
+    const result = await invoke('execute_dashboard_command', {
+      command: raw,
+      input: filterInput(),
+    });
+    applyBackendDashboardResult(result);
+    const message = dashboardCommandResultMessage(result);
+    await refreshSnapshot();
+    setCommandStatus(message);
+  } catch (error) {
+    setCommandStatus(`Dashboard command failed: ${error?.message || error}`);
+    await refreshSnapshot();
+  }
+}
+
+function applyBackendDashboardResult(result) {
+  applyBackendDashboardFilters(result?.filters);
+  if (result?.page) state.page = String(result.page);
+  renderNav();
+}
+
+function applyBackendDashboardFilters(filters) {
+  if (!filters || typeof filters !== 'object') return;
+  qs('#filter-ticker').value = filters.ticker || '';
+  qs('#filter-scan-mode').value = filters.priced_in_status || 'all';
+  qs('#filter-stocks-only').checked = Boolean(filters.priced_in_stocks_only);
+  qs('#filter-limit').value = String(filters.priced_in_limit || qs('#filter-limit').value || 50);
+  state.availableAt = filters.available_at || null;
+  state.alertStatus = filters.alert_status || null;
+  state.alertRoute = filters.alert_route || null;
+  state.sourceGap = Array.isArray(filters.priced_in_source_gap) ? filters.priced_in_source_gap : [];
+  state.decisionGap = Array.isArray(filters.priced_in_decision_gap) ? filters.priced_in_decision_gap : [];
+  state.usefulness = filters.priced_in_usefulness || null;
+  state.scanOffset = Math.max(0, Number(filters.priced_in_offset || 0));
+}
+
+function dashboardCommandResultMessage(result) {
+  return result?.message || 'Dashboard command completed.';
 }
 
 function radarRunResultMessage(result) {
