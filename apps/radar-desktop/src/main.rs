@@ -452,6 +452,7 @@ fn automation_manifest() -> AutomationManifest {
             "command-status",
             "command-state",
             "automation-state",
+            "automation-json",
             "filter-state",
             "attention-queue",
             "loading-dashboard",
@@ -520,6 +521,7 @@ fn automation_manifest() -> AutomationManifest {
             "The current page title is exposed through data-testid=page-title.",
             "The latest command, current page/nav, provider-call count, and command result are exposed through data-testid=command-state.",
             "The exact selected page, parent nav page, and provider-call count are exposed through data-testid=automation-state.",
+            "The aggregate automation state is exposed as machine-readable JSON through data-testid=automation-json.",
             "The active ticker, scan, availability, alert, source-gap, decision-gap, usefulness, limit, and offset filters are exposed through data-testid=filter-state.",
             "The dashboard main region exposes data-current-page and data-current-nav-page for dynamic detail pages.",
             "Before the first snapshot loads, the main region exposes loading-dashboard, loading-metric-strip, and loading-preview-queue instead of a blank box.",
@@ -705,7 +707,7 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "capture",
             action: "Capture screenshot and accessibility text for the selected window.",
             target: "MarketRadar Command Center",
-            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, command-state, automation-state, filter-state, loading-dashboard before first data, next-safe-action, keys-panel, snapshot-panel, page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and provider_calls=0.",
+            expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, command-state, automation-state, automation-json, filter-state, loading-dashboard before first data, next-safe-action, keys-panel, snapshot-panel, page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "focus-command",
@@ -759,7 +761,7 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "ready-filter-command",
             action: "Type ready and press Return.",
             target: "filter-state",
-            expected: "filter-state reports scan_mode=actionable and usefulness=decision_useful, command-state reports last_command=ready and page=review, and provider_calls=0.",
+            expected: "filter-state reports scan_mode=actionable and usefulness=decision_useful, automation-json reports last_command=ready, filters.scan_mode=actionable, filters.usefulness=decision_useful, page=review, and provider_calls=0.",
         },
         ComputerUseStep {
             step: "page-command",
@@ -858,6 +860,7 @@ mod tests {
         assert!(manifest.landmark_test_ids.contains(&"command-input"));
         assert!(manifest.landmark_test_ids.contains(&"command-state"));
         assert!(manifest.landmark_test_ids.contains(&"automation-state"));
+        assert!(manifest.landmark_test_ids.contains(&"automation-json"));
         assert!(manifest.landmark_test_ids.contains(&"filter-state"));
         assert!(manifest.landmark_test_ids.contains(&"loading-dashboard"));
         assert!(manifest.landmark_test_ids.contains(&"loading-metric-strip"));
@@ -929,6 +932,9 @@ mod tests {
         assert!(manifest.notes.iter().any(
             |note| note.contains("data-current-page") && note.contains("data-current-nav-page")
         ));
+        assert!(manifest.notes.iter().any(|note| {
+            note.contains("data-testid=automation-json") && note.contains("machine-readable JSON")
+        }));
         assert!(manifest.notes.iter().any(|note| {
             note.contains("data-testid=command-state")
                 && note.contains("latest command")
@@ -1064,6 +1070,8 @@ mod tests {
                 && step.expected.contains("scan_mode=actionable")
                 && step.expected.contains("usefulness=decision_useful")
                 && step.expected.contains("last_command=ready")
+                && step.expected.contains("filters.scan_mode=actionable")
+                && step.expected.contains("filters.usefulness=decision_useful")
                 && step.expected.contains("page=review")
         }));
         assert!(manifest.computer_use_steps.iter().any(|step| {
@@ -1119,6 +1127,7 @@ mod tests {
                     .expected
                     .contains("loading-dashboard before first data")
                 && step.expected.contains("command-state")
+                && step.expected.contains("automation-json")
                 && step.expected.contains("filter-state")
                 && step.expected.contains("keys-panel")
                 && step.expected.contains("snapshot-panel")
