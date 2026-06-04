@@ -298,6 +298,10 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
+        "source-gap and decision-gap commands reject unsupported values" in shortcut
+        for shortcut in payload["automation"]["keyboard_shortcuts"]
+    )
+    assert any(
         "batch SOURCE opens an Ops source plan" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -321,6 +325,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         step["step"] == "source-batch-execute-boundary"
         and "--execute-batches 3" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "filter-validation-command"
+        and "Unsupported source-gap value" in step["expected"]
+        and "filter is unchanged" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
@@ -357,6 +367,11 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         "Source batch plan commands" in assertion
         and "provider_calls=0" in assertion
+        for assertion in payload["automation"]["zero_call_assertions"]
+    )
+    assert any(
+        "Invalid source-gap or decision-gap" in assertion
+        and "must not refresh" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(

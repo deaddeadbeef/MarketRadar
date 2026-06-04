@@ -130,6 +130,35 @@ const sourceAliases = new Map([
   ['portfolio', 'broker_context'],
 ]);
 
+const allowedSourceGaps = new Set([
+  'market_bars',
+  'catalyst_events',
+  'local_text',
+  'options',
+  'theme_peer_sector',
+  'broker_context',
+]);
+
+const decisionGapAliases = new Map([
+  ['packet', 'candidate_packet'],
+  ['candidate_packet', 'candidate_packet'],
+  ['candidate_packets', 'candidate_packet'],
+  ['card', 'decision_card'],
+  ['decision_card', 'decision_card'],
+  ['decision_cards', 'decision_card'],
+  ['broker', 'broker_context'],
+  ['schwab', 'broker_context'],
+  ['portfolio', 'broker_context'],
+  ['options_flow', 'options'],
+]);
+
+const allowedDecisionGaps = new Set([
+  'candidate_packet',
+  'decision_card',
+  'options',
+  'broker_context',
+]);
+
 const powershellCommandPrefixes = new Set([
   'build-decision-cards',
   'build-packets',
@@ -934,14 +963,24 @@ async function applyCommand(raw) {
     return;
   }
   if (['source-gap', 'source_gaps', 'data-gap', 'data_gaps'].includes(command)) {
-    state.sourceGap = listFilter(value);
+    const sourceGap = validatedListFilter(value, sourceAliases, allowedSourceGaps, 'source-gap');
+    if (sourceGap.error) {
+      setCommandStatus(sourceGap.error);
+      return;
+    }
+    state.sourceGap = sourceGap.values;
     state.scanOffset = 0;
     setCommandStatus(state.sourceGap.length ? `Source gaps: ${state.sourceGap.join(', ')}.` : 'Source-gap filter cleared.');
     await setPage('overview');
     return;
   }
   if (['decision-gap', 'decision_gaps', 'gap'].includes(command)) {
-    state.decisionGap = listFilter(value);
+    const decisionGap = validatedListFilter(value, decisionGapAliases, allowedDecisionGaps, 'decision-gap');
+    if (decisionGap.error) {
+      setCommandStatus(decisionGap.error);
+      return;
+    }
+    state.decisionGap = decisionGap.values;
     state.scanOffset = 0;
     setCommandStatus(state.decisionGap.length ? `Decision gaps: ${state.decisionGap.join(', ')}.` : 'Decision-gap filter cleared.');
     await setPage('overview');
@@ -1031,9 +1070,31 @@ function clearFilters() {
 }
 
 function listFilter(value) {
-  return ['', 'all', 'none'].includes(value)
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['', 'all', 'none'].includes(normalized)
     ? []
-    : value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+    : String(value || '').replaceAll(';', ',').split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function validatedListFilter(value, aliases, allowed, commandLabel) {
+  const values = unique(listFilter(value).map((item) => normalizeFilterName(item, aliases)));
+  const invalid = values.filter((item) => !allowed.has(item));
+  if (invalid.length) {
+    return {
+      values: [],
+      error: `Unsupported ${commandLabel} value: ${invalid.join(', ')}. No calls made; filter unchanged. Use all or one of: ${[...allowed].join(', ')}.`,
+    };
+  }
+  return { values, error: '' };
+}
+
+function normalizeFilterName(value, aliases) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return aliases.get(normalized) || normalized;
+}
+
+function unique(values) {
+  return [...new Set(values)];
 }
 
 function parseSourceBatchCommand(value) {
