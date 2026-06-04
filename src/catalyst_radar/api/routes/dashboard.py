@@ -374,6 +374,7 @@ def manifest() -> dict[str, object]:
                 "command-form",
                 "command-input",
                 "command-status",
+                "command-state",
                 "automation-state",
                 "filter-state",
                 "attention-queue",
@@ -469,7 +470,7 @@ def manifest() -> dict[str, object]:
                     "target": "MarketRadar Command Center",
                     "expected": (
                         "The window exposes MarketRadar workflow tabs, dashboard-page, "
-                        "command-input, automation-state, filter-state, "
+                        "command-input, command-state, automation-state, filter-state, "
                         "loading-dashboard before first data, next-safe-action, "
                         "keys-panel, snapshot-panel, and page=<PAGE>, "
                         "nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and "
@@ -481,7 +482,7 @@ def manifest() -> dict[str, object]:
                     "action": "Press Escape in the dashboard window.",
                     "target": "command-input",
                     "expected": (
-                        "The command box receives focus and command-status reports "
+                        "The command box receives focus and command-state reports "
                         "command box focused."
                     ),
                 },
@@ -561,8 +562,8 @@ def manifest() -> dict[str, object]:
                     "target": "filter-state",
                     "expected": (
                         "filter-state reports scan_mode=actionable and "
-                        "usefulness=decision_useful, dashboard-page reports "
-                        "page=review, and provider_calls=0."
+                        "usefulness=decision_useful, command-state reports "
+                        "last_command=ready and page=review, and provider_calls=0."
                     ),
                 },
                 {
@@ -754,6 +755,10 @@ def manifest() -> dict[str, object]:
             "notes": [
                 "Every workflow button has role=tab, aria-selected, and a nav-page-* data-testid.",
                 "The current page title is exposed through data-testid=page-title.",
+                (
+                    "The latest command, current page/nav, provider-call count, "
+                    "and command result are exposed through data-testid=command-state."
+                ),
                 (
                     "The exact selected page, parent nav page, and provider-call "
                     "count are exposed through data-testid=automation-state."

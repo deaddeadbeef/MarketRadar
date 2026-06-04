@@ -15,6 +15,8 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     assert "page=overview nav=overview status=loading provider_calls=0" in source
     assert 'data-testid="filter-state"' in source
     assert "ticker=all scan_mode=all stocks_only=false limit=50 offset=0" in source
+    assert 'data-testid="command-state"' in source
+    assert 'last_command=none page=overview nav=overview provider_calls=0' in source
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:
@@ -371,10 +373,17 @@ def test_tauri_dashboard_ready_command_exposes_filter_state_for_automation() -> 
 
     assert 'data-testid="filter-state"' in html
     assert "function updateFilterState()" in source
+    assert "function updateCommandState()" in source
+    assert "state.lastCommand = raw || 'refresh';" in source
+    assert "['last_command', state.lastCommand || 'none']" in source
+    assert "['page', state.page || 'overview']" in source
+    assert "['nav', navigationPageKey(state.page || 'overview')]" in source
+    assert "setText(\n    '#command-state'," in source
     assert "['scan_mode', qs('#filter-scan-mode')?.value || 'all']" in source
     assert "['usefulness', state.usefulness || 'all']" in source
     assert "setText('#filter-state'" in source
     assert "updateFilterState();" in source
+    assert "updateCommandState();" in source
     assert (
         "['d', 'ready', 'decision', 'decision-ready', 'decision_ready'].includes(command)"
         in source
