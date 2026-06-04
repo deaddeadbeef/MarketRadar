@@ -499,6 +499,50 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         and command["route"] == "local_filter"
         for command in command_catalog
     )
+    recipe = payload["automation"]["automation_recipe"]
+    assert recipe["schema_version"] == "dashboard-computer-use-recipe-v1"
+    assert recipe["launch"]["window_title"] == "MarketRadar Command Center"
+    assert recipe["launch"]["executable"].endswith("radar-desktop.exe")
+    assert recipe["state_sources"] == {
+        "page": "automation-state",
+        "filters": "filter-state",
+        "command": "command-state",
+        "json": "automation-json",
+    }
+    assert {"contract_version", "page", "nav", "provider_calls", "filters"} <= set(
+        recipe["expected_json_keys"]
+    )
+    assert {"ticker", "scan_mode", "usefulness", "source_gap", "decision_gap"} <= set(
+        recipe["expected_filter_keys"]
+    )
+    recipe_actions = {action["id"]: action for action in recipe["actions"]}
+    assert recipe_actions["focus-command"]["input_kind"] == "key"
+    assert recipe_actions["focus-command"]["input"] == "Escape"
+    assert recipe_actions["focus-command"]["expected_provider_calls"] == 0
+    assert recipe_actions["filter-ticker"]["input"] == "ticker MSFT"
+    assert recipe_actions["filter-ticker"]["expected_page"] == "overview"
+    assert "automation-json.filters.ticker=MSFT" in recipe_actions["filter-ticker"][
+        "expected_state"
+    ]
+    assert recipe_actions["ready-review-filter"]["expected_page"] == "review"
+    assert recipe_actions["ready-review-filter"]["expected_nav"] == "review"
+    assert "automation-json.filters.usefulness=decision_useful" in recipe_actions[
+        "ready-review-filter"
+    ]["expected_state"]
+    assert recipe_actions["source-execute-boundary"]["route"] == "powershell_boundary"
+    assert recipe_actions["source-execute-boundary"]["requires_review"] is True
+    assert recipe_actions["source-execute-boundary"]["expected_provider_calls"] == 0
+    assert recipe_actions["provider-preview"]["route"] == "dashboard_backend"
+    assert recipe_actions["provider-preview"]["expected_provider_calls"] == 0
+    assert recipe_actions["safe-run-execute"]["route"] == "guarded_dashboard_backend"
+    assert recipe_actions["safe-run-execute"]["expected_provider_calls"] is None
+    assert recipe_actions["safe-run-execute"]["requires_review"] is True
+    assert recipe_actions["powershell-boundary"]["route"] == "powershell_boundary"
+    assert recipe_actions["powershell-boundary"]["requires_review"] is True
+    assert recipe_actions["open-json"]["target_test_id"] == "command-input"
+    assert "automation-json remains parseable" in recipe_actions["open-json"][
+        "expected_state"
+    ]
     assert any(
         "catalyst-radar commands" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]

@@ -39,7 +39,10 @@ manifest declares the primary surface as `tauri_desktop`, the terminal
 companion as `rust_tui`, and the compatibility renderer as `python_textual`.
 It also publishes the native window title, executable path, Computer Use recipe,
 stable landmarks, `automation-state`, `filter-state`, `command-state`, and
-machine-readable `automation-json` hooks that the desktop app exposes.
+machine-readable `automation-json` hooks that the desktop app exposes. The
+compact `automation_recipe` section gives agents launch metadata, state-source
+test IDs, expected JSON/filter keys, and command actions to verify without
+scraping prose.
 
 Inside the Tauri command center, use tabs, keyboard shortcuts, or the command
 box to navigate. Inside the Rust terminal dashboard, use the matching page

@@ -36,6 +36,7 @@ struct AutomationManifest {
     landmark_test_ids: Vec<&'static str>,
     keyboard_shortcuts: Vec<&'static str>,
     command_box_commands: Vec<CommandBoxCommand>,
+    automation_recipe: AutomationRecipe,
     native_window_title: &'static str,
     native_executable: &'static str,
     computer_use_steps: Vec<ComputerUseStep>,
@@ -57,6 +58,44 @@ struct ComputerUseStep {
     action: &'static str,
     target: &'static str,
     expected: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AutomationRecipe {
+    schema_version: &'static str,
+    launch: AutomationRecipeLaunch,
+    state_sources: AutomationStateSources,
+    expected_json_keys: Vec<&'static str>,
+    expected_filter_keys: Vec<&'static str>,
+    actions: Vec<AutomationRecipeAction>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AutomationRecipeLaunch {
+    executable: &'static str,
+    window_title: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AutomationStateSources {
+    page: &'static str,
+    filters: &'static str,
+    command: &'static str,
+    json: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AutomationRecipeAction {
+    id: &'static str,
+    input_kind: &'static str,
+    input: &'static str,
+    target_test_id: &'static str,
+    route: &'static str,
+    expected_page: Option<&'static str>,
+    expected_nav: Option<&'static str>,
+    expected_provider_calls: Option<u16>,
+    expected_state: Vec<&'static str>,
+    requires_review: bool,
 }
 
 struct DesktopState {
@@ -497,6 +536,7 @@ fn automation_manifest() -> AutomationManifest {
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
         ],
         command_box_commands: command_box_commands(),
+        automation_recipe: automation_recipe(),
         native_window_title: "MarketRadar Command Center",
         native_executable: "target\\release\\radar-desktop.exe",
         computer_use_steps: computer_use_steps(),
@@ -693,6 +733,239 @@ fn command_box_commands() -> Vec<CommandBoxCommand> {
             route: "local_navigation",
         },
     ]
+}
+
+fn automation_recipe() -> AutomationRecipe {
+    AutomationRecipe {
+        schema_version: "dashboard-computer-use-recipe-v1",
+        launch: AutomationRecipeLaunch {
+            executable: "target\\release\\radar-desktop.exe",
+            window_title: "MarketRadar Command Center",
+        },
+        state_sources: AutomationStateSources {
+            page: "automation-state",
+            filters: "filter-state",
+            command: "command-state",
+            json: "automation-json",
+        },
+        expected_json_keys: vec![
+            "contract_version",
+            "page",
+            "nav",
+            "status",
+            "provider_calls",
+            "last_command",
+            "filters",
+        ],
+        expected_filter_keys: vec![
+            "ticker",
+            "scan_mode",
+            "stocks_only",
+            "limit",
+            "offset",
+            "usefulness",
+            "source_gap",
+            "decision_gap",
+            "available_at",
+            "alert_status",
+            "alert_route",
+        ],
+        actions: vec![
+            AutomationRecipeAction {
+                id: "focus-command",
+                input_kind: "key",
+                input: "Escape",
+                target_test_id: "command-input",
+                route: "local_navigation",
+                expected_page: Some("overview"),
+                expected_nav: Some("overview"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "command-state contains command box focused",
+                    "automation-json.provider_calls=0",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "filter-ticker",
+                input_kind: "command",
+                input: "ticker MSFT",
+                target_test_id: "command-input",
+                route: "snapshot_refresh",
+                expected_page: Some("overview"),
+                expected_nav: Some("overview"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "automation-json.filters.ticker=MSFT",
+                    "filter-state contains ticker=MSFT",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "reject-invalid-source-gap",
+                input_kind: "command",
+                input: "source-gap nonsense",
+                target_test_id: "command-input",
+                route: "local_filter_validation",
+                expected_page: Some("overview"),
+                expected_nav: Some("overview"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "command-state contains Unsupported source-gap value",
+                    "automation-json.filters.source_gap remains unchanged",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "ready-review-filter",
+                input_kind: "command",
+                input: "ready",
+                target_test_id: "command-input",
+                route: "local_filter",
+                expected_page: Some("review"),
+                expected_nav: Some("review"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "automation-json.filters.scan_mode=actionable",
+                    "automation-json.filters.usefulness=decision_useful",
+                    "filter-state contains scan_mode=actionable",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "open-review-page",
+                input_kind: "command",
+                input: "review",
+                target_test_id: "command-input",
+                route: "local_navigation",
+                expected_page: Some("review"),
+                expected_nav: Some("review"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "dashboard-page data-current-page=review",
+                    "automation-json.page=review",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "open-row",
+                input_kind: "command",
+                input: "open 1",
+                target_test_id: "command-input",
+                route: "local_detail",
+                expected_page: Some("candidate:<TICKER>|alert:<ID>"),
+                expected_nav: Some("candidates|alerts"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "dashboard-page exposes candidate-detail or alert-detail",
+                    "automation-json.nav is candidates or alerts",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "source-plan",
+                input_kind: "command",
+                input: "batch catalyst_events",
+                target_test_id: "command-input",
+                route: "local_plan",
+                expected_page: Some("ops"),
+                expected_nav: Some("ops"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "command-state contains source plan",
+                    "automation-json.provider_calls=0",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "source-execute-boundary",
+                input_kind: "command",
+                input: "batch catalyst_events execute 3",
+                target_test_id: "command-input",
+                route: "powershell_boundary",
+                expected_page: Some("ops"),
+                expected_nav: Some("ops"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "command-state contains --execute-batches 3",
+                    "command-state contains provider_calls=0 in the desktop app",
+                ],
+                requires_review: true,
+            },
+            AutomationRecipeAction {
+                id: "provider-preview",
+                input_kind: "command",
+                input: "bars status",
+                target_test_id: "command-input",
+                route: "dashboard_backend",
+                expected_page: Some("run"),
+                expected_nav: Some("run"),
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "command-state contains Market-bar status",
+                    "automation-json.provider_calls=0",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "safe-run-execute",
+                input_kind: "command",
+                input: "run execute",
+                target_test_id: "command-input",
+                route: "guarded_dashboard_backend",
+                expected_page: Some("run"),
+                expected_nav: Some("run"),
+                expected_provider_calls: None,
+                expected_state: vec![
+                    "command-state contains Radar run finished, blocked, or rate limited",
+                    "backend result includes radar_run telemetry",
+                ],
+                requires_review: true,
+            },
+            AutomationRecipeAction {
+                id: "powershell-boundary",
+                input_kind: "command",
+                input: "catalyst-radar priced-in-queue --full-scan --all --json",
+                target_test_id: "command-input",
+                route: "powershell_boundary",
+                expected_page: None,
+                expected_nav: None,
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "command-state says PowerShell command, not a dashboard command",
+                    "automation-json.provider_calls=0",
+                ],
+                requires_review: true,
+            },
+            AutomationRecipeAction {
+                id: "open-json",
+                input_kind: "command",
+                input: "json",
+                target_test_id: "command-input",
+                route: "local_snapshot_view",
+                expected_page: None,
+                expected_nav: None,
+                expected_provider_calls: Some(0),
+                expected_state: vec![
+                    "snapshot-json-output is focused",
+                    "automation-json remains parseable",
+                ],
+                requires_review: false,
+            },
+            AutomationRecipeAction {
+                id: "close-window",
+                input_kind: "command",
+                input: "q",
+                target_test_id: "command-input",
+                route: "local_window_control",
+                expected_page: None,
+                expected_nav: None,
+                expected_provider_calls: Some(0),
+                expected_state: vec!["native MarketRadar Command Center window closes"],
+                requires_review: true,
+            },
+        ],
+    }
 }
 
 fn computer_use_steps() -> Vec<ComputerUseStep> {
@@ -1017,6 +1290,67 @@ mod tests {
         assert_eq!(
             manifest.native_executable,
             "target\\release\\radar-desktop.exe"
+        );
+        let recipe = &manifest.automation_recipe;
+        assert_eq!(recipe.schema_version, "dashboard-computer-use-recipe-v1");
+        assert_eq!(recipe.launch.window_title, "MarketRadar Command Center");
+        assert_eq!(
+            recipe.launch.executable,
+            "target\\release\\radar-desktop.exe"
+        );
+        assert_eq!(recipe.state_sources.page, "automation-state");
+        assert_eq!(recipe.state_sources.filters, "filter-state");
+        assert_eq!(recipe.state_sources.command, "command-state");
+        assert_eq!(recipe.state_sources.json, "automation-json");
+        assert!(recipe.expected_json_keys.contains(&"provider_calls"));
+        assert!(recipe.expected_json_keys.contains(&"filters"));
+        assert!(recipe.expected_filter_keys.contains(&"source_gap"));
+        assert!(recipe.expected_filter_keys.contains(&"decision_gap"));
+        let recipe_action = |id: &str| {
+            recipe
+                .actions
+                .iter()
+                .find(|action| action.id == id)
+                .unwrap_or_else(|| panic!("missing automation recipe action {id}"))
+        };
+        let focus_command = recipe_action("focus-command");
+        assert_eq!(focus_command.input_kind, "key");
+        assert_eq!(focus_command.input, "Escape");
+        assert_eq!(focus_command.expected_provider_calls, Some(0));
+        let filter_ticker = recipe_action("filter-ticker");
+        assert_eq!(filter_ticker.input, "ticker MSFT");
+        assert_eq!(filter_ticker.expected_page, Some("overview"));
+        assert!(
+            filter_ticker
+                .expected_state
+                .contains(&"automation-json.filters.ticker=MSFT")
+        );
+        let ready_filter = recipe_action("ready-review-filter");
+        assert_eq!(ready_filter.expected_page, Some("review"));
+        assert_eq!(ready_filter.expected_nav, Some("review"));
+        assert!(
+            ready_filter
+                .expected_state
+                .contains(&"automation-json.filters.usefulness=decision_useful")
+        );
+        let source_boundary = recipe_action("source-execute-boundary");
+        assert_eq!(source_boundary.route, "powershell_boundary");
+        assert_eq!(source_boundary.expected_provider_calls, Some(0));
+        assert!(source_boundary.requires_review);
+        let provider_preview = recipe_action("provider-preview");
+        assert_eq!(provider_preview.route, "dashboard_backend");
+        assert_eq!(provider_preview.expected_provider_calls, Some(0));
+        let run_execute = recipe_action("safe-run-execute");
+        assert_eq!(run_execute.route, "guarded_dashboard_backend");
+        assert_eq!(run_execute.expected_provider_calls, None);
+        assert!(run_execute.requires_review);
+        let powershell_boundary = recipe_action("powershell-boundary");
+        assert_eq!(powershell_boundary.route, "powershell_boundary");
+        assert!(powershell_boundary.requires_review);
+        assert!(
+            recipe_action("open-json")
+                .expected_state
+                .contains(&"automation-json remains parseable")
         );
         assert!(
             manifest
