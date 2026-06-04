@@ -27,6 +27,7 @@ def test_get_ops_capabilities_returns_ai_first_catalog(tmp_path: Path, monkeypat
     )
     assert any(
         operation["path"] == "/api/dashboard/manifest"
+        and "structured command catalog" in operation["ai_use"]
         for operation in payload["operations"]
     )
 

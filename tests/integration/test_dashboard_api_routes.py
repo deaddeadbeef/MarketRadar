@@ -424,6 +424,37 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         and "execute and confirm variants" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
+    command_catalog = payload["automation"]["command_box_commands"]
+    assert len(command_catalog) >= 20
+    assert all(
+        {"command", "meaning", "safety", "route"} <= set(command)
+        for command in command_catalog
+    )
+    assert any(
+        command["command"] == "bars saved capture/validate/import"
+        and command["safety"] == "preview_only_confirm_execute_external"
+        and command["route"] == "dashboard_backend"
+        and "confirm/execute stays external" in command["meaning"]
+        for command in command_catalog
+    )
+    assert any(
+        command["command"] == "action / trigger / ticket / feedback"
+        and command["safety"] == "local_db_only"
+        and command["route"] == "dashboard_backend"
+        for command in command_catalog
+    )
+    assert any(
+        command["command"] == "catalyst-radar COMMAND"
+        and command["safety"] == "external_boundary"
+        and command["route"] == "powershell_boundary"
+        for command in command_catalog
+    )
+    assert any(
+        command["command"] == "json"
+        and command["safety"] == "zero_provider_calls"
+        and command["route"] == "local_snapshot_view"
+        for command in command_catalog
+    )
     assert any(
         "catalyst-radar commands" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]

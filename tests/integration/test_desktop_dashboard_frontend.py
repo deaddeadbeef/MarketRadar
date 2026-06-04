@@ -69,6 +69,12 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     )
 
     assert "data-testid=\"command-reference\"" in source
+    assert "const fallbackCommandReference = [" in source
+    assert "function commandReference()" in source
+    assert "state.config?.automation?.command_box_commands" in source
+    assert "item.safety" in source
+    assert "item.route" in source
+    assert "commandReference().map" in source
     assert "['themes', 'themes']" in source
     assert "['validation', 'validation']" in source
     assert "['v', 'costs']" in source

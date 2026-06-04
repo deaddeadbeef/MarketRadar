@@ -193,7 +193,7 @@ const powershellCommandPrefixes = new Set([
   'priced-in-queue',
 ]);
 
-const commandReference = [
+const fallbackCommandReference = [
   ['0..9, Ctrl+A, V, F, ?, or page name', 'Switch pages; Ctrl+A opens Agent and V opens Costs.'],
   ['themes / validation / costs / features', 'Open local evidence pages for clustered themes, validation, costs, and feature inventory.'],
   ['setup / first', 'Show the first setup command and where to run it.'],
@@ -221,6 +221,19 @@ const commandReference = [
   ['json', 'Open and focus the raw JSON snapshot.'],
   ['clear-filters / refresh / q', 'Reset filters, reload, or close the native window.'],
 ];
+
+function commandReference() {
+  const manifestCommands = state.config?.automation?.command_box_commands;
+  if (Array.isArray(manifestCommands) && manifestCommands.length) {
+    return manifestCommands.map((item) => [
+      item.command,
+      item.meaning,
+      item.safety,
+      item.route,
+    ]);
+  }
+  return fallbackCommandReference.map(([command, meaning]) => [command, meaning, '', '']);
+}
 
 function qs(selector) {
   return document.querySelector(selector);
@@ -816,7 +829,7 @@ function renderHelp() {
       <div class="table-wrap command-reference" data-testid="command-reference">
         <table aria-label="Dashboard command reference">
           <thead><tr><th>Command</th><th>Meaning</th></tr></thead>
-          <tbody>${commandReference.map(([command, meaning]) => `
+          <tbody>${commandReference().map(([command, meaning]) => `
             <tr>
               <td class="ticker">${escapeHtml(command)}</td>
               <td>${escapeHtml(meaning)}</td>
