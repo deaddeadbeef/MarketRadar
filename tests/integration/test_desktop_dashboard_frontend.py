@@ -161,6 +161,22 @@ def test_tauri_dashboard_numeric_and_time_commands_reject_invalid_values() -> No
     assert "state.availableAt = availableAt.value;" in source
 
 
+def test_tauri_dashboard_next_command_stops_at_scan_end() -> None:
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "function paginationStateFromSnapshot()" in source
+    assert "priced_in_queue" in source
+    assert "total_count" in source
+    assert "queueFilters?.limit" in source
+    assert "const pagination = paginationStateFromSnapshot();" in source
+    assert "const nextOffset = pagination.offset + Math.max(1, pagination.limit);" in source
+    assert "if (pagination.total && nextOffset >= pagination.total)" in source
+    assert "Already at the end of the current scan filter." in source
+    assert "state.scanOffset = nextOffset;" in source
+
+
 def test_tauri_dashboard_exposes_keyboard_row_detail_navigation() -> None:
     source = Path("apps/radar-desktop/frontend/app.js").read_text(
         encoding="utf-8",
