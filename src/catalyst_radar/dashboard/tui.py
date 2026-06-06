@@ -83,6 +83,10 @@ from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.validation_repositories import ValidationRepository
+from catalyst_radar.trading.order_ticket import (
+    OrderTicketExecutionError,
+    run_workbench_order_ticket,
+)
 from catalyst_radar.trading.paper_decision import (
     PaperDecisionExecutionError,
     run_paper_decision,
@@ -1119,12 +1123,23 @@ def _missing_workbench_active_plan(
 
 
 def _compact_workbench_active_plan(plan: Mapping[str, object]) -> dict[str, object]:
+    strategy = _mapping(plan.get("strategy_proposal"))
     risk = _mapping(plan.get("risk_approval"))
+    risk_limits = _mapping(risk.get("limits"))
     order = _mapping(plan.get("order_intent"))
     controls = _mapping(plan.get("execution_controls"))
     supervision = _mapping(plan.get("supervision"))
     paper_intent = _mapping(plan.get("agentic_paper_intent"))
     paper_decision = _mapping(paper_intent.get("paper_decision"))
+    ticket_entry_price = _first_value(
+        order.get("limit_price"),
+        strategy.get("entry_price"),
+    )
+    ticket_invalidation_price = _first_value(
+        order.get("stop_price"),
+        order.get("invalidation_price"),
+        strategy.get("invalidation_price"),
+    )
     paper_hard_blocks = list(
         dict.fromkeys(
             [
@@ -1146,7 +1161,7 @@ def _compact_workbench_active_plan(plan: Mapping[str, object]) -> dict[str, obje
         "broker_order_submitted": plan.get("broker_order_submitted", False),
         "order_submission_allowed": plan.get("order_submission_allowed", False),
         "no_execution": plan.get("no_execution", True),
-        "strategy_proposal": _mapping(plan.get("strategy_proposal")),
+        "strategy_proposal": strategy,
         "risk_approval": {
             "approved_for_paper_trade": bool(risk.get("approved_for_paper_trade")),
             "approved_for_live_submission": False,
@@ -1206,6 +1221,24 @@ def _compact_workbench_active_plan(plan: Mapping[str, object]) -> dict[str, obje
                 "execute_command",
                 supervision.get("paper_decision_execute_command"),
             ),
+        },
+        "order_ticket": {
+            "ticker": plan.get("ticker") or strategy.get("ticker"),
+            "side": order.get("side"),
+            "entry_price": ticket_entry_price,
+            "invalidation_price": ticket_invalidation_price,
+            "risk_per_trade_pct": risk_limits.get("risk_per_trade_pct"),
+            "available_at": plan.get("available_at")
+            or paper_decision.get("available_at"),
+            "external_calls_required": 0,
+            "external_calls_made": 0,
+            "db_writes_required": 1,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "submission_allowed": False,
+            "no_execution": True,
+            "preview_command": "order-ticket preview",
+            "record_command": "order-ticket record",
         },
         "supervision": {
             "requires_manual_approval": bool(supervision.get("requires_manual_approval")),
@@ -4529,6 +4562,17 @@ def _apply_command(
             filters=filters,
             message=_save_blocked_order_ticket(engine, config, value),
         )
+    if command in {"order-ticket", "order_ticket", "workbench-ticket", "workbench_ticket"}:
+        return _CommandUpdate(
+            page="broker",
+            filters=filters,
+            message=_execute_workbench_order_ticket_command(
+                engine,
+                payload,
+                config,
+                value,
+            ),
+        )
     if command == "feedback":
         return _CommandUpdate(
             page="alerts",
@@ -6975,6 +7019,93 @@ def _execute_workbench_paper_decision_command(
         f"db_writes_made={result.get('db_writes_made', 0)} "
         "broker_order_submitted=false order_submission_allowed=false. "
         f"{result.get('next_action') or 'Paper decision stayed local.'}"
+    )
+
+
+def _execute_workbench_order_ticket_command(
+    engine: Engine,
+    payload: Mapping[str, object],
+    config: AppConfig,
+    value: str,
+) -> str:
+    tokens_or_error = _command_tokens(value)
+    if isinstance(tokens_or_error, str):
+        return _command_no_side_effects(tokens_or_error)
+    tokens = tokens_or_error
+    mode = tokens[0].lower() if tokens else "preview"
+    if mode in {"preview", "pre"}:
+        execute = False
+    elif mode in {"record", "execute", "save"}:
+        execute = True
+    else:
+        return _command_no_side_effects(
+            "Usage: order-ticket preview|record. The dashboard uses the current "
+            "active trading plan only."
+        )
+    if len(tokens) > 1:
+        return _command_no_side_effects(
+            "Usage: order-ticket preview|record. Extra order-ticket parameters "
+            "belong in a reviewed PowerShell command."
+        )
+
+    active_plan = _mapping(
+        _mapping(payload.get("trading_workbench")).get("active_plan")
+    )
+    order_ticket = _mapping(active_plan.get("order_ticket"))
+    ticker = str(
+        order_ticket.get("ticker")
+        or active_plan.get("ticker")
+        or ""
+    ).strip()
+    side = str(order_ticket.get("side") or "").strip()
+    entry_price = _optional_float(order_ticket.get("entry_price"))
+    invalidation_price = _optional_float(order_ticket.get("invalidation_price"))
+    if not ticker or not side or entry_price is None or invalidation_price is None:
+        return _command_no_side_effects(
+            "No complete active order ticket is available for the current plan."
+        )
+    available_at = (
+        _datetime_or_none(order_ticket.get("available_at"))
+        or _datetime_or_none(_mapping(active_plan.get("paper_decision")).get("available_at"))
+        or datetime.now(UTC)
+    )
+    try:
+        result = run_workbench_order_ticket(
+            engine,
+            ticker=ticker,
+            side=side,
+            entry_price=entry_price,
+            invalidation_price=invalidation_price,
+            risk_per_trade_pct=_optional_float(
+                order_ticket.get("risk_per_trade_pct")
+            ),
+            config=config,
+            available_at=available_at,
+            execute=execute,
+            actor_source="dashboard_tui",
+            actor_id="local-tui",
+            actor_role="analyst",
+        )
+    except OrderTicketExecutionError as exc:
+        return _command_no_side_effects(f"Order ticket rejected: {exc}")
+    preview = _mapping(result.get("preview"))
+    ticket = _mapping(result.get("ticket"))
+    hard_blocks = ",".join(_texts(preview.get("hard_blocks"))) or "none"
+    return (
+        f"order_ticket mode={result.get('mode')} "
+        f"id={ticket.get('id') or 'n/a'} "
+        f"ticker={preview.get('ticker') or ticker.upper()} "
+        f"side={preview.get('side') or side.lower()} "
+        f"status={ticket.get('status') or 'blocked'} "
+        "submission_allowed=false "
+        "broker_order_submitted=false "
+        "no_execution=true "
+        f"external_calls={result.get('external_calls_made', 0)} "
+        f"db_writes_required={result.get('db_writes_required', 0)} "
+        f"db_writes_made={result.get('db_writes_made', 0)} "
+        f"proposed_shares={preview.get('proposed_shares', 0)} "
+        f"hard_blocks={hard_blocks}. "
+        f"{result.get('next_action') or 'Order ticket stayed local.'}"
     )
 
 

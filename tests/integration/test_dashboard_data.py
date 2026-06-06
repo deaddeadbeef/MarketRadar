@@ -380,6 +380,20 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert paper_decision["no_execution"] is True
     assert "--preview" in paper_decision["preview_command"]
     assert "--execute" in paper_decision["execute_command"]
+    order_ticket = active_plan["order_ticket"]
+    assert order_ticket["ticker"] == "MSFT"
+    assert order_ticket["side"] == "buy"
+    assert order_ticket["entry_price"] == 100.0
+    assert order_ticket["invalidation_price"] == 94.0
+    assert order_ticket["available_at"] == AVAILABLE_AT.isoformat()
+    assert order_ticket["external_calls_made"] == 0
+    assert order_ticket["db_writes_required"] == 1
+    assert order_ticket["db_writes_made"] == 0
+    assert order_ticket["broker_order_submitted"] is False
+    assert order_ticket["submission_allowed"] is False
+    assert order_ticket["no_execution"] is True
+    assert order_ticket["preview_command"] == "order-ticket preview"
+    assert order_ticket["record_command"] == "order-ticket record"
     assert active_plan["supervision"]["no_autonomous_execution"] is True
     assert "--preview" in active_plan["supervision"]["paper_decision_preview_command"]
     assert "--execute" in active_plan["supervision"]["paper_decision_execute_command"]
@@ -518,6 +532,75 @@ def test_dashboard_paper_decision_command_previews_and_records_locally(
     assert events[0].actor_source == "dashboard_tui"
     assert events[0].decision == "deferred"
     assert events[0].metadata["no_execution"] is True
+
+
+def test_dashboard_order_ticket_command_previews_and_records_locally(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    filters = DashboardFilters(available_at=AVAILABLE_AT)
+    config = AppConfig.from_env({})
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=False,
+        filters=filters,
+    )
+    repo = BrokerRepository(engine)
+    before_ids = {ticket.id for ticket in repo.list_order_tickets(ticker="MSFT")}
+
+    preview = apply_dashboard_command(
+        "order-ticket preview",
+        payload,
+        "trade-planner",
+        filters,
+        engine=engine,
+        config=config,
+    )
+
+    assert preview.page == "broker"
+    assert "order_ticket mode=preview" in preview.message
+    assert "ticker=MSFT" in preview.message
+    assert "side=buy" in preview.message
+    assert "external_calls=0" in preview.message
+    assert "db_writes_made=0" in preview.message
+    assert "broker_order_submitted=false" in preview.message
+    assert "submission_allowed=false" in preview.message
+    assert "no_execution=true" in preview.message
+    assert {
+        ticket.id for ticket in repo.list_order_tickets(ticker="MSFT")
+    } == before_ids
+
+    recorded = apply_dashboard_command(
+        "order-ticket record",
+        payload,
+        "trade-planner",
+        filters,
+        engine=engine,
+        config=config,
+    )
+
+    assert recorded.page == "broker"
+    assert "order_ticket mode=recorded" in recorded.message
+    assert "ticker=MSFT" in recorded.message
+    assert "side=buy" in recorded.message
+    assert "external_calls=0" in recorded.message
+    assert "db_writes_made=1" in recorded.message
+    assert "broker_order_submitted=false" in recorded.message
+    assert "submission_allowed=false" in recorded.message
+    assert "no_execution=true" in recorded.message
+    tickets = {ticket.id: ticket for ticket in repo.list_order_tickets(ticker="MSFT")}
+    new_ids = set(tickets) - before_ids
+    assert len(new_ids) == 1
+    ticket = tickets[new_ids.pop()]
+    assert ticket.status.value == "blocked"
+    assert ticket.submission_allowed is False
+    assert ticket.ticker == "MSFT"
+    assert ticket.side == "BUY"
+    assert ticket.limit_price == 100.0
+    assert ticket.invalidation_price == 94.0
+    assert "broker_submission_disabled" in ticket.preview_payload["hard_blocks"]
 
 
 def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> None:

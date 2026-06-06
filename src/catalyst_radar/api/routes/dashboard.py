@@ -472,6 +472,15 @@ DASHBOARD_COMMAND_BOX_COMMANDS: tuple[dict[str, str], ...] = (
         "route": "dashboard_backend",
     },
     {
+        "command": "order-ticket preview / record",
+        "meaning": (
+            "Preview or save the active trading plan as a blocked local broker "
+            "ticket; broker order submission stays disabled."
+        ),
+        "safety": "local_db_only_no_broker_order",
+        "route": "dashboard_backend",
+    },
+    {
         "command": "paper-decision preview / execute",
         "meaning": (
             "Preview or record the active trading plan as a local paper decision; "
@@ -710,6 +719,22 @@ def _automation_recipe() -> dict[str, object]:
                 "requires_review": False,
             },
             {
+                "id": "order-ticket-command",
+                "input_kind": "command",
+                "input": "order-ticket preview",
+                "target_test_id": "command-input",
+                "route": "dashboard_backend",
+                "expected_page": "broker",
+                "expected_nav": "broker",
+                "expected_provider_calls": 0,
+                "expected_state": [
+                    "command-state contains order_ticket",
+                    "command-state contains broker_order_submitted=false",
+                    "automation-json.provider_calls=0",
+                ],
+                "requires_review": True,
+            },
+            {
                 "id": "safe-run-execute",
                 "input_kind": "command",
                 "input": "run execute",
@@ -856,8 +881,8 @@ def manifest() -> dict[str, object]:
                 ),
                 (
                     "action, trigger, ticket, feedback, paper-decision, "
-                    "ledger, and outcome commands use the guarded dashboard "
-                    "backend for local DB-only operations"
+                    "order-ticket, ledger, and outcome commands use the guarded "
+                    "dashboard backend for local DB-only operations"
                 ),
                 (
                     "agent, bars, options, and cik/sec planning commands use "
@@ -1070,6 +1095,20 @@ def manifest() -> dict[str, object]:
                     ),
                 },
                 {
+                    "step": "order-ticket-command",
+                    "action": (
+                        "Type order-ticket preview and press Return, then type "
+                        "order-ticket record only after reviewing the active plan."
+                    ),
+                    "target": "command-input",
+                    "expected": (
+                        "dashboard-page reports page=broker, command-status "
+                        "reports order_ticket, external_calls=0, "
+                        "no_execution=true, broker_order_submitted=false, and "
+                        "any DB write is a local blocked ticket only."
+                    ),
+                },
+                {
                     "step": "provider-preview-command",
                     "action": "Type bars status and press Return.",
                     "target": "command-input",
@@ -1132,11 +1171,11 @@ def manifest() -> dict[str, object]:
                     "and raw JSON inspection must leave provider_calls=0."
                 ),
                 (
-                    "Local broker, feedback, paper-decision, value-ledger, "
-                    "and outcome commands may write the local DB through the "
-                    "guarded dashboard backend, but must not make provider, "
-                    "OpenAI, broker, order, or external calls unless the "
-                    "command explicitly reports an external-call budget."
+                    "Local broker, feedback, paper-decision, order-ticket, "
+                    "value-ledger, and outcome commands may write the local DB "
+                    "through the guarded dashboard backend, but must not make "
+                    "provider, OpenAI, broker, order, or external calls unless "
+                    "the command explicitly reports an external-call budget."
                 ),
                 (
                     "Agent, market-bar, options, and SEC CIK preview/status "
@@ -1243,9 +1282,9 @@ def manifest() -> dict[str, object]:
                     "makes zero provider calls."
                 ),
                 (
-                    "Local broker, feedback, paper-decision, value-ledger, "
-                    "and outcome commands use the guarded dashboard backend; "
-                    "source-batch execute and provider execute/confirm "
+                    "Local broker, feedback, paper-decision, order-ticket, "
+                    "value-ledger, and outcome commands use the guarded "
+                    "dashboard backend; source-batch execute and provider execute/confirm "
                     "commands remain external PowerShell boundaries; "
                     "provider preview/status commands use the guarded "
                     "dashboard backend; run execute uses the guarded "

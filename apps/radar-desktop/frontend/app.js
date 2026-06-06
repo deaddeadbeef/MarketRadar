@@ -170,6 +170,8 @@ const backendCommandWords = new Set([
   'options_flow',
   'outcome',
   'outcomes',
+  'order-ticket',
+  'order_ticket',
   'paper-decision',
   'paper_decision',
   'sec',
@@ -269,6 +271,7 @@ const fallbackCommandReference = [
   ['alert-status STATUS|all / alert-route ROUTE|all', 'Filter alerts.'],
   ['run / run execute', 'Open Safe Run or show the capped run execution boundary.'],
   ['action / trigger / ticket / feedback', 'Run guarded local Broker or Alert commands through the dashboard backend.'],
+  ['order-ticket preview / record', 'Preview or save the active plan as a blocked local broker ticket.'],
   ['paper-decision preview / execute', 'Preview or record the active plan as a local paper decision.'],
   ['ledger coverage / record', 'Run guarded local value-ledger commands through the dashboard backend.'],
   ['outcome coverage / update', 'Run guarded local value-outcome commands through the dashboard backend.'],
@@ -598,6 +601,7 @@ function renderSnapshot() {
   renderContent(snapshot);
   bindPlatformToolCards();
   bindWorkbenchPaperControls();
+  bindWorkbenchTicketControls();
   bindQueueRows();
 }
 
@@ -998,7 +1002,9 @@ function renderWorkbenchActivePlan(activePlan) {
   const controls = activePlan.execution_controls || {};
   const supervision = activePlan.supervision || {};
   const paperDecision = activePlan.paper_decision || {};
+  const orderTicket = activePlan.order_ticket || {};
   const canPaperDecision = Boolean(paperDecision.decision_card_id && paperDecision.decision && paperDecision.available_at);
+  const canOrderTicket = Boolean(orderTicket.ticker && orderTicket.side && orderTicket.entry_price && orderTicket.invalidation_price);
   return `
     <div class="workbench-active-plan" data-testid="workbench-active-plan">
       <div class="module-title-row">
@@ -1052,6 +1058,14 @@ function renderWorkbenchActivePlan(activePlan) {
           <span>Execute boundary</span>
           <code>${escapeHtml(compact(paperDecision.execute_command || supervision.paper_decision_execute_command, 'No execute command.'))}</code>
         </div>
+        <div>
+          <span>Ticket preview</span>
+          <code>${escapeHtml(compact(orderTicket.preview_command, 'No ticket preview command.'))}</code>
+        </div>
+        <div>
+          <span>Ticket record</span>
+          <code>${escapeHtml(compact(orderTicket.record_command, 'No ticket record command.'))}</code>
+        </div>
       </div>
       <div class="plan-action-row" data-testid="workbench-paper-actions">
         <button
@@ -1066,7 +1080,20 @@ function renderWorkbenchActivePlan(activePlan) {
           data-paper-mode="execute"
           ${canPaperDecision ? '' : 'disabled'}
         >Record Paper Decision</button>
+        <button
+          type="button"
+          data-testid="workbench-ticket-preview"
+          data-ticket-mode="preview"
+          ${canOrderTicket ? '' : 'disabled'}
+        >Preview Ticket</button>
+        <button
+          type="button"
+          data-testid="workbench-ticket-record"
+          data-ticket-mode="record"
+          ${canOrderTicket ? '' : 'disabled'}
+        >Save Ticket</button>
         <span>${escapeHtml(compact(paperDecision.decision ? `decision=${paperDecision.decision}` : '', 'No active paper decision.'))}</span>
+        <span>${escapeHtml(compact(orderTicket.ticker ? `ticket=${orderTicket.ticker} ${orderTicket.side || ''}` : '', 'No active order ticket.'))}</span>
       </div>
     </div>
   `;
@@ -1153,6 +1180,19 @@ function bindWorkbenchPaperControls() {
 async function runWorkbenchPaperDecision(mode) {
   const resolvedMode = mode === 'execute' ? 'execute' : 'preview';
   const command = `paper-decision ${resolvedMode}`;
+  state.lastCommand = command;
+  await handleBackendDashboardCommand(command);
+}
+
+function bindWorkbenchTicketControls() {
+  document.querySelectorAll('[data-ticket-mode]').forEach((button) => {
+    button.addEventListener('click', () => runWorkbenchOrderTicket(button.dataset.ticketMode));
+  });
+}
+
+async function runWorkbenchOrderTicket(mode) {
+  const resolvedMode = mode === 'record' ? 'record' : 'preview';
+  const command = `order-ticket ${resolvedMode}`;
   state.lastCommand = command;
   await handleBackendDashboardCommand(command);
 }
