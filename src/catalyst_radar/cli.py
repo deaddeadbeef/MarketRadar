@@ -22,6 +22,7 @@ from catalyst_radar.agents.models import (
     budget_ledger_id,
 )
 from catalyst_radar.agents.openai_client import OpenAIResponsesClient
+from catalyst_radar.agents.paper_trading import build_agentic_paper_trade_intent
 from catalyst_radar.agents.router import (
     FakeLLMClient,
     LLMClientRequest,
@@ -683,6 +684,14 @@ def build_parser() -> argparse.ArgumentParser:
     paper_decision_mode.add_argument("--preview", action="store_true")
     paper_decision_mode.add_argument("--execute", action="store_true")
     paper_decision.add_argument("--json", action="store_true")
+
+    agentic_paper = subparsers.add_parser("agentic-paper-intent")
+    agentic_paper.add_argument("--decision-card-id", required=True)
+    agentic_paper.add_argument("--available-at", type=_parse_aware_datetime, required=True)
+    agentic_paper.add_argument("--entry-price", type=float)
+    agentic_paper.add_argument("--entry-at", type=_parse_aware_datetime)
+    agentic_paper.add_argument("--override-reason")
+    agentic_paper.add_argument("--json", action="store_true")
 
     paper_update = subparsers.add_parser("paper-update-outcomes")
     paper_update.add_argument("--decision-card-id", required=True)
@@ -3122,6 +3131,38 @@ def main(argv: list[str] | None = None) -> int:
                 "local_text_thresholds_changed="
                 f"{str(bool(local_text.get('thresholds_changed'))).lower()} "
                 "external_calls=0 db_writes=0"
+            )
+        return 0
+
+    if args.command == "agentic-paper-intent":
+        create_schema(engine)
+        validation_repo = ValidationRepository(engine)
+        card = validation_repo.decision_card_payload(
+            args.decision_card_id,
+            available_at=args.available_at,
+        )
+        if card is None:
+            print(f"decision card not found: {args.decision_card_id}", file=sys.stderr)
+            return 1
+        intent = build_agentic_paper_trade_intent(
+            card,
+            available_at=args.available_at,
+            entry_price=args.entry_price,
+            entry_at=args.entry_at,
+            override_reason=_optional_cli_text(args.override_reason),
+        )
+        payload = intent.to_payload()
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(
+                f"agentic_paper_intent status={payload['status']} "
+                f"decision_card_id={payload['decision_card_id']} "
+                f"ticker={payload['ticker']} "
+                f"recommended_paper_decision={payload['recommended_paper_decision']} "
+                f"hard_blocks={len(payload['hard_blocks'])} "
+                f"external_calls=0 broker_order_submitted=false no_execution=true "
+                f"preview_command={payload['paper_decision']['preview_command']}"
             )
         return 0
 

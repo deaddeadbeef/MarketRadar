@@ -602,6 +602,69 @@ def test_validation_replay_preview_suppresses_execute_command_when_no_rows(
     assert "--execute" not in human_output
 
 
+def test_agentic_paper_intent_cli_preview_is_zero_call_and_zero_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'agentic-paper.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    _insert_warning_candidate(
+        database_url,
+        state=ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW,
+    )
+    assert (
+        main(["build-packets", "--as-of", "2026-05-10", "--available-at", AVAILABLE_AT_TEXT])
+        == 0
+    )
+    capsys.readouterr()
+    assert (
+        main(
+            ["build-decision-cards", "--as-of", "2026-05-10", "--available-at", AVAILABLE_AT_TEXT]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    card_id = _scalar(database_url, select(decision_cards.c.id))
+
+    assert (
+        main(
+            [
+                "agentic-paper-intent",
+                "--decision-card-id",
+                card_id,
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--entry-price",
+                "100",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema_version"] == "agentic-paper-trade-intent-v1"
+    assert payload["status"] == "ready"
+    assert payload["recommended_paper_decision"] == "approved"
+    assert payload["external_calls_required"] == 0
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_required"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["broker_order_submitted"] is False
+    assert payload["order_submission_allowed"] is False
+    assert payload["no_execution"] is True
+    assert "--preview" in payload["paper_decision"]["preview_command"]
+    assert "--execute" in payload["paper_decision"]["execute_command"]
+    assert [item["agent"] for item in payload["specialist_rationale"]][-1] == "Risk Governor"
+    assert _scalar_or_none(
+        database_url,
+        select(paper_trades.c.id).where(paper_trades.c.decision_card_id == card_id).limit(1),
+    ) is None
+
+
 def test_validation_replay_labels_bearish_priced_in_outcomes_directionally(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -932,7 +995,17 @@ def _insert_validation_run_with_result(
         )
 
 
-def _insert_warning_candidate(database_url: str) -> None:
+def _insert_warning_candidate(
+    database_url: str,
+    *,
+    state: ActionState = ActionState.WARNING,
+) -> None:
+    state_value = state.value
+    transition_reasons = (
+        ["manual_review_ready"]
+        if state == ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW
+        else ["score_requires_manual_review"]
+    )
     engine = create_engine(database_url, future=True)
     with engine.begin() as conn:
         conn.execute(
@@ -940,12 +1013,12 @@ def _insert_warning_candidate(database_url: str) -> None:
                 id="state-msft",
                 ticker="MSFT",
                 as_of=AS_OF,
-                state=ActionState.WARNING.value,
+                state=state_value,
                 previous_state=None,
                 final_score=78.0,
                 score_delta_5d=4.0,
                 hard_blocks=[],
-                transition_reasons=["score_requires_manual_review"],
+                transition_reasons=transition_reasons,
                 feature_version="score-v4-options-theme",
                 policy_version="policy-v2-events",
                 created_at=AVAILABLE_AT,
@@ -1006,9 +1079,9 @@ def _insert_warning_candidate(database_url: str) -> None:
                         },
                     },
                     "policy": {
-                        "state": ActionState.WARNING.value,
+                        "state": state_value,
                         "hard_blocks": [],
-                        "reasons": ["score_requires_manual_review"],
+                        "reasons": transition_reasons,
                         "missing_trade_plan": [],
                         "policy_version": "policy-v2-events",
                     },

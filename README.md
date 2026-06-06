@@ -1710,11 +1710,18 @@ For manual paper decisions and outcome follow-up, the CLI is also
 preview-first:
 
 ```powershell
+catalyst-radar agentic-paper-intent --decision-card-id <CARD_ID> --available-at <UTC-cutoff> --entry-price <price> --json
 catalyst-radar paper-decision --decision-card-id <CARD_ID> --decision approved --available-at <UTC-cutoff> --entry-price <price> --preview --json
 catalyst-radar paper-decision --decision-card-id <CARD_ID> --decision approved --available-at <UTC-cutoff> --entry-price <price> --execute --json
 catalyst-radar paper-update-outcomes --decision-card-id <CARD_ID> --available-at <UTC-outcome-cutoff> --preview --json
 catalyst-radar paper-update-outcomes --decision-card-id <CARD_ID> --available-at <UTC-outcome-cutoff> --execute --json
 ```
+
+`agentic-paper-intent` is the zero-call manager preview. It reads one stored
+Decision Card, emits catalyst/skeptic/market-structure/portfolio/execution/risk
+rationale, and returns the guarded `paper-decision` preview/execute commands. It
+does not write paper-trade rows, submit broker orders, call Schwab, call OpenAI,
+or refresh providers.
 
 `paper-decision` and `paper-update-outcomes` default to preview mode and write
 nothing unless `--execute` is present. Their JSON payloads expose
