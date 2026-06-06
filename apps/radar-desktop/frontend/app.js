@@ -820,12 +820,12 @@ function renderContent(snapshot) {
     run: () => renderStructuredPage('Safe Run', pagePaths.run),
     candidates: () => renderQueuePage('Candidate Review', rowsFromSnapshot(snapshot)),
     review: () => renderQueuePage('Decision Review', rowsFromSnapshot(snapshot)),
-    alerts: () => renderQueuePage('Alerts', alertRows(snapshot), alertColumns),
+    alerts: () => renderPlatformModulePage('alerts', snapshot),
     ipo: () => renderQueuePage('IPO/S-1', ipoRows(snapshot), ipoColumns),
     broker: () => renderPlatformModulePage('broker', snapshot),
     ops: () => renderStructuredPage('Ops', pagePaths.ops),
     telemetry: renderTelemetry,
-    agent: () => renderStructuredPage('Agent', pagePaths.agent),
+    agent: () => renderPlatformModulePage('agent', snapshot),
     themes: () => renderQueuePage('Themes', themeRows(snapshot), themeColumns),
     validation: () => renderStructuredPage('Validation', pagePaths.validation),
     costs: renderCosts,
@@ -992,6 +992,9 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchAgentCapabilities(moduleData.capability_map)}
       ${renderWorkbenchRiskBlocks(moduleData.risk_blocks)}
       ${renderWorkbenchReadinessChecks(moduleData.readiness_checks)}
+      ${renderWorkbenchAlerts(moduleData.alerts)}
+      ${renderWorkbenchMarketTriggers(moduleData.triggers)}
+      ${renderWorkbenchOpportunityActions(moduleData.opportunity_actions)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
@@ -1188,6 +1191,81 @@ function renderWorkbenchReadinessChecks(checks) {
               <td data-label="Provider Calls">${escapeHtml(compact(check.external_calls_made, '0'))}</td>
               <td data-label="DB Writes">${escapeHtml(compact(check.db_writes_made, '0'))}</td>
               <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchAlerts(alerts) {
+  if (!Array.isArray(alerts) || !alerts.length) return '';
+  return `
+    <div class="table-wrap alert-preview" data-testid="workbench-alerts">
+      <table aria-label="Workbench alerts">
+        <thead><tr><th>Ticker</th><th>Route</th><th>Status</th><th>Priority</th><th>Trigger</th><th>Feedback</th><th>Provider Calls</th><th>Next</th></tr></thead>
+        <tbody>
+          ${alerts.slice(0, 8).map((alert) => `
+            <tr data-testid="workbench-alert-row">
+              <td data-label="Ticker">${escapeHtml(compact(alert.ticker, '-'))}</td>
+              <td data-label="Route">${escapeHtml(catalogLabel(alert.route || '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(alert.status || '-'))}</td>
+              <td data-label="Priority">${escapeHtml(catalogLabel(alert.priority || '-'))}</td>
+              <td data-label="Trigger">${escapeHtml(compact(alert.trigger_kind || alert.score_trigger, '-'))}</td>
+              <td data-label="Feedback">${escapeHtml(catalogLabel(alert.feedback_label || 'unlabeled'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(alert.external_calls_made, '0'))}</td>
+              <td data-label="Next">${escapeHtml(compact(alert.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchMarketTriggers(triggers) {
+  if (!Array.isArray(triggers) || !triggers.length) return '';
+  return `
+    <div class="table-wrap market-trigger-preview" data-testid="workbench-market-triggers">
+      <table aria-label="Saved market triggers">
+        <thead><tr><th>Ticker</th><th>Trigger</th><th>Operator</th><th>Threshold</th><th>Latest</th><th>Status</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${triggers.slice(0, 8).map((trigger) => `
+            <tr data-testid="workbench-market-trigger-row">
+              <td data-label="Ticker">${escapeHtml(compact(trigger.ticker, '-'))}</td>
+              <td data-label="Trigger">${escapeHtml(catalogLabel(trigger.trigger_type || '-'))}</td>
+              <td data-label="Operator">${escapeHtml(compact(trigger.operator, '-'))}</td>
+              <td data-label="Threshold">${escapeHtml(compact(trigger.threshold, '-'))}</td>
+              <td data-label="Latest">${escapeHtml(compact(trigger.latest_value, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(trigger.status || '-'))}</td>
+              <td data-label="Broker Order">${escapeHtml(trigger.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(trigger.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchOpportunityActions(actions) {
+  if (!Array.isArray(actions) || !actions.length) return '';
+  return `
+    <div class="table-wrap opportunity-action-preview" data-testid="workbench-opportunity-actions">
+      <table aria-label="Saved opportunity actions">
+        <thead><tr><th>Ticker</th><th>Action</th><th>Status</th><th>Notes</th><th>Provider Calls</th><th>DB Writes</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${actions.slice(0, 8).map((action) => `
+            <tr data-testid="workbench-opportunity-action-row">
+              <td data-label="Ticker">${escapeHtml(compact(action.ticker, '-'))}</td>
+              <td data-label="Action">${escapeHtml(catalogLabel(action.action || '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(action.status || '-'))}</td>
+              <td data-label="Notes">${escapeHtml(compact(action.notes, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(action.external_calls_made, '0'))}</td>
+              <td data-label="DB Writes">${escapeHtml(compact(action.db_writes_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(action.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(action.next_action, '-'))}</td>
             </tr>
           `).join('')}
         </tbody>

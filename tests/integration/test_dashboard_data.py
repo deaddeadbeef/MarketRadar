@@ -22,12 +22,18 @@ from catalyst_radar.brokers.models import (
     BrokerConnection,
     BrokerConnectionStatus,
     BrokerMarketSnapshot,
+    BrokerOpportunityAction,
+    BrokerOpportunityActionType,
     BrokerPosition,
+    BrokerTrigger,
+    BrokerTriggerStatus,
     broker_account_id,
     broker_balance_snapshot_id,
     broker_connection_id,
     broker_market_snapshot_id,
+    broker_opportunity_action_id,
     broker_position_id,
+    broker_trigger_id,
 )
 from catalyst_radar.connectors.csv_market import load_securities_csv
 from catalyst_radar.core.config import AppConfig
@@ -327,7 +333,34 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
 ) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
+    _insert_alert_fixture(engine, available_at=AVAILABLE_AT - timedelta(minutes=30))
     _insert_broker_portfolio_fixture(engine)
+    broker_repo = BrokerRepository(engine)
+    broker_repo.upsert_trigger(
+        BrokerTrigger(
+            id=broker_trigger_id("MSFT", "price_above", 105.0, AVAILABLE_AT),
+            ticker="MSFT",
+            trigger_type="price_above",
+            operator="gte",
+            threshold=105.0,
+            latest_value=104.5,
+            status=BrokerTriggerStatus.ACTIVE,
+            notes="breakout watch",
+            created_at=AVAILABLE_AT,
+            updated_at=AVAILABLE_AT,
+        )
+    )
+    broker_repo.upsert_opportunity_action(
+        BrokerOpportunityAction(
+            id=broker_opportunity_action_id("MSFT", "watch", AVAILABLE_AT),
+            ticker="MSFT",
+            action=BrokerOpportunityActionType.WATCH,
+            status="active",
+            notes="watch alert evidence",
+            created_at=AVAILABLE_AT,
+            updated_at=AVAILABLE_AT,
+        )
+    )
 
     payload = dashboard_snapshot_payload(
         engine=engine,
@@ -437,6 +470,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert {
         "portfolio",
         "market-radar",
+        "alerts",
         "trade-planner",
         "risk-desk",
         "paper-trading",
@@ -475,9 +509,39 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     market_radar = modules["market-radar"]
     assert market_radar["metrics"]["queue_count"] == 2
     assert market_radar["metrics"]["candidate_count"] == 2
+    assert market_radar["metrics"]["alert_count"] == 2
     assert market_radar["rows"][0]["ticker"] == "MSFT"
     assert market_radar["rows"][0]["decision_card_id"] == "card-msft-latest"
     assert market_radar["rows"][0]["usefulness_status"] == "monitor_only"
+
+    alerts_module = modules["alerts"]
+    assert alerts_module["status"] == "ready"
+    assert alerts_module["metrics"]["alert_count"] == 2
+    assert alerts_module["metrics"]["dry_run_alert_count"] == 1
+    assert alerts_module["metrics"]["planned_alert_count"] == 1
+    assert alerts_module["metrics"]["trigger_count"] == 1
+    assert alerts_module["metrics"]["active_trigger_count"] == 1
+    assert alerts_module["metrics"]["opportunity_action_count"] == 1
+    assert alerts_module["metrics"]["external_calls_made"] == 0
+    assert alerts_module["alerts"][0]["id"] == "alert-msft-dry-run"
+    assert alerts_module["alerts"][0]["route"] == "warning_digest"
+    assert alerts_module["alerts"][0]["status"] == "dry_run"
+    assert alerts_module["alerts"][0]["feedback_label"] == "acted"
+    assert alerts_module["alerts"][0]["external_calls_made"] == 0
+    assert alerts_module["alerts"][0]["db_writes_made"] == 0
+    assert alerts_module["alerts"][0]["broker_order_submitted"] is False
+    assert alerts_module["alerts"][0]["order_submission_allowed"] is False
+    assert alerts_module["triggers"][0]["ticker"] == "MSFT"
+    assert alerts_module["triggers"][0]["trigger_type"] == "price_above"
+    assert alerts_module["triggers"][0]["status"] == "active"
+    assert alerts_module["triggers"][0]["latest_value"] == 104.5
+    assert alerts_module["triggers"][0]["broker_order_submitted"] is False
+    assert alerts_module["opportunity_actions"][0]["action"] == "watch"
+    assert alerts_module["opportunity_actions"][0]["notes"] == "watch alert evidence"
+    assert alerts_module["next_action"] == (
+        "Open alert evidence or review saved local trigger rules."
+    )
+    assert "broker.triggers" in alerts_module["source_keys"]
 
     trade_planner = modules["trade-planner"]
     assert trade_planner["metrics"]["decision_card_count"] == 1

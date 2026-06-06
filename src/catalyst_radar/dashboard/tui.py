@@ -851,6 +851,8 @@ def _trading_workbench_snapshot_payload(
     broker_exposure = _mapping(_mapping(broker_summary.get("exposure")))
     broker_tickets = _rows(broker_summary.get("order_tickets"))
     broker_positions = _rows(broker_summary.get("positions"))
+    broker_triggers = _rows(broker_summary.get("triggers"))
+    broker_opportunity_actions = _rows(broker_summary.get("opportunity_actions"))
     validation_report = _mapping(validation_summary.get("report"))
     latest_validation = _mapping(validation_summary.get("latest_run"))
     paper_rows = _rows(validation_summary.get("paper_trades"))
@@ -963,6 +965,14 @@ def _trading_workbench_snapshot_payload(
     broker_ticket_rows = [
         _workbench_order_ticket_row(row) for row in broker_tickets[:5]
     ]
+    alert_module_rows = [_workbench_alert_row(row) for row in alert_rows[:5]]
+    alert_trigger_rows = [
+        _workbench_market_trigger_row(row) for row in broker_triggers[:5]
+    ]
+    opportunity_action_rows = [
+        _workbench_opportunity_action_row(row)
+        for row in broker_opportunity_actions[:5]
+    ]
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1025,6 +1035,48 @@ def _trading_workbench_snapshot_payload(
                 ],
                 "next_action": "Open the top queue row before planning a trade.",
                 "source_keys": ["priced_in_queue", "candidates", "alerts"],
+            },
+            "alerts": {
+                "status": (
+                    "ready"
+                    if alert_module_rows or alert_trigger_rows or opportunity_action_rows
+                    else "blocked"
+                ),
+                "summary": "Research alerts, saved triggers, and operator routing.",
+                "metrics": {
+                    "alert_count": len(alert_rows),
+                    "dry_run_alert_count": sum(
+                        1
+                        for row in alert_rows
+                        if str(row.get("status") or "").lower() == "dry_run"
+                    ),
+                    "planned_alert_count": sum(
+                        1
+                        for row in alert_rows
+                        if str(row.get("status") or "").lower() == "planned"
+                    ),
+                    "trigger_count": len(broker_triggers),
+                    "active_trigger_count": sum(
+                        1
+                        for row in broker_triggers
+                        if str(row.get("status") or "").lower() == "active"
+                    ),
+                    "opportunity_action_count": len(broker_opportunity_actions),
+                    "external_calls_made": 0,
+                },
+                "alerts": alert_module_rows,
+                "triggers": alert_trigger_rows,
+                "opportunity_actions": opportunity_action_rows,
+                "next_action": (
+                    "Open alert evidence or review saved local trigger rules."
+                    if alert_module_rows or alert_trigger_rows
+                    else "Use alerts only after reviewed research evidence exists."
+                ),
+                "source_keys": [
+                    "alerts.rows",
+                    "broker.triggers",
+                    "broker.opportunity_actions",
+                ],
             },
             "trade-planner": {
                 "status": (
@@ -1443,6 +1495,59 @@ def _workbench_queue_row(
             or row.get("next_step")
             or row.get("command")
         ),
+    }
+
+
+def _workbench_alert_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "ticker": row.get("ticker"),
+        "route": row.get("route"),
+        "status": row.get("status"),
+        "priority": row.get("priority"),
+        "trigger_kind": row.get("trigger_kind"),
+        "score_trigger": row.get("score_trigger"),
+        "feedback_label": row.get("feedback_label"),
+        "available_at": row.get("available_at"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Open alert evidence; feedback stays local.",
+    }
+
+
+def _workbench_market_trigger_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "ticker": row.get("ticker"),
+        "trigger_type": row.get("trigger_type"),
+        "operator": row.get("operator"),
+        "threshold": row.get("threshold"),
+        "latest_value": row.get("latest_value"),
+        "status": row.get("status"),
+        "fired_at": row.get("fired_at"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Evaluate against stored market context; no broker order is submitted.",
+    }
+
+
+def _workbench_opportunity_action_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "ticker": row.get("ticker"),
+        "action": row.get("action"),
+        "status": row.get("status"),
+        "notes": row.get("notes"),
+        "created_at": row.get("created_at"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Review local operator action before changing watch state.",
     }
 
 
