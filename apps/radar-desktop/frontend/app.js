@@ -822,7 +822,7 @@ function renderContent(snapshot) {
     review: () => renderQueuePage('Decision Review', rowsFromSnapshot(snapshot)),
     alerts: () => renderQueuePage('Alerts', alertRows(snapshot), alertColumns),
     ipo: () => renderQueuePage('IPO/S-1', ipoRows(snapshot), ipoColumns),
-    broker: () => renderStructuredPage('Broker', pagePaths.broker),
+    broker: () => renderPlatformModulePage('broker', snapshot),
     ops: () => renderStructuredPage('Ops', pagePaths.ops),
     telemetry: renderTelemetry,
     agent: () => renderStructuredPage('Agent', pagePaths.agent),
@@ -989,6 +989,7 @@ function renderWorkbenchModuleData(moduleData) {
         </div>
       </div>
       ${renderWorkbenchActivePlan(moduleData.active_plan)}
+      ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
   `;
@@ -1132,6 +1133,30 @@ function renderWorkbenchModuleRows(rows) {
               <td data-label="Signal">${escapeHtml(compact(row.subject || row.title || row.summary, '-'))}</td>
               <td data-label="Decision Card">${escapeHtml(compact(row.decision_card_id || row.card, '-'))}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action || row.command, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchOrderTickets(tickets) {
+  if (!Array.isArray(tickets) || !tickets.length) return '';
+  return `
+    <div class="table-wrap order-ticket-preview" data-testid="workbench-order-tickets">
+      <table aria-label="Blocked workbench order tickets">
+        <thead><tr><th>Ticker</th><th>Side</th><th>Qty</th><th>Limit</th><th>Invalidation</th><th>Status</th><th>Hard Blocks</th></tr></thead>
+        <tbody>
+          ${tickets.slice(0, 8).map((ticket) => `
+            <tr data-testid="workbench-order-ticket-row">
+              <td data-label="Ticker">${escapeHtml(compact(ticket.ticker, '-'))}</td>
+              <td data-label="Side">${escapeHtml(compact(ticket.side, '-'))}</td>
+              <td data-label="Qty">${escapeHtml(compact(ticket.quantity, '0'))}</td>
+              <td data-label="Limit">${escapeHtml(compact(ticket.limit_price, '-'))}</td>
+              <td data-label="Invalidation">${escapeHtml(compact(ticket.invalidation_price, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(ticket.status || 'blocked'))}</td>
+              <td data-label="Hard Blocks">${escapeHtml(compact(ticket.hard_blocks, 'broker_submission_disabled'))}</td>
             </tr>
           `).join('')}
         </tbody>

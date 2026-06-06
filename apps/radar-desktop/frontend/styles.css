@@ -721,6 +721,14 @@ tr[data-testid="queue-row"]:focus-visible td {
   table-layout: fixed;
 }
 
+.order-ticket-preview {
+  margin-top: 12px;
+}
+
+.order-ticket-preview table {
+  min-width: 760px;
+}
+
 .module-row-preview th,
 .module-row-preview td {
   white-space: normal;

@@ -445,8 +445,12 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
 
     broker = modules["broker"]
     assert broker["status"] == "read_only"
+    assert broker["metrics"]["order_ticket_count"] == 0
+    assert broker["metrics"]["blocked_order_ticket_count"] == 0
+    assert broker["metrics"]["latest_ticket_id"] is None
     assert broker["metrics"]["order_submission_allowed"] is False
     assert broker["metrics"]["broker_order_submitted"] is False
+    assert broker["order_tickets"] == []
 
     assert modules["backtest"]["metrics"]["latest_validation_run"] == "validation-run-latest"
     assert modules["journal"]["metrics"]["feedback_label_count"] == 1
@@ -601,6 +605,26 @@ def test_dashboard_order_ticket_command_previews_and_records_locally(
     assert ticket.limit_price == 100.0
     assert ticket.invalidation_price == 94.0
     assert "broker_submission_disabled" in ticket.preview_payload["hard_blocks"]
+    after_payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=False,
+        filters=filters,
+    )
+    broker_module = after_payload["trading_workbench"]["modules"]["broker"]
+    assert broker_module["metrics"]["order_ticket_count"] == 1
+    assert broker_module["metrics"]["blocked_order_ticket_count"] == 1
+    assert broker_module["metrics"]["latest_ticket_id"] == ticket.id
+    ticket_row = broker_module["order_tickets"][0]
+    assert ticket_row["id"] == ticket.id
+    assert ticket_row["ticker"] == "MSFT"
+    assert ticket_row["side"] == "BUY"
+    assert ticket_row["quantity"] == 0.0
+    assert ticket_row["limit_price"] == 100.0
+    assert ticket_row["invalidation_price"] == 94.0
+    assert ticket_row["status"] == "blocked"
+    assert ticket_row["submission_allowed"] is False
+    assert "broker_submission_disabled" in ticket_row["hard_blocks"]
 
 
 def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> None:
