@@ -630,6 +630,58 @@ tr[data-testid="queue-row"]:focus-visible td {
   margin-top: 12px;
 }
 
+.workbench-active-plan {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.active-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.active-plan-block {
+  min-width: 0;
+}
+
+.active-plan-block h3 {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.plan-command-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.plan-command-list div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #081018;
+}
+
+.plan-command-list span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.plan-command-list code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .module-row-preview table {
   min-width: 0;
   table-layout: fixed;
@@ -942,6 +994,7 @@ dialog::backdrop {
   .kv-grid,
   .platform-tools,
   .module-data-columns,
+  .active-plan-grid,
   .module-kpis,
   .boundary-grid {
     grid-template-columns: 1fr;

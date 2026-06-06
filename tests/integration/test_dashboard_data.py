@@ -331,6 +331,34 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert workbench["schema_version"] == "trading-workbench-snapshot-v1"
     assert workbench["external_calls_made"] == 0
     assert workbench["primary_tool"] == "market-radar"
+    active_plan = workbench["active_plan"]
+    assert active_plan["schema_version"] == "trading-workbench-active-plan-v1"
+    assert active_plan["source_schema_version"] == "agentic-trading-platform-plan-v1"
+    assert active_plan["status"] == "blocked"
+    assert active_plan["autonomy_level"] == "L1_agentic_review"
+    assert active_plan["decision_card_id"] == "card-msft-latest"
+    assert active_plan["ticker"] == "MSFT"
+    assert active_plan["external_calls_made"] == 0
+    assert active_plan["db_writes_made"] == 0
+    assert active_plan["broker_order_submitted"] is False
+    assert active_plan["order_submission_allowed"] is False
+    assert active_plan["no_execution"] is True
+    assert active_plan["strategy_proposal"]["entry_price"] == 100.0
+    assert active_plan["risk_approval"]["approved_for_paper_trade"] is False
+    assert active_plan["risk_approval"]["approved_for_live_submission"] is False
+    assert active_plan["risk_approval"]["paper_trade_blocks"] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+    ]
+    assert "broker_submission_disabled" in active_plan["risk_approval"][
+        "live_submission_blocks"
+    ]
+    assert active_plan["order_intent"]["submission_allowed"] is False
+    assert active_plan["execution_controls"]["live_trading_kill_switch"] == "engaged"
+    assert active_plan["execution_controls"]["broker_adapter_mode"] == "read_only"
+    assert active_plan["supervision"]["no_autonomous_execution"] is True
+    assert "--preview" in active_plan["supervision"]["paper_decision_preview_command"]
+    assert "--execute" in active_plan["supervision"]["paper_decision_execute_command"]
 
     boundary = workbench["execution_boundary"]
     assert boundary["live_trading_enabled"] is False
@@ -361,14 +389,20 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
 
     trade_planner = modules["trade-planner"]
     assert trade_planner["metrics"]["decision_card_count"] == 1
+    assert trade_planner["metrics"]["active_plan_status"] == "blocked"
+    assert trade_planner["metrics"]["active_plan_autonomy"] == "L1_agentic_review"
     assert trade_planner["focus"]["decision_card_id"] == "card-msft-latest"
+    assert trade_planner["active_plan"]["decision_card_id"] == "card-msft-latest"
 
     risk_desk = modules["risk-desk"]
     assert risk_desk["metrics"]["hard_block_count"] == 0
+    assert risk_desk["metrics"]["paper_trade_block_count"] == 2
+    assert risk_desk["metrics"]["live_submission_block_count"] == 3
 
     paper_trading = modules["paper-trading"]
     assert paper_trading["metrics"]["paper_trade_count"] == 1
     assert paper_trading["metrics"]["latest_trade_id"] == "paper-msft"
+    assert paper_trading["metrics"]["approved_for_paper_trade"] is False
     assert paper_trading["metrics"]["approved_for_live_submission"] is False
 
     broker = modules["broker"]
