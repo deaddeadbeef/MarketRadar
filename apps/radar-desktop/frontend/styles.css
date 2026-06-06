@@ -754,6 +754,14 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 820px;
 }
 
+.portfolio-position-preview {
+  margin-top: 12px;
+}
+
+.portfolio-position-preview table {
+  min-width: 820px;
+}
+
 .order-ticket-preview table {
   min-width: 760px;
 }

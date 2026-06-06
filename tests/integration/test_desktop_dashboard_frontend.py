@@ -96,6 +96,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchJournalLedger",
         "function renderWorkbenchJournalOutcomes",
         "function renderWorkbenchValidationResults",
+        "function renderWorkbenchPortfolioPositions",
         "broker: () => renderPlatformModulePage('broker', snapshot)",
         'data-testid="platform-module-page"',
         'data-testid="platform-module-data"',
@@ -112,6 +113,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-journal-outcome-row"',
         'data-testid="workbench-validation-results"',
         'data-testid="workbench-validation-result-row"',
+        'data-testid="workbench-portfolio-positions"',
+        'data-testid="workbench-portfolio-position-row"',
         'data-testid="workbench-active-plan"',
         'data-testid="workbench-plan-controls"',
         'data-testid="workbench-paper-actions"',
@@ -143,6 +146,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Journal value ledger entries",
         "Journal value outcomes",
         "Backtest validation results",
+        "Portfolio positions",
         "Hard Blocks",
         'data-testid="live-trading-disabled"',
         "function bindPlatformToolCards",
@@ -183,6 +187,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".journal-ledger-preview" in styles
     assert ".journal-outcome-preview" in styles
     assert ".validation-result-preview" in styles
+    assert ".portfolio-position-preview" in styles
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:

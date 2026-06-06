@@ -994,6 +994,7 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
       ${renderWorkbenchJournalOutcomes(moduleData.value_outcomes)}
       ${renderWorkbenchValidationResults(moduleData.validation_results)}
+      ${renderWorkbenchPortfolioPositions(moduleData.positions)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
   `;
@@ -1257,6 +1258,30 @@ function renderWorkbenchValidationResults(results) {
               <td data-label="Labels">${escapeHtml(compact(result.positive_labels, 'none'))}</td>
               <td data-label="Leakage">${escapeHtml(compact(result.leakage_flags, 'clear'))}</td>
               <td data-label="Decision Card">${escapeHtml(compact(result.decision_card_id, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchPortfolioPositions(positions) {
+  if (!Array.isArray(positions) || !positions.length) return '';
+  return `
+    <div class="table-wrap portfolio-position-preview" data-testid="workbench-portfolio-positions">
+      <table aria-label="Portfolio positions">
+        <thead><tr><th>Ticker</th><th>Qty</th><th>Average</th><th>Market Value</th><th>Unrealized P/L</th><th>Exposure</th><th>Theme</th></tr></thead>
+        <tbody>
+          ${positions.slice(0, 8).map((position) => `
+            <tr data-testid="workbench-portfolio-position-row">
+              <td data-label="Ticker">${escapeHtml(compact(position.ticker, '-'))}</td>
+              <td data-label="Qty">${escapeHtml(compact(position.quantity, '0'))}</td>
+              <td data-label="Average">${escapeHtml(compact(position.average_price, '-'))}</td>
+              <td data-label="Market Value">${escapeHtml(compact(position.market_value, '-'))}</td>
+              <td data-label="Unrealized P/L">${escapeHtml(compact(position.unrealized_pnl, '-'))}</td>
+              <td data-label="Exposure">${escapeHtml(compact(position.exposure_pct, '-'))}</td>
+              <td data-label="Theme">${escapeHtml(catalogLabel(position.theme || 'broker_synced'))}</td>
             </tr>
           `).join('')}
         </tbody>

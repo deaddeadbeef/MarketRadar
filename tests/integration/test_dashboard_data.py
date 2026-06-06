@@ -327,6 +327,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
 ) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
+    _insert_broker_portfolio_fixture(engine)
 
     payload = dashboard_snapshot_payload(
         engine=engine,
@@ -419,6 +420,32 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "journal",
         "agent",
     } <= set(modules)
+
+    portfolio = modules["portfolio"]
+    assert portfolio["metrics"]["broker_connected"] is True
+    assert portfolio["metrics"]["position_count"] == 1
+    assert portfolio["metrics"]["account_count"] == 1
+    assert portfolio["metrics"]["portfolio_equity"] == 250000.0
+    assert portfolio["metrics"]["position_preview_count"] == 1
+    assert portfolio["next_action"] == "Review read-only positions before planning risk."
+    account_id = broker_account_id("schwab", "account-hash-123")
+    assert portfolio["positions"] == [
+        {
+            "account_id": account_id,
+            "as_of": AVAILABLE_AT.isoformat(),
+            "ticker": "GLW",
+            "quantity": 100.0,
+            "average_price": 92.5,
+            "market_value": 9500.0,
+            "unrealized_pnl": 250.0,
+            "sector": "technology",
+            "theme": "broker_synced",
+            "exposure_pct": 0.038,
+            "next_action": (
+                "Use as read-only portfolio context; order submission is disabled."
+            ),
+        }
+    ]
 
     market_radar = modules["market-radar"]
     assert market_radar["metrics"]["queue_count"] == 2
@@ -11639,6 +11666,71 @@ def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:
     assert summary["exposure"]["exposure_before"]["single_name"] == {"GLW": 0.038}
     assert summary["rate_limit_config"]["portfolio_sync_min_interval_seconds"] == 900
     assert summary["rate_limits"][0]["operation"] == "portfolio_sync"
+
+
+def _insert_broker_portfolio_fixture(engine: Engine) -> None:
+    repo = BrokerRepository(engine)
+    connection_id = broker_connection_id()
+    account_id = broker_account_id("schwab", "account-hash-123")
+    repo.upsert_connection(
+        BrokerConnection(
+            id=connection_id,
+            broker="schwab",
+            user_id="local",
+            status=BrokerConnectionStatus.CONNECTED,
+            created_at=AVAILABLE_AT,
+            updated_at=AVAILABLE_AT,
+            last_successful_sync_at=AVAILABLE_AT,
+            metadata={"mode": "read_only"},
+        )
+    )
+    repo.upsert_accounts(
+        [
+            BrokerAccount(
+                id=account_id,
+                connection_id=connection_id,
+                broker="schwab",
+                broker_account_id="12345678",
+                account_hash="account-hash-123",
+                created_at=AVAILABLE_AT,
+                updated_at=AVAILABLE_AT,
+                display_name="MARGIN ending 5678",
+            )
+        ]
+    )
+    repo.upsert_balance_snapshots(
+        [
+            BrokerBalanceSnapshot(
+                id=broker_balance_snapshot_id(account_id, AVAILABLE_AT),
+                account_id=account_id,
+                as_of=AVAILABLE_AT,
+                cash=50000.0,
+                buying_power=100000.0,
+                liquidation_value=250000.0,
+                equity=250000.0,
+                raw_payload={},
+                created_at=AVAILABLE_AT,
+            )
+        ]
+    )
+    repo.upsert_positions(
+        [
+            BrokerPosition(
+                id=broker_position_id(account_id, "GLW", AVAILABLE_AT),
+                account_id=account_id,
+                as_of=AVAILABLE_AT,
+                ticker="GLW",
+                quantity=100,
+                average_price=92.5,
+                market_value=9500.0,
+                unrealized_pnl=250.0,
+                sector="technology",
+                theme="broker_synced",
+                raw_payload={},
+                created_at=AVAILABLE_AT,
+            )
+        ]
+    )
 
 
 def _engine(tmp_path: Path) -> Engine:
