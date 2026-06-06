@@ -83,7 +83,12 @@ from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.validation_repositories import ValidationRepository
+from catalyst_radar.trading.paper_decision import (
+    PaperDecisionExecutionError,
+    run_paper_decision,
+)
 from catalyst_radar.trading.platform import build_trading_platform_plan
+from catalyst_radar.validation.models import PaperDecision
 from catalyst_radar.validation.shadow_mode import shadow_mode_status_payload
 from catalyst_radar.validation.value_ledger import (
     build_value_ledger_entry,
@@ -1118,6 +1123,16 @@ def _compact_workbench_active_plan(plan: Mapping[str, object]) -> dict[str, obje
     order = _mapping(plan.get("order_intent"))
     controls = _mapping(plan.get("execution_controls"))
     supervision = _mapping(plan.get("supervision"))
+    paper_intent = _mapping(plan.get("agentic_paper_intent"))
+    paper_decision = _mapping(paper_intent.get("paper_decision"))
+    paper_hard_blocks = list(
+        dict.fromkeys(
+            [
+                *_texts(paper_intent.get("hard_blocks")),
+                *_texts(risk.get("paper_trade_blocks")),
+            ]
+        )
+    )
     return {
         "schema_version": "trading-workbench-active-plan-v1",
         "source_schema_version": plan.get("schema_version"),
@@ -1125,6 +1140,7 @@ def _compact_workbench_active_plan(plan: Mapping[str, object]) -> dict[str, obje
         "autonomy_level": plan.get("autonomy_level"),
         "decision_card_id": plan.get("decision_card_id"),
         "ticker": plan.get("ticker"),
+        "recommended_paper_decision": paper_intent.get("recommended_paper_decision"),
         "external_calls_made": plan.get("external_calls_made", 0),
         "db_writes_made": plan.get("db_writes_made", 0),
         "broker_order_submitted": plan.get("broker_order_submitted", False),
@@ -1160,6 +1176,36 @@ def _compact_workbench_active_plan(plan: Mapping[str, object]) -> dict[str, obje
             "no_execution": bool(controls.get("no_execution", True)),
             "live_trading_kill_switch": controls.get("live_trading_kill_switch"),
             "broker_adapter_mode": controls.get("broker_adapter_mode"),
+        },
+        "paper_decision": {
+            "decision_card_id": paper_decision.get(
+                "decision_card_id",
+                plan.get("decision_card_id"),
+            ),
+            "decision": paper_decision.get("decision"),
+            "available_at": paper_decision.get("available_at"),
+            "entry_price": paper_decision.get("entry_price"),
+            "entry_at": paper_decision.get("entry_at"),
+            "hard_blocks": paper_hard_blocks,
+            "external_calls_required": paper_intent.get("external_calls_required", 0),
+            "external_calls_made": paper_intent.get("external_calls_made", 0),
+            "db_writes_required": paper_intent.get("db_writes_required", 0),
+            "db_writes_made": paper_intent.get("db_writes_made", 0),
+            "broker_order_submitted": bool(
+                paper_intent.get("broker_order_submitted", False)
+            ),
+            "order_submission_allowed": bool(
+                paper_intent.get("order_submission_allowed", False)
+            ),
+            "no_execution": bool(paper_intent.get("no_execution", True)),
+            "preview_command": paper_decision.get(
+                "preview_command",
+                supervision.get("paper_decision_preview_command"),
+            ),
+            "execute_command": paper_decision.get(
+                "execute_command",
+                supervision.get("paper_decision_execute_command"),
+            ),
         },
         "supervision": {
             "requires_manual_approval": bool(supervision.get("requires_manual_approval")),
@@ -4510,6 +4556,16 @@ def _apply_command(
                 filters=filters,
             ),
         )
+    if command in {"paper-decision", "paper_decision"}:
+        return _CommandUpdate(
+            page="paper-trading",
+            filters=filters,
+            message=_execute_workbench_paper_decision_command(
+                engine,
+                payload,
+                value,
+            ),
+        )
     if command in {"clear", "clear-filters", "reset"}:
         return _CommandUpdate(
             page=page,
@@ -6832,6 +6888,94 @@ def _execute_value_outcome_command(
             fallback_available_at=available_at,
         )
     return _value_outcome_usage()
+
+
+def _execute_workbench_paper_decision_command(
+    engine: Engine,
+    payload: Mapping[str, object],
+    value: str,
+) -> str:
+    tokens_or_error = _command_tokens(value)
+    if isinstance(tokens_or_error, str):
+        return _command_no_side_effects(tokens_or_error)
+    tokens = tokens_or_error
+    mode = tokens[0].lower() if tokens else "preview"
+    if mode in {"preview", "pre"}:
+        execute = False
+    elif mode in {"execute", "record", "save"}:
+        execute = True
+    else:
+        return _command_no_side_effects(
+            "Usage: paper-decision preview|execute. The dashboard uses the "
+            "current active trading plan only."
+        )
+    if len(tokens) > 1:
+        return _command_no_side_effects(
+            "Usage: paper-decision preview|execute. Extra paper-decision "
+            "parameters belong in a reviewed PowerShell command."
+        )
+
+    active_plan = _mapping(
+        _mapping(payload.get("trading_workbench")).get("active_plan")
+    )
+    paper_decision = _mapping(active_plan.get("paper_decision"))
+    decision_card_id = str(
+        paper_decision.get("decision_card_id")
+        or active_plan.get("decision_card_id")
+        or ""
+    ).strip()
+    if not decision_card_id:
+        return _command_no_side_effects(
+            "No active decision card is available for a paper decision."
+        )
+    decision_text = str(
+        paper_decision.get("decision")
+        or active_plan.get("recommended_paper_decision")
+        or ""
+    ).strip()
+    try:
+        decision = PaperDecision(decision_text)
+    except ValueError:
+        return _command_no_side_effects(
+            "No supported paper decision is available for the active plan."
+        )
+    available_at = _datetime_or_none(paper_decision.get("available_at"))
+    if available_at is None:
+        return _command_no_side_effects(
+            "No point-in-time cutoff is available for the active paper decision."
+        )
+    entry_price = _optional_float(paper_decision.get("entry_price"))
+    entry_at = _datetime_or_none(paper_decision.get("entry_at"))
+    try:
+        result = run_paper_decision(
+            engine,
+            decision_card_id=decision_card_id,
+            decision=decision,
+            available_at=available_at,
+            entry_price=entry_price,
+            entry_at=entry_at,
+            execute=execute,
+            actor_source="dashboard_tui",
+            actor_id="local-tui",
+            actor_role="analyst",
+        )
+    except PaperDecisionExecutionError as exc:
+        return _command_no_side_effects(f"Paper decision rejected: {exc}")
+    trade = _mapping(result.get("trade"))
+    return (
+        f"paper_decision mode={result.get('mode')} "
+        f"id={trade.get('id') or 'n/a'} "
+        f"decision_card_id={trade.get('decision_card_id') or decision_card_id} "
+        f"ticker={trade.get('ticker') or active_plan.get('ticker') or 'n/a'} "
+        f"decision={trade.get('decision') or decision.value} "
+        f"state={trade.get('state') or 'n/a'} "
+        "no_execution=true "
+        f"external_calls={result.get('external_calls_made', 0)} "
+        f"db_writes_required={result.get('db_writes_required', 0)} "
+        f"db_writes_made={result.get('db_writes_made', 0)} "
+        "broker_order_submitted=false order_submission_allowed=false. "
+        f"{result.get('next_action') or 'Paper decision stayed local.'}"
+    )
 
 
 def _record_value_ledger_from_tui(
@@ -16101,6 +16245,15 @@ def _optional_int(value: object) -> int | None:
         return None
     try:
         return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return None
 

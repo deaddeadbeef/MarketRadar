@@ -762,7 +762,7 @@ fn automation_manifest() -> AutomationManifest {
             "ready applies the decision-ready scan filter; review opens the Review page",
             "batch SOURCE opens an Ops source plan; batch SOURCE all and batch SOURCE execute N show PowerShell boundaries",
             "run opens Safe Run; run execute starts the guarded radar-run API/CLI backend path",
-            "action, trigger, ticket, feedback, ledger, and outcome commands use the guarded dashboard backend for local DB-only operations",
+            "action, trigger, ticket, feedback, paper-decision, ledger, and outcome commands use the guarded dashboard backend for local DB-only operations",
             "agent, bars, options, and cik/sec planning commands use the guarded dashboard backend for preview/status output; execute and confirm variants stay external boundaries",
             "Q closes the native desktop window; q, quit, or exit also close from the command box",
             "Full catalyst-radar commands show a PowerShell boundary instead of executing in-app",
@@ -774,7 +774,7 @@ fn automation_manifest() -> AutomationManifest {
         computer_use_steps: computer_use_steps(),
         zero_call_assertions: vec![
             "Dashboard browsing, command-box navigation, filtering, copy, and raw JSON inspection must leave provider_calls=0.",
-            "Local broker, feedback, value-ledger, and outcome commands may write the local DB through the guarded dashboard backend, but must not make provider, OpenAI, broker, order, or external calls unless the command explicitly reports an external-call budget.",
+            "Local broker, feedback, paper-decision, value-ledger, and outcome commands may write the local DB through the guarded dashboard backend, but must not make provider, OpenAI, broker, order, or external calls unless the command explicitly reports an external-call budget.",
             "Agent, market-bar, options, and SEC CIK preview/status commands may use the dashboard backend, but execute or confirm variants must remain external PowerShell boundaries unless the backend command explicitly reports an accepted external-call budget.",
             "Source batch plan commands may read the current snapshot, but execute variants must remain external PowerShell boundaries and leave provider_calls=0.",
             "Invalid source-gap or decision-gap filter commands must not refresh the snapshot or change filters.",
@@ -801,7 +801,7 @@ fn automation_manifest() -> AutomationManifest {
             "Candidate detail pages keep nav-page-candidates selected; alert detail pages keep nav-page-alerts selected.",
             "Rows use data-testid=queue-row, are keyboard focusable, and include ticker-specific labels when available.",
             "Refreshing reads the existing dashboard JSON contract and makes zero provider calls.",
-            "Local broker, feedback, value-ledger, and outcome commands use the guarded dashboard backend; source-batch execute and provider execute/confirm commands remain external PowerShell boundaries; provider preview/status commands use the guarded dashboard backend; run execute uses the guarded radar-run API/CLI backend path.",
+            "Local broker, feedback, paper-decision, value-ledger, and outcome commands use the guarded dashboard backend; source-batch execute and provider execute/confirm commands remain external PowerShell boundaries; provider preview/status commands use the guarded dashboard backend; run execute uses the guarded radar-run API/CLI backend path.",
         ],
     }
 }
@@ -938,6 +938,12 @@ fn command_box_commands() -> Vec<CommandBoxCommand> {
             command: "action / trigger / ticket / feedback",
             meaning: "Run guarded local Broker or Alert commands through the dashboard backend.",
             safety: "local_db_only",
+            route: "dashboard_backend",
+        },
+        CommandBoxCommand {
+            command: "paper-decision preview / execute",
+            meaning: "Preview or record the active trading plan as a local paper decision; broker order submission stays disabled.",
+            safety: "local_db_only_no_broker_order",
             route: "dashboard_backend",
         },
         CommandBoxCommand {
@@ -1299,6 +1305,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             expected: "dashboard-page reports page=broker, command-status reports Local only, db_writes=1, and no provider, OpenAI, broker, order, or external calls occur after refresh.",
         },
         ComputerUseStep {
+            step: "paper-decision-command",
+            action: "Type paper-decision preview and press Return, then type paper-decision execute only after reviewing the active plan.",
+            target: "command-input",
+            expected: "dashboard-page reports page=paper-trading, command-status reports paper_decision, external_calls=0, no_execution=true, broker_order_submitted=false, and any DB write is a local paper-trade/audit record only.",
+        },
+        ComputerUseStep {
             step: "provider-preview-command",
             action: "Type bars status and press Return.",
             target: "command-input",
@@ -1449,6 +1461,11 @@ mod tests {
         assert!(manifest.command_box_commands.iter().any(|command| {
             command.command == "action / trigger / ticket / feedback"
                 && command.safety == "local_db_only"
+                && command.route == "dashboard_backend"
+        }));
+        assert!(manifest.command_box_commands.iter().any(|command| {
+            command.command == "paper-decision preview / execute"
+                && command.safety == "local_db_only_no_broker_order"
                 && command.route == "dashboard_backend"
         }));
         assert!(manifest.command_box_commands.iter().any(|command| {
@@ -1770,7 +1787,8 @@ mod tests {
                     && step.expected.contains("radar_run telemetry contract"))
         );
         assert!(manifest.keyboard_shortcuts.iter().any(|shortcut| {
-            shortcut.contains("action, trigger, ticket, feedback, ledger, and outcome")
+            shortcut
+                .contains("action, trigger, ticket, feedback, paper-decision, ledger, and outcome")
                 && shortcut.contains("guarded dashboard backend")
         }));
         assert!(manifest.keyboard_shortcuts.iter().any(|shortcut| {
@@ -1783,6 +1801,11 @@ mod tests {
             && step.expected.contains("Local only")
             && step.expected.contains("db_writes=1")
             && step.expected.contains("no provider")));
+        assert!(manifest.computer_use_steps.iter().any(|step| step.step
+            == "paper-decision-command"
+            && step.expected.contains("paper_decision")
+            && step.expected.contains("external_calls=0")
+            && step.expected.contains("broker_order_submitted=false")));
         assert!(manifest.computer_use_steps.iter().any(|step| step.step
             == "provider-preview-command"
             && step.expected.contains("Market-bar status")
@@ -1852,8 +1875,9 @@ mod tests {
                     && assertion.contains("provider_calls=0"))
         );
         assert!(manifest.zero_call_assertions.iter().any(|assertion| {
-            assertion.contains("Local broker, feedback, value-ledger, and outcome commands")
-                && assertion.contains("guarded dashboard backend")
+            assertion.contains(
+                "Local broker, feedback, paper-decision, value-ledger, and outcome commands",
+            ) && assertion.contains("guarded dashboard backend")
                 && assertion.contains("provider, OpenAI, broker, order, or external calls")
         }));
         assert!(manifest.zero_call_assertions.iter().any(|assertion| {
@@ -1862,9 +1886,9 @@ mod tests {
                 && assertion.contains("external PowerShell boundaries")
         }));
         assert!(manifest.notes.iter().any(|note| {
-            note.contains("Local broker, feedback, value-ledger, and outcome commands")
-                && note
-                    .contains("provider preview/status commands use the guarded dashboard backend")
+            note.contains(
+                "Local broker, feedback, paper-decision, value-ledger, and outcome commands",
+            ) && note.contains("provider preview/status commands use the guarded dashboard backend")
                 && note.contains("run execute uses the guarded radar-run")
         }));
         assert!(

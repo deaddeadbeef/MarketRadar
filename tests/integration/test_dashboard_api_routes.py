@@ -491,7 +491,8 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
-        "action, trigger, ticket, feedback, ledger, and outcome" in shortcut
+        "action, trigger, ticket, feedback, paper-decision, ledger, and outcome"
+        in shortcut
         and "guarded dashboard backend" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
@@ -517,6 +518,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         command["command"] == "action / trigger / ticket / feedback"
         and command["safety"] == "local_db_only"
+        and command["route"] == "dashboard_backend"
+        for command in command_catalog
+    )
+    assert any(
+        command["command"] == "paper-decision preview / execute"
+        and command["safety"] == "local_db_only_no_broker_order"
         and command["route"] == "dashboard_backend"
         for command in command_catalog
     )
@@ -630,6 +637,13 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for step in payload["automation"]["computer_use_steps"]
     )
     assert any(
+        step["step"] == "paper-decision-command"
+        and "paper_decision" in step["expected"]
+        and "external_calls=0" in step["expected"]
+        and "broker_order_submitted=false" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
         step["step"] == "provider-preview-command"
         and "Market-bar status" in step["expected"]
         and "dashboard backend" in step["expected"]
@@ -737,7 +751,8 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
-        "Local broker, feedback, value-ledger, and outcome commands" in assertion
+        "Local broker, feedback, paper-decision, value-ledger, and outcome commands"
+        in assertion
         and "guarded dashboard backend" in assertion
         and "provider, OpenAI, broker, order, or external calls" in assertion
         for assertion in payload["automation"]["zero_call_assertions"]
@@ -793,7 +808,8 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
-        "Local broker, feedback, value-ledger, and outcome commands" in note
+        "Local broker, feedback, paper-decision, value-ledger, and outcome commands"
+        in note
         and "provider preview/status commands use the guarded dashboard backend" in note
         and "run execute uses the guarded radar-run" in note
         for note in payload["automation"]["notes"]

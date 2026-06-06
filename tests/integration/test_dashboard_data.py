@@ -96,8 +96,13 @@ from catalyst_radar.dashboard.data import (
     universe_coverage_payload,
     worker_status_payload,
 )
-from catalyst_radar.dashboard.tui import DashboardFilters, dashboard_snapshot_payload
+from catalyst_radar.dashboard.tui import (
+    DashboardFilters,
+    apply_dashboard_command,
+    dashboard_snapshot_payload,
+)
 from catalyst_radar.features.options import OptionFeatureInput
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
@@ -125,6 +130,7 @@ from catalyst_radar.storage.schema import (
     validation_results,
     validation_runs,
 )
+from catalyst_radar.storage.validation_repositories import ValidationRepository
 
 AS_OF = datetime(2026, 5, 10, 21, tzinfo=UTC)
 EARLIER_AS_OF = AS_OF - timedelta(days=1)
@@ -338,6 +344,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert active_plan["autonomy_level"] == "L1_agentic_review"
     assert active_plan["decision_card_id"] == "card-msft-latest"
     assert active_plan["ticker"] == "MSFT"
+    assert active_plan["recommended_paper_decision"] == "deferred"
     assert active_plan["external_calls_made"] == 0
     assert active_plan["db_writes_made"] == 0
     assert active_plan["broker_order_submitted"] is False
@@ -356,6 +363,23 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert active_plan["order_intent"]["submission_allowed"] is False
     assert active_plan["execution_controls"]["live_trading_kill_switch"] == "engaged"
     assert active_plan["execution_controls"]["broker_adapter_mode"] == "read_only"
+    paper_decision = active_plan["paper_decision"]
+    assert paper_decision["decision_card_id"] == "card-msft-latest"
+    assert paper_decision["decision"] == "deferred"
+    assert paper_decision["available_at"] == AVAILABLE_AT.isoformat()
+    assert paper_decision["entry_price"] == 100.0
+    assert paper_decision["entry_at"] == AVAILABLE_AT.isoformat()
+    assert paper_decision["hard_blocks"] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+    ]
+    assert paper_decision["external_calls_made"] == 0
+    assert paper_decision["db_writes_made"] == 0
+    assert paper_decision["broker_order_submitted"] is False
+    assert paper_decision["order_submission_allowed"] is False
+    assert paper_decision["no_execution"] is True
+    assert "--preview" in paper_decision["preview_command"]
+    assert "--execute" in paper_decision["execute_command"]
     assert active_plan["supervision"]["no_autonomous_execution"] is True
     assert "--preview" in active_plan["supervision"]["paper_decision_preview_command"]
     assert "--execute" in active_plan["supervision"]["paper_decision_execute_command"]
@@ -413,6 +437,87 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert modules["backtest"]["metrics"]["latest_validation_run"] == "validation-run-latest"
     assert modules["journal"]["metrics"]["feedback_label_count"] == 1
     assert modules["agent"]["metrics"]["external_calls_made"] == 0
+
+
+def test_dashboard_paper_decision_command_previews_and_records_locally(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    filters = DashboardFilters(available_at=AVAILABLE_AT)
+    config = AppConfig.from_env({})
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=False,
+        filters=filters,
+    )
+    repo = ValidationRepository(engine)
+    before_ids = {trade.id for trade in repo.list_paper_trades(available_at=AVAILABLE_AT)}
+
+    preview = apply_dashboard_command(
+        "paper-decision preview",
+        payload,
+        "trade-planner",
+        filters,
+        engine=engine,
+        config=config,
+    )
+
+    assert preview.page == "paper-trading"
+    assert "paper_decision mode=preview" in preview.message
+    assert "decision_card_id=card-msft-latest" in preview.message
+    assert "decision=deferred" in preview.message
+    assert "external_calls=0" in preview.message
+    assert "db_writes_made=0" in preview.message
+    assert "broker_order_submitted=false" in preview.message
+    assert "no_execution=true" in preview.message
+    assert {
+        trade.id for trade in repo.list_paper_trades(available_at=AVAILABLE_AT)
+    } == before_ids
+    assert (
+        AuditLogRepository(engine).list_events(
+            artifact_type="decision_card",
+            artifact_id="card-msft-latest",
+            event_type="paper_decision_recorded",
+        )
+        == []
+    )
+
+    executed = apply_dashboard_command(
+        "paper-decision execute",
+        payload,
+        "trade-planner",
+        filters,
+        engine=engine,
+        config=config,
+    )
+
+    assert executed.page == "paper-trading"
+    assert "paper_decision mode=executed" in executed.message
+    assert "id=paper-trade-v1:card-msft-latest:deferred" in executed.message
+    assert "decision=deferred" in executed.message
+    assert "state=deferred" in executed.message
+    assert "external_calls=0" in executed.message
+    assert "db_writes_made=2" in executed.message
+    assert "broker_order_submitted=false" in executed.message
+    assert "order_submission_allowed=false" in executed.message
+    trades = {
+        trade.id: trade for trade in repo.list_paper_trades(available_at=AVAILABLE_AT)
+    }
+    recorded = trades["paper-trade-v1:card-msft-latest:deferred"]
+    assert recorded.decision.value == "deferred"
+    assert recorded.state.value == "deferred"
+    assert recorded.payload["no_execution"] is True
+    events = AuditLogRepository(engine).list_events(
+        artifact_type="decision_card",
+        artifact_id="card-msft-latest",
+        event_type="paper_decision_recorded",
+    )
+    assert len(events) == 1
+    assert events[0].actor_source == "dashboard_tui"
+    assert events[0].decision == "deferred"
+    assert events[0].metadata["no_execution"] is True
 
 
 def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> None:

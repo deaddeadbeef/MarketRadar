@@ -98,12 +98,21 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="platform-module-row"',
         'data-testid="workbench-active-plan"',
         'data-testid="workbench-plan-controls"',
+        'data-testid="workbench-paper-actions"',
+        'data-testid="workbench-paper-preview"',
+        'data-testid="workbench-paper-record"',
         "strategy_proposal",
         "risk_approval",
         "order_intent",
         "execution_controls",
+        "recommended_paper_decision",
+        "paper_decision",
         "paper_decision_preview_command",
         "paper_decision_execute_command",
+        "function bindWorkbenchPaperControls",
+        "function runWorkbenchPaperDecision",
+        "`paper-decision ${resolvedMode}`",
+        "Record Paper Decision",
         'data-testid="live-trading-disabled"',
         "function bindPlatformToolCards",
         "platform: {",
@@ -565,6 +574,7 @@ def test_tauri_dashboard_local_commands_use_backend_command() -> None:
         "'feedback'",
         "'ledger'",
         "'outcome'",
+        "'paper-decision'",
         "'ticket'",
         "'trigger'",
         "'value-ledger'",
@@ -582,6 +592,7 @@ def test_tauri_dashboard_local_commands_use_backend_command() -> None:
     assert "Dashboard command failed" in source
     assert "costCommandMessage" not in source
     assert "Run guarded local Broker or Alert commands through the dashboard backend" in source
+    assert "Preview or record the active plan as a local paper decision" in source
     assert "Run guarded local value-ledger commands through the dashboard backend" in source
     assert "Run guarded local value-outcome commands through the dashboard backend" in source
 
