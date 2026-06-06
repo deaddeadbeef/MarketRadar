@@ -752,13 +752,15 @@ tr[data-testid="queue-row"]:focus-visible td {
 
 .alert-preview,
 .market-trigger-preview,
-.opportunity-action-preview {
+.opportunity-action-preview,
+.ipo-s1-preview {
   margin-top: 12px;
 }
 
 .alert-preview table,
 .market-trigger-preview table,
-.opportunity-action-preview table {
+.opportunity-action-preview table,
+.ipo-s1-preview table {
   min-width: 920px;
 }
 

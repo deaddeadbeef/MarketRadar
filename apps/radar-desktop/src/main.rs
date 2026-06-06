@@ -558,6 +558,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Open an alert as research context, not trade approval.",
         },
         TradingPlatformModule {
+            key: "ipo-s1",
+            label: "IPO/S-1",
+            role: "Primary-source IPO registration evidence and risk flags.",
+            source: "SEC filing rows and local IPO analysis",
+            status: "route_ready",
+            page: "ipo",
+            test_id: "platform-tool-ipo-s1",
+            next_action: "Review S-1 terms before adding IPO evidence to a thesis.",
+        },
+        TradingPlatformModule {
             key: "journal",
             label: "Journal",
             role: "Decision notes, feedback, value ledger, and outcome review.",

@@ -128,6 +128,7 @@ const pagePaths = {
   'risk-desk': [['broker'], ['policy'], ['portfolio_impacts'], ['validation']],
   'paper-trading': [['validation'], ['paper_trading'], ['paper_trades'], ['value_outcomes']],
   backtest: [['validation'], ['validation', 'latest_run'], ['validation', 'report'], ['telemetry']],
+  ipo: [['ipo_s1'], ['events']],
   readiness: [['readiness'], ['real_results'], ['full_market_trust_gate']],
   run: [['call_plan'], ['radar_run'], ['operator_next_step']],
   broker: [['broker'], ['runtime_context']],
@@ -289,6 +290,7 @@ const fallbackPlatformModules = [
   ['broker-desk', 'Broker Desk', 'broker', 'Read-only broker connection, order-ticket previews, and sync boundaries.', 'read_only'],
   ['backtest', 'Backtest / Replay', 'backtest', 'Historical replay, shadow-mode validation, and strategy evidence.', 'route_ready'],
   ['alerts', 'Alerts', 'alerts', 'Research notifications, watch triggers, and operator routing.', 'active'],
+  ['ipo-s1', 'IPO/S-1', 'ipo', 'Primary-source IPO registration evidence and risk flags.', 'route_ready'],
   ['journal', 'Journal', 'journal', 'Decision notes, feedback, value ledger, and outcome review.', 'route_ready'],
   ['agent-cockpit', 'Agent Cockpit', 'agent', 'Agent brief, proposed tool use, budget gates, and execution review.', 'preview_only'],
 ];
@@ -821,7 +823,7 @@ function renderContent(snapshot) {
     candidates: () => renderQueuePage('Candidate Review', rowsFromSnapshot(snapshot)),
     review: () => renderQueuePage('Decision Review', rowsFromSnapshot(snapshot)),
     alerts: () => renderPlatformModulePage('alerts', snapshot),
-    ipo: () => renderQueuePage('IPO/S-1', ipoRows(snapshot), ipoColumns),
+    ipo: () => renderPlatformModulePage('ipo', snapshot),
     broker: () => renderPlatformModulePage('broker', snapshot),
     ops: () => renderStructuredPage('Ops', pagePaths.ops),
     telemetry: renderTelemetry,
@@ -995,6 +997,7 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchAlerts(moduleData.alerts)}
       ${renderWorkbenchMarketTriggers(moduleData.triggers)}
       ${renderWorkbenchOpportunityActions(moduleData.opportunity_actions)}
+      ${renderWorkbenchIpoRows(moduleData.ipo_s1_rows)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
@@ -1266,6 +1269,31 @@ function renderWorkbenchOpportunityActions(actions) {
               <td data-label="DB Writes">${escapeHtml(compact(action.db_writes_made, '0'))}</td>
               <td data-label="Broker Order">${escapeHtml(action.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(action.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchIpoRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap ipo-s1-preview" data-testid="workbench-ipo-s1">
+      <table aria-label="IPO/S-1 filings">
+        <thead><tr><th>Ticker</th><th>Form</th><th>Exchange</th><th>Price Range</th><th>Gross Proceeds</th><th>Risk Flags</th><th>Provider Calls</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-ipo-s1-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Form">${escapeHtml(compact(row.form_type, '-'))}</td>
+              <td data-label="Exchange">${escapeHtml(compact(row.exchange, '-'))}</td>
+              <td data-label="Price Range">${escapeHtml(compact(row.price_range_low, '-'))} - ${escapeHtml(compact(row.price_range_high, '-'))}</td>
+              <td data-label="Gross Proceeds">${escapeHtml(compact(row.estimated_gross_proceeds, '-'))}</td>
+              <td data-label="Risk Flags">${escapeHtml(compact(row.risk_flags, 'none'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
           `).join('')}
         </tbody>

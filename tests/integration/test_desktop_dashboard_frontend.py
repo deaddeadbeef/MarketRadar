@@ -95,6 +95,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchAlerts",
         "function renderWorkbenchMarketTriggers",
         "function renderWorkbenchOpportunityActions",
+        "function renderWorkbenchIpoRows",
         "function workbenchModuleRows",
         "function renderWorkbenchModuleRows",
         "function renderWorkbenchPaperTrades",
@@ -140,6 +141,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-market-trigger-row"',
         'data-testid="workbench-opportunity-actions"',
         'data-testid="workbench-opportunity-action-row"',
+        'data-testid="workbench-ipo-s1"',
+        'data-testid="workbench-ipo-s1-row"',
         "strategy_proposal",
         "risk_approval",
         "order_intent",
@@ -154,6 +157,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Workbench alerts",
         "Saved market triggers",
         "Saved opportunity actions",
+        "IPO/S-1 filings",
         "recommended_paper_decision",
         "paper_decision",
         "order_ticket",
@@ -181,6 +185,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "manual_review_required",
         "alerts: () => renderPlatformModulePage('alerts', snapshot)",
         "agent: () => renderPlatformModulePage('agent', snapshot)",
+        "ipo: () => renderPlatformModulePage('ipo', snapshot)",
+        "ipo-s1",
         'data-testid="live-trading-disabled"',
         "function bindPlatformToolCards",
         "platform: {",
@@ -208,6 +214,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "platform-tool-risk-desk",
         "platform-tool-paper-trading",
         "platform-tool-agent-cockpit",
+        "platform-tool-ipo-s1",
     ):
         assert tool in rust_source
 
@@ -227,6 +234,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".alert-preview" in styles
     assert ".market-trigger-preview" in styles
     assert ".opportunity-action-preview" in styles
+    assert ".ipo-s1-preview" in styles
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:

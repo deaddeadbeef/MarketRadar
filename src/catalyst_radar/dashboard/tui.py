@@ -729,6 +729,7 @@ def dashboard_snapshot_payload(
         priced_in_queue=display_priced_in_queue,
         candidate_rows=candidate_rows,
         alert_rows=alert_rows,
+        ipo_rows=ipo_rows,
         broker_summary=broker_summary,
         validation_summary=validation_summary,
         value_ledger=value_ledger,
@@ -832,6 +833,7 @@ def _trading_workbench_snapshot_payload(
     priced_in_queue: Mapping[str, object],
     candidate_rows: Sequence[Mapping[str, object]],
     alert_rows: Sequence[Mapping[str, object]],
+    ipo_rows: Sequence[Mapping[str, object]],
     broker_summary: Mapping[str, object],
     validation_summary: Mapping[str, object],
     value_ledger: Mapping[str, object],
@@ -973,6 +975,7 @@ def _trading_workbench_snapshot_payload(
         _workbench_opportunity_action_row(row)
         for row in broker_opportunity_actions[:5]
     ]
+    ipo_module_rows = [_workbench_ipo_s1_row(row) for row in ipo_rows[:5]]
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1077,6 +1080,31 @@ def _trading_workbench_snapshot_payload(
                     "broker.triggers",
                     "broker.opportunity_actions",
                 ],
+            },
+            "ipo": {
+                "status": "ready" if ipo_module_rows else "blocked",
+                "summary": "IPO/S-1 primary-source catalyst evidence.",
+                "metrics": {
+                    "ipo_s1_count": len(ipo_rows),
+                    "s1_filing_count": sum(
+                        1
+                        for row in ipo_rows
+                        if str(row.get("form_type") or "").upper() == "S-1"
+                    ),
+                    "primary_source_count": sum(
+                        1
+                        for row in ipo_rows
+                        if str(row.get("source") or "").lower() in {"sec", "sec edgar"}
+                    ),
+                    "external_calls_made": 0,
+                },
+                "ipo_s1_rows": ipo_module_rows,
+                "next_action": (
+                    "Open S-1 terms and risk flags as research evidence."
+                    if ipo_module_rows
+                    else "Continue with Market Radar until IPO/S-1 rows are available."
+                ),
+                "source_keys": ["ipo_s1.rows", "events.payload.ipo_analysis"],
             },
             "trade-planner": {
                 "status": (
@@ -1548,6 +1576,27 @@ def _workbench_opportunity_action_row(row: Mapping[str, object]) -> dict[str, ob
         "broker_order_submitted": False,
         "order_submission_allowed": False,
         "next_action": "Review local operator action before changing watch state.",
+    }
+
+
+def _workbench_ipo_s1_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "ticker": row.get("ticker") or row.get("proposed_ticker"),
+        "form_type": row.get("form_type"),
+        "filing_date": row.get("filing_date"),
+        "exchange": row.get("exchange"),
+        "price_range_low": row.get("price_range_low"),
+        "price_range_high": row.get("price_range_high"),
+        "estimated_gross_proceeds": row.get("estimated_gross_proceeds"),
+        "risk_flags": _texts(row.get("risk_flags")),
+        "summary": row.get("summary"),
+        "document_url": row.get("document_url") or row.get("source_url"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Review the filing as research evidence; no trade is approved.",
     }
 
 

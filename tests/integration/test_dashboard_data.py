@@ -334,6 +334,17 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
     _insert_alert_fixture(engine, available_at=AVAILABLE_AT - timedelta(minutes=30))
+    with engine.begin() as conn:
+        conn.execute(
+            insert(events).values(
+                **_ipo_event_row(
+                    id="event-acme-s1",
+                    ticker="ACME",
+                    available_at=AVAILABLE_AT - timedelta(minutes=5),
+                    source_ts=AVAILABLE_AT - timedelta(hours=1),
+                )
+            )
+        )
     _insert_broker_portfolio_fixture(engine)
     broker_repo = BrokerRepository(engine)
     broker_repo.upsert_trigger(
@@ -471,6 +482,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "portfolio",
         "market-radar",
         "alerts",
+        "ipo",
         "trade-planner",
         "risk-desk",
         "paper-trading",
@@ -542,6 +554,37 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "Open alert evidence or review saved local trigger rules."
     )
     assert "broker.triggers" in alerts_module["source_keys"]
+
+    ipo = modules["ipo"]
+    assert ipo["status"] == "ready"
+    assert ipo["metrics"]["ipo_s1_count"] == 1
+    assert ipo["metrics"]["s1_filing_count"] == 1
+    assert ipo["metrics"]["primary_source_count"] == 1
+    assert ipo["metrics"]["external_calls_made"] == 0
+    assert ipo["ipo_s1_rows"] == [
+        {
+            "id": "event-acme-s1",
+            "ticker": "ACME",
+            "form_type": "S-1",
+            "filing_date": (AVAILABLE_AT - timedelta(hours=1)).date().isoformat(),
+            "exchange": "Nasdaq Global Select Market",
+            "price_range_low": 17.0,
+            "price_range_high": 19.0,
+            "estimated_gross_proceeds": 225000000.0,
+            "risk_flags": ["history_of_losses", "emerging_growth_company"],
+            "summary": "ACME proposed IPO terms.",
+            "document_url": "https://www.sec.gov/Archives/acme-s1.htm",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": (
+                "Review the filing as research evidence; no trade is approved."
+            ),
+        }
+    ]
+    assert ipo["next_action"] == "Open S-1 terms and risk flags as research evidence."
+    assert "ipo_s1.rows" in ipo["source_keys"]
 
     trade_planner = modules["trade-planner"]
     assert trade_planner["metrics"]["decision_card_count"] == 1
