@@ -750,6 +750,18 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 1040px;
 }
 
+.alert-preview,
+.market-trigger-preview,
+.opportunity-action-preview {
+  margin-top: 12px;
+}
+
+.alert-preview table,
+.market-trigger-preview table,
+.opportunity-action-preview table {
+  min-width: 920px;
+}
+
 .paper-trade-preview table {
   min-width: 720px;
 }

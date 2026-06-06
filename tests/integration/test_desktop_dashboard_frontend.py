@@ -92,6 +92,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchAgentCapabilities",
         "function renderWorkbenchRiskBlocks",
         "function renderWorkbenchReadinessChecks",
+        "function renderWorkbenchAlerts",
+        "function renderWorkbenchMarketTriggers",
+        "function renderWorkbenchOpportunityActions",
         "function workbenchModuleRows",
         "function renderWorkbenchModuleRows",
         "function renderWorkbenchPaperTrades",
@@ -131,6 +134,12 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-risk-block-row"',
         'data-testid="workbench-readiness-checks"',
         'data-testid="workbench-readiness-check-row"',
+        'data-testid="workbench-alerts"',
+        'data-testid="workbench-alert-row"',
+        'data-testid="workbench-market-triggers"',
+        'data-testid="workbench-market-trigger-row"',
+        'data-testid="workbench-opportunity-actions"',
+        'data-testid="workbench-opportunity-action-row"',
         "strategy_proposal",
         "risk_approval",
         "order_intent",
@@ -138,9 +147,13 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "capability_map",
         "risk_blocks",
         "readiness_checks",
+        "opportunity_actions",
         "Agent capability map",
         "Risk desk active plan blocks",
         "Risk readiness checks",
+        "Workbench alerts",
+        "Saved market triggers",
+        "Saved opportunity actions",
         "recommended_paper_decision",
         "paper_decision",
         "order_ticket",
@@ -166,6 +179,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Provider Calls",
         "Broker Order",
         "manual_review_required",
+        "alerts: () => renderPlatformModulePage('alerts', snapshot)",
+        "agent: () => renderPlatformModulePage('agent', snapshot)",
         'data-testid="live-trading-disabled"',
         "function bindPlatformToolCards",
         "platform: {",
@@ -209,6 +224,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".agent-capability-preview" in styles
     assert ".risk-block-preview" in styles
     assert ".risk-readiness-preview" in styles
+    assert ".alert-preview" in styles
+    assert ".market-trigger-preview" in styles
+    assert ".opportunity-action-preview" in styles
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:
