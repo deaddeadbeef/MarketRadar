@@ -337,6 +337,17 @@ function platformModuleForPage(pageKey) {
   return platformModules().find((module) => module.page === pageKey || module.key === pageKey);
 }
 
+function tradingWorkbenchSnapshot(snapshot = state.snapshot || {}) {
+  return snapshot?.trading_workbench || {};
+}
+
+function tradingWorkbenchModule(pageKey, snapshot = state.snapshot || {}) {
+  const workbench = tradingWorkbenchSnapshot(snapshot);
+  const modules = workbench?.modules || {};
+  const manifestModule = platformModuleForPage(pageKey);
+  return modules[pageKey] || modules[manifestModule?.key] || null;
+}
+
 function updatePlatformState() {
   const manifest = platformManifest();
   const boundary = platformBoundary();
@@ -855,6 +866,7 @@ function renderOverview(snapshot) {
 function renderTradingWorkbenchOverview(snapshot) {
   const modules = platformModules();
   const queueCount = rowsFromSnapshot(snapshot).length;
+  const workbench = tradingWorkbenchSnapshot(snapshot);
   return `
     <section class="panel wide platform-map" data-testid="trading-workbench-overview">
       <div class="platform-heading">
@@ -867,6 +879,8 @@ function renderTradingWorkbenchOverview(snapshot) {
           <b>${escapeHtml(platformManifest().primary_tool || 'market-radar')}</b>
           <span>queue</span>
           <b>${escapeHtml(queueCount)}</b>
+          <span>calls</span>
+          <b>${escapeHtml(compact(workbench.external_calls_made, '0'))}</b>
         </div>
       </div>
       <div class="platform-tools" data-testid="platform-tools">
@@ -912,28 +926,95 @@ function renderPlatformModulePage(pageKey, snapshot) {
     status: 'route_ready',
     next_action: 'Review the local evidence before taking action.',
   };
+  const moduleData = tradingWorkbenchModule(pageKey, snapshot);
   const paths = pagePaths[pageKey] || [];
   const dataPanel = pageKey === 'market-radar'
     ? queuePanel('Market Radar Queue', rowsFromSnapshot(snapshot))
     : renderStructuredPage(module.label, paths);
+  const status = moduleData?.status || module.status || 'route_ready';
+  const summary = moduleData?.summary || module.role || 'Local trading platform module.';
+  const nextAction = moduleData?.next_action || module.next_action || 'Review local evidence.';
   return `
     <section class="panel wide module-page" data-testid="platform-module-page" data-tool="${escapeHtml(module.key)}">
       <div class="module-title-row">
         <div>
           <h2>${escapeHtml(module.label)}</h2>
-          <p>${escapeHtml(module.role)}</p>
+          <p>${escapeHtml(summary)}</p>
         </div>
-        <span class="tool-status">${escapeHtml(catalogLabel(module.status || 'route_ready'))}</span>
+        <span class="tool-status">${escapeHtml(catalogLabel(status))}</span>
       </div>
       <div class="module-kpis">
         <div class="kv"><span>Source</span><b>${escapeHtml(module.source || 'local dashboard snapshot')}</b></div>
-        <div class="kv"><span>Next</span><b>${escapeHtml(module.next_action || 'Review local evidence.')}</b></div>
+        <div class="kv"><span>Next</span><b>${escapeHtml(nextAction)}</b></div>
         <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(snapshot.external_calls_made, '0'))}</b></div>
       </div>
     </section>
+    ${renderWorkbenchModuleData(moduleData)}
     ${renderLiveTradingBoundary()}
     ${dataPanel}
   `;
+}
+
+function renderWorkbenchModuleData(moduleData) {
+  if (!moduleData || typeof moduleData !== 'object') return '';
+  const metrics = moduleData.metrics && typeof moduleData.metrics === 'object'
+    ? Object.entries(moduleData.metrics)
+    : [];
+  const sourceKeys = Array.isArray(moduleData.source_keys) ? moduleData.source_keys : [];
+  const rows = workbenchModuleRows(moduleData);
+  return `
+    <section class="panel wide platform-module-data" data-testid="platform-module-data">
+      <div class="module-data-columns">
+        <div class="module-data-block" data-testid="platform-module-metrics">
+          <h2>Module Metrics</h2>
+          <div class="kv-grid">
+            ${metrics.length ? metrics.map(([key, value]) => `
+              <div class="kv"><span>${escapeHtml(catalogLabel(key))}</span><b>${escapeHtml(text(value))}</b></div>
+            `).join('') : '<p>No module metrics reported.</p>'}
+          </div>
+        </div>
+        <div class="module-data-block" data-testid="platform-module-sources">
+          <h2>Local Sources</h2>
+          <ul class="source-key-list">
+            ${sourceKeys.length ? sourceKeys.map((source) => `<li>${escapeHtml(source)}</li>`).join('') : '<li>local dashboard snapshot</li>'}
+          </ul>
+        </div>
+      </div>
+      ${renderWorkbenchModuleRows(rows)}
+    </section>
+  `;
+}
+
+function workbenchModuleRows(moduleData) {
+  if (Array.isArray(moduleData?.rows)) return moduleData.rows;
+  if (moduleData?.focus && typeof moduleData.focus === 'object') return [moduleData.focus];
+  return [];
+}
+
+function renderWorkbenchModuleRows(rows) {
+  if (!rows.length) return '';
+  return `
+    <div class="table-wrap module-row-preview">
+      <table aria-label="Workbench module preview rows">
+        <thead><tr><th>Ticker</th><th>State</th><th>Signal</th><th>Decision Card</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 5).map((row) => `
+            <tr data-testid="platform-module-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker || row.symbol, '-'))}</td>
+              <td data-label="State">${escapeHtml(workbenchRowState(row))}</td>
+              <td data-label="Signal">${escapeHtml(compact(row.subject || row.title || row.summary, '-'))}</td>
+              <td data-label="Decision Card">${escapeHtml(compact(row.decision_card_id || row.card, '-'))}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action || row.command, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function workbenchRowState(row) {
+  return catalogLabel(row.usefulness_status || row.state || row.status || '-');
 }
 
 function renderLiveTradingBoundary() {

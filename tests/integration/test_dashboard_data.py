@@ -314,6 +314,73 @@ def test_dashboard_payload_accepts_provider_backed_scan_rows(tmp_path: Path) -> 
     }
 
 
+def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(available_at=AVAILABLE_AT),
+    )
+
+    workbench = payload["trading_workbench"]
+    assert workbench["schema_version"] == "trading-workbench-snapshot-v1"
+    assert workbench["external_calls_made"] == 0
+    assert workbench["primary_tool"] == "market-radar"
+
+    boundary = workbench["execution_boundary"]
+    assert boundary["live_trading_enabled"] is False
+    assert boundary["broker_order_submission"] == "disabled"
+    assert boundary["autonomous_execution"] == "disabled"
+    assert boundary["paper_trading"] == "preview_only"
+    assert boundary["provider_calls_for_browsing"] == 0
+
+    modules = workbench["modules"]
+    assert {
+        "portfolio",
+        "market-radar",
+        "trade-planner",
+        "risk-desk",
+        "paper-trading",
+        "broker",
+        "backtest",
+        "journal",
+        "agent",
+    } <= set(modules)
+
+    market_radar = modules["market-radar"]
+    assert market_radar["metrics"]["queue_count"] == 2
+    assert market_radar["metrics"]["candidate_count"] == 2
+    assert market_radar["rows"][0]["ticker"] == "MSFT"
+    assert market_radar["rows"][0]["decision_card_id"] == "card-msft-latest"
+    assert market_radar["rows"][0]["usefulness_status"] == "monitor_only"
+
+    trade_planner = modules["trade-planner"]
+    assert trade_planner["metrics"]["decision_card_count"] == 1
+    assert trade_planner["focus"]["decision_card_id"] == "card-msft-latest"
+
+    risk_desk = modules["risk-desk"]
+    assert risk_desk["metrics"]["hard_block_count"] == 0
+
+    paper_trading = modules["paper-trading"]
+    assert paper_trading["metrics"]["paper_trade_count"] == 1
+    assert paper_trading["metrics"]["latest_trade_id"] == "paper-msft"
+    assert paper_trading["metrics"]["approved_for_live_submission"] is False
+
+    broker = modules["broker"]
+    assert broker["status"] == "read_only"
+    assert broker["metrics"]["order_submission_allowed"] is False
+    assert broker["metrics"]["broker_order_submitted"] is False
+
+    assert modules["backtest"]["metrics"]["latest_validation_run"] == "validation-run-latest"
+    assert modules["journal"]["metrics"]["feedback_label_count"] == 1
+    assert modules["agent"]["metrics"]["external_calls_made"] == 0
+
+
 def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
