@@ -487,9 +487,57 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert trade_planner["active_plan"]["decision_card_id"] == "card-msft-latest"
 
     risk_desk = modules["risk-desk"]
+    assert risk_desk["status"] == "blocked"
     assert risk_desk["metrics"]["hard_block_count"] == 0
+    assert risk_desk["metrics"]["risk_block_count"] == 5
+    assert risk_desk["metrics"]["readiness_check_count"] == 22
+    assert risk_desk["metrics"]["readiness_block_count"] == 7
+    assert risk_desk["metrics"]["trial_block_count"] == 0
+    assert risk_desk["metrics"]["shadow_block_count"] == 7
     assert risk_desk["metrics"]["paper_trade_block_count"] == 2
     assert risk_desk["metrics"]["live_submission_block_count"] == 3
+    assert [row["code"] for row in risk_desk["risk_blocks"]] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "stale_broker_data",
+        "zero_preview_size",
+    ]
+    assert risk_desk["risk_blocks"][0] == {
+        "source": "active_plan.paper_trade",
+        "scope": "paper_trade",
+        "code": "action_state_not_manual_review_eligible",
+        "status": "blocked",
+        "finding": "action_state_not_manual_review_eligible",
+        "boundary": "manual_review_required",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Resolve before supervised paper trade review.",
+    }
+    assert risk_desk["risk_blocks"][2]["source"] == "active_plan.live_submission"
+    assert risk_desk["risk_blocks"][2]["next_action"] == (
+        "Live submission remains disabled by the platform boundary."
+    )
+    assert risk_desk["readiness_checks"][0]["source"] == "shadow_readiness"
+    assert risk_desk["readiness_checks"][0]["code"] == "active_universe"
+    assert risk_desk["readiness_checks"][0]["status"] == "blocked"
+    assert risk_desk["readiness_checks"][0]["external_calls_made"] == 0
+    assert risk_desk["readiness_checks"][0]["db_writes_made"] == 0
+    assert risk_desk["readiness_checks"][0]["broker_order_submitted"] is False
+    assert risk_desk["readiness_checks"][0]["order_submission_allowed"] is False
+    assert [row["status"] for row in risk_desk["readiness_checks"][:7]] == [
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+    ]
+    assert all(row["external_calls_made"] == 0 for row in risk_desk["risk_blocks"])
+    assert all(row["db_writes_made"] == 0 for row in risk_desk["risk_blocks"])
 
     paper_trading = modules["paper-trading"]
     assert paper_trading["metrics"]["paper_trade_count"] == 1
