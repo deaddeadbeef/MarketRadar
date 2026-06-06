@@ -990,6 +990,8 @@ function renderWorkbenchModuleData(moduleData) {
       </div>
       ${renderWorkbenchActivePlan(moduleData.active_plan)}
       ${renderWorkbenchAgentCapabilities(moduleData.capability_map)}
+      ${renderWorkbenchRiskBlocks(moduleData.risk_blocks)}
+      ${renderWorkbenchReadinessChecks(moduleData.readiness_checks)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
@@ -1136,6 +1138,56 @@ function renderWorkbenchAgentCapabilities(capabilities) {
               <td data-label="DB Writes">${escapeHtml(compact(capability.db_writes_made, '0'))}</td>
               <td data-label="Broker Order">${escapeHtml(capability.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(capability.description || capability.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchRiskBlocks(blocks) {
+  if (!Array.isArray(blocks) || !blocks.length) return '';
+  return `
+    <div class="table-wrap risk-block-preview" data-testid="workbench-risk-blocks">
+      <table aria-label="Risk desk active plan blocks">
+        <thead><tr><th>Scope</th><th>Code</th><th>Status</th><th>Boundary</th><th>Provider Calls</th><th>DB Writes</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${blocks.slice(0, 10).map((block) => `
+            <tr data-testid="workbench-risk-block-row">
+              <td data-label="Scope">${escapeHtml(catalogLabel(block.scope || block.source || '-'))}</td>
+              <td data-label="Code">${escapeHtml(compact(block.code || block.finding, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(block.status || 'blocked'))}</td>
+              <td data-label="Boundary">${escapeHtml(catalogLabel(block.boundary || 'manual_review_required'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(block.external_calls_made, '0'))}</td>
+              <td data-label="DB Writes">${escapeHtml(compact(block.db_writes_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(block.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(block.next_action || block.finding, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchReadinessChecks(checks) {
+  if (!Array.isArray(checks) || !checks.length) return '';
+  return `
+    <div class="table-wrap risk-readiness-preview" data-testid="workbench-readiness-checks">
+      <table aria-label="Risk readiness checks">
+        <thead><tr><th>Source</th><th>Area</th><th>Status</th><th>Finding</th><th>Evidence</th><th>Provider Calls</th><th>DB Writes</th><th>Next</th></tr></thead>
+        <tbody>
+          ${checks.slice(0, 12).map((check) => `
+            <tr data-testid="workbench-readiness-check-row">
+              <td data-label="Source">${escapeHtml(catalogLabel(check.source || '-'))}</td>
+              <td data-label="Area">${escapeHtml(compact(check.area || check.code, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(check.status || 'unknown'))}</td>
+              <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+              <td data-label="Evidence">${escapeHtml(compact(check.evidence, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(check.external_calls_made, '0'))}</td>
+              <td data-label="DB Writes">${escapeHtml(compact(check.db_writes_made, '0'))}</td>
+              <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
             </tr>
           `).join('')}
         </tbody>

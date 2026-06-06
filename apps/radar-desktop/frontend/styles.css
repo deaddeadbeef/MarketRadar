@@ -737,6 +737,19 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 880px;
 }
 
+.risk-block-preview,
+.risk-readiness-preview {
+  margin-top: 12px;
+}
+
+.risk-block-preview table {
+  min-width: 880px;
+}
+
+.risk-readiness-preview table {
+  min-width: 1040px;
+}
+
 .paper-trade-preview table {
   min-width: 720px;
 }

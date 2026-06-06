@@ -90,6 +90,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchActivePlan",
         "function activePlanBlock",
         "function renderWorkbenchAgentCapabilities",
+        "function renderWorkbenchRiskBlocks",
+        "function renderWorkbenchReadinessChecks",
         "function workbenchModuleRows",
         "function renderWorkbenchModuleRows",
         "function renderWorkbenchPaperTrades",
@@ -125,12 +127,20 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-ticket-record"',
         'data-testid="workbench-agent-capabilities"',
         'data-testid="workbench-agent-capability-row"',
+        'data-testid="workbench-risk-blocks"',
+        'data-testid="workbench-risk-block-row"',
+        'data-testid="workbench-readiness-checks"',
+        'data-testid="workbench-readiness-check-row"',
         "strategy_proposal",
         "risk_approval",
         "order_intent",
         "execution_controls",
         "capability_map",
+        "risk_blocks",
+        "readiness_checks",
         "Agent capability map",
+        "Risk desk active plan blocks",
+        "Risk readiness checks",
         "recommended_paper_decision",
         "paper_decision",
         "order_ticket",
@@ -155,6 +165,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Hard Blocks",
         "Provider Calls",
         "Broker Order",
+        "manual_review_required",
         'data-testid="live-trading-disabled"',
         "function bindPlatformToolCards",
         "platform: {",
@@ -196,6 +207,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".validation-result-preview" in styles
     assert ".portfolio-position-preview" in styles
     assert ".agent-capability-preview" in styles
+    assert ".risk-block-preview" in styles
+    assert ".risk-readiness-preview" in styles
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:

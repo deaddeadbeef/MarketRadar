@@ -908,6 +908,28 @@ def _trading_workbench_snapshot_payload(
         _workbench_agent_capability_row(row)
         for row in _rows(active_plan.get("capability_map"))
     ]
+    risk_block_rows = [
+        *_workbench_active_risk_block_rows(active_risk),
+        *[_workbench_queue_risk_block_row(row) for row in hard_block_rows[:5]],
+    ]
+    readiness_check_rows = sorted(
+        [
+            *(
+                _workbench_readiness_check_row(row, source="shadow_readiness")
+                for row in shadow_checks
+            ),
+            *(
+                _workbench_readiness_check_row(row, source="trial_readiness")
+                for row in trial_checks
+            ),
+        ],
+        key=_workbench_readiness_check_sort_key,
+    )
+    readiness_block_count = sum(
+        1
+        for row in readiness_check_rows
+        if str(row.get("status") or "").lower() == "blocked"
+    )
     journal_ledger_payload = load_value_ledger_entries_payload(
         engine,
         available_at=available_at,
@@ -1028,10 +1050,19 @@ def _trading_workbench_snapshot_payload(
                 "source_keys": ["priced_in_queue.rows", "decision_cards"],
             },
             "risk-desk": {
-                "status": "ready" if not hard_block_rows else "blocked",
+                "status": (
+                    "ready"
+                    if not hard_block_rows
+                    and not risk_block_rows
+                    and readiness_block_count == 0
+                    else "blocked"
+                ),
                 "summary": "Portfolio impact, hard blocks, and readiness gates.",
                 "metrics": {
                     "hard_block_count": len(hard_block_rows),
+                    "risk_block_count": len(risk_block_rows),
+                    "readiness_check_count": len(readiness_check_rows),
+                    "readiness_block_count": readiness_block_count,
                     "trial_block_count": sum(
                         1 for check in trial_checks if check.get("status") == "blocked"
                     ),
@@ -1046,6 +1077,8 @@ def _trading_workbench_snapshot_payload(
                     ),
                 },
                 "active_plan": active_plan,
+                "risk_blocks": risk_block_rows,
+                "readiness_checks": readiness_check_rows,
                 "next_action": "Clear hard blocks before paper or live consideration.",
                 "source_keys": ["trial_readiness", "shadow_readiness", "portfolio_impact"],
             },
@@ -1437,6 +1470,118 @@ def _workbench_agent_capability_row(row: Mapping[str, object]) -> dict[str, obje
         "boundary": boundary,
         "next_action": "Review manually; no autonomous execution is enabled.",
     }
+
+
+def _workbench_active_risk_block_rows(
+    risk: Mapping[str, object],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for scope, blocks, next_action in (
+        (
+            "paper_trade",
+            _texts(risk.get("paper_trade_blocks")),
+            "Resolve before supervised paper trade review.",
+        ),
+        (
+            "live_submission",
+            _texts(risk.get("live_submission_blocks")),
+            "Live submission remains disabled by the platform boundary.",
+        ),
+        (
+            "portfolio",
+            _texts(risk.get("portfolio_hard_blocks")),
+            "Resolve portfolio hard blocks before sizing a trade.",
+        ),
+    ):
+        for block in blocks:
+            rows.append(
+                {
+                    "source": f"active_plan.{scope}",
+                    "scope": scope,
+                    "code": block,
+                    "status": "blocked",
+                    "finding": block,
+                    "boundary": "manual_review_required",
+                    "external_calls_made": 0,
+                    "db_writes_made": 0,
+                    "broker_order_submitted": False,
+                    "order_submission_allowed": False,
+                    "next_action": next_action,
+                }
+            )
+    return rows
+
+
+def _workbench_queue_risk_block_row(row: Mapping[str, object]) -> dict[str, object]:
+    portfolio = _mapping(row.get("portfolio_impact"))
+    blocks = list(
+        dict.fromkeys(
+            [
+                *_texts(row.get("blockers")),
+                *_texts(portfolio.get("hard_blocks")),
+                *_texts(row.get("portfolio_hard_blocks")),
+            ]
+        )
+    )
+    finding = ", ".join(blocks) if blocks else "blocked"
+    return {
+        "source": "priced_in_queue",
+        "scope": "queue",
+        "ticker": row.get("ticker") or row.get("symbol"),
+        "code": blocks[0] if blocks else "blocked",
+        "status": "blocked",
+        "finding": finding,
+        "boundary": "manual_review_required",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": (
+            row.get("next_action")
+            or row.get("command")
+            or "Resolve the queue hard block before planning risk."
+        ),
+    }
+
+
+def _workbench_readiness_check_row(
+    row: Mapping[str, object],
+    *,
+    source: str,
+) -> dict[str, object]:
+    return {
+        "source": source,
+        "code": row.get("code"),
+        "area": row.get("area"),
+        "status": row.get("status") or "unknown",
+        "finding": row.get("finding"),
+        "evidence": row.get("evidence"),
+        "next_action": row.get("next_action") or row.get("next_command"),
+        "external_calls_made": row.get("external_calls_made", 0),
+        "db_writes_made": row.get("db_writes_made", 0),
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+    }
+
+
+def _workbench_readiness_check_sort_key(
+    row: Mapping[str, object],
+) -> tuple[int, int, str]:
+    status_rank = {
+        "blocked": 0,
+        "setup_required": 1,
+        "warning": 2,
+        "ready": 3,
+    }
+    source_rank = {
+        "shadow_readiness": 0,
+        "trial_readiness": 1,
+    }
+    return (
+        status_rank.get(str(row.get("status") or "").lower(), 4),
+        source_rank.get(str(row.get("source") or ""), 2),
+        str(row.get("area") or row.get("code") or ""),
+    )
 
 
 def _workbench_order_ticket_row(row: Mapping[str, object]) -> dict[str, object]:
