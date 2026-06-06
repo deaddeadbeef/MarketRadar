@@ -699,7 +699,8 @@ tr[data-testid="queue-row"]:focus-visible td {
   white-space: nowrap;
 }
 
-.plan-action-row button[data-paper-mode="execute"] {
+.plan-action-row button[data-paper-mode="execute"],
+.plan-action-row button[data-ticket-mode="record"] {
   border-color: rgba(245, 158, 11, .55);
   color: var(--amber);
 }

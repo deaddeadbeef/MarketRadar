@@ -491,7 +491,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for shortcut in payload["automation"]["keyboard_shortcuts"]
     )
     assert any(
-        "action, trigger, ticket, feedback, paper-decision, ledger, and outcome"
+        "action, trigger, ticket, feedback, paper-decision, order-ticket, ledger, and outcome"
         in shortcut
         and "guarded dashboard backend" in shortcut
         for shortcut in payload["automation"]["keyboard_shortcuts"]
@@ -523,6 +523,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     assert any(
         command["command"] == "paper-decision preview / execute"
+        and command["safety"] == "local_db_only_no_broker_order"
+        and command["route"] == "dashboard_backend"
+        for command in command_catalog
+    )
+    assert any(
+        command["command"] == "order-ticket preview / record"
         and command["safety"] == "local_db_only_no_broker_order"
         and command["route"] == "dashboard_backend"
         for command in command_catalog
@@ -580,6 +586,12 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert recipe_actions["source-execute-boundary"]["expected_provider_calls"] == 0
     assert recipe_actions["provider-preview"]["route"] == "dashboard_backend"
     assert recipe_actions["provider-preview"]["expected_provider_calls"] == 0
+    assert recipe_actions["order-ticket-command"]["route"] == "dashboard_backend"
+    assert recipe_actions["order-ticket-command"]["expected_page"] == "broker"
+    assert recipe_actions["order-ticket-command"]["expected_provider_calls"] == 0
+    assert "command-state contains order_ticket" in recipe_actions[
+        "order-ticket-command"
+    ]["expected_state"]
     assert recipe_actions["safe-run-execute"]["route"] == "guarded_dashboard_backend"
     assert recipe_actions["safe-run-execute"]["expected_provider_calls"] is None
     assert recipe_actions["safe-run-execute"]["requires_review"] is True
@@ -639,6 +651,13 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     assert any(
         step["step"] == "paper-decision-command"
         and "paper_decision" in step["expected"]
+        and "external_calls=0" in step["expected"]
+        and "broker_order_submitted=false" in step["expected"]
+        for step in payload["automation"]["computer_use_steps"]
+    )
+    assert any(
+        step["step"] == "order-ticket-command"
+        and "order_ticket" in step["expected"]
         and "external_calls=0" in step["expected"]
         and "broker_order_submitted=false" in step["expected"]
         for step in payload["automation"]["computer_use_steps"]
@@ -751,7 +770,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
-        "Local broker, feedback, paper-decision, value-ledger, and outcome commands"
+        "Local broker, feedback, paper-decision, order-ticket, value-ledger, and outcome commands"
         in assertion
         and "guarded dashboard backend" in assertion
         and "provider, OpenAI, broker, order, or external calls" in assertion
@@ -808,7 +827,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         for assertion in payload["automation"]["zero_call_assertions"]
     )
     assert any(
-        "Local broker, feedback, paper-decision, value-ledger, and outcome commands"
+        "Local broker, feedback, paper-decision, order-ticket, value-ledger, and outcome commands"
         in note
         and "provider preview/status commands use the guarded dashboard backend" in note
         and "run execute uses the guarded radar-run" in note

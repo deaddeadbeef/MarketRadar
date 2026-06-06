@@ -275,6 +275,7 @@ def create_blocked_order_ticket(
         portfolio_context=latest_broker_portfolio_context(
             repo.engine,
             ticker=request.ticker,
+            available_at=timestamp,
             config=config,
         ),
         config=config,
