@@ -849,6 +849,7 @@ def _trading_workbench_snapshot_payload(
     }
     broker_snapshot = _mapping(_mapping(broker_summary.get("snapshot")))
     broker_exposure = _mapping(_mapping(broker_summary.get("exposure")))
+    broker_tickets = _rows(broker_summary.get("order_tickets"))
     validation_report = _mapping(validation_summary.get("report"))
     latest_validation = _mapping(validation_summary.get("latest_run"))
     paper_rows = _rows(validation_summary.get("paper_trades"))
@@ -898,6 +899,9 @@ def _trading_workbench_snapshot_payload(
     )
     active_risk = _mapping(active_plan.get("risk_approval"))
     active_order = _mapping(active_plan.get("order_intent"))
+    broker_ticket_rows = [
+        _workbench_order_ticket_row(row) for row in broker_tickets[:5]
+    ]
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1017,9 +1021,23 @@ def _trading_workbench_snapshot_payload(
             },
             "broker": {
                 "status": "read_only",
-                "summary": "Broker desk is context-only; order submission is disabled.",
+                "summary": (
+                    "Broker desk shows read-only context and blocked local tickets; "
+                    "order submission is disabled."
+                ),
                 "metrics": {
                     "broker_connected": broker_connected,
+                    "order_ticket_count": len(broker_tickets),
+                    "blocked_order_ticket_count": sum(
+                        1
+                        for row in broker_ticket_rows
+                        if str(row.get("status") or "").lower() == "blocked"
+                    ),
+                    "latest_ticket_id": (
+                        broker_ticket_rows[0].get("id")
+                        if broker_ticket_rows
+                        else None
+                    ),
                     "order_submission_allowed": bool(
                         active_order.get("submission_allowed")
                     ),
@@ -1027,8 +1045,13 @@ def _trading_workbench_snapshot_payload(
                         active_order.get("broker_order_submitted")
                     ),
                 },
-                "next_action": "Authenticate only when portfolio context is needed.",
-                "source_keys": ["broker"],
+                "order_tickets": broker_ticket_rows,
+                "next_action": (
+                    "Review blocked local tickets; broker submission remains disabled."
+                    if broker_ticket_rows
+                    else "Authenticate only when portfolio context is needed."
+                ),
+                "source_keys": ["broker", "broker.order_tickets"],
             },
             "backtest": {
                 "status": "ready" if validation_report or latest_validation else "blocked",
@@ -1292,6 +1315,24 @@ def _workbench_queue_row(
             or row.get("next_step")
             or row.get("command")
         ),
+    }
+
+
+def _workbench_order_ticket_row(row: Mapping[str, object]) -> dict[str, object]:
+    preview = _mapping(row.get("preview"))
+    return {
+        "id": row.get("id"),
+        "ticker": row.get("ticker"),
+        "side": row.get("side"),
+        "quantity": row.get("quantity"),
+        "limit_price": row.get("limit_price"),
+        "invalidation_price": row.get("invalidation_price"),
+        "risk_budget": row.get("risk_budget"),
+        "status": row.get("status"),
+        "submission_allowed": bool(row.get("submission_allowed")),
+        "created_at": row.get("created_at"),
+        "hard_blocks": _texts(preview.get("hard_blocks")),
+        "next_action": "Review manually; broker submission is disabled.",
     }
 
 
