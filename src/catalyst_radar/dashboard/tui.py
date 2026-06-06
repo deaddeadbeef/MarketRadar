@@ -83,6 +83,7 @@ from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.validation_repositories import ValidationRepository
+from catalyst_radar.trading.platform import build_trading_platform_plan
 from catalyst_radar.validation.shadow_mode import shadow_mode_status_payload
 from catalyst_radar.validation.value_ledger import (
     build_value_ledger_entry,
@@ -713,6 +714,9 @@ def dashboard_snapshot_payload(
         discovery_snapshot=discovery_snapshot,
     )
     trading_workbench = _trading_workbench_snapshot_payload(
+        engine=engine,
+        config=config,
+        available_at=data_available_at,
         priced_in_queue=display_priced_in_queue,
         candidate_rows=candidate_rows,
         alert_rows=alert_rows,
@@ -813,6 +817,9 @@ def dashboard_snapshot_payload(
 
 def _trading_workbench_snapshot_payload(
     *,
+    engine: Engine,
+    config: AppConfig,
+    available_at: datetime | None,
     priced_in_queue: Mapping[str, object],
     candidate_rows: Sequence[Mapping[str, object]],
     alert_rows: Sequence[Mapping[str, object]],
@@ -869,10 +876,24 @@ def _trading_workbench_snapshot_payload(
         or str(broker_snapshot.get("connection_status") or "").lower()
         in {"connected", "ok", "ready"}
     )
+    focus_row = _workbench_queue_row(
+        first_queue_row,
+        candidate_by_ticker=candidate_by_ticker,
+    )
+    active_plan = _workbench_active_plan_payload(
+        engine=engine,
+        config=config,
+        available_at=available_at,
+        focus_row=focus_row,
+        broker_exposure=broker_exposure,
+    )
+    active_risk = _mapping(active_plan.get("risk_approval"))
+    active_order = _mapping(active_plan.get("order_intent"))
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
         "primary_tool": "market-radar",
+        "active_plan": active_plan,
         "execution_boundary": {
             "live_trading_enabled": False,
             "broker_order_submission": "disabled",
@@ -934,6 +955,8 @@ def _trading_workbench_snapshot_payload(
                     "decision_ready_count": len(decision_ready_rows),
                     "decision_card_count": decision_card_count,
                     "queue_count": len(queue_rows),
+                    "active_plan_status": active_plan.get("status"),
+                    "active_plan_autonomy": active_plan.get("autonomy_level"),
                     "missing_trade_plan_count": sum(
                         1
                         for row in queue_rows
@@ -941,10 +964,8 @@ def _trading_workbench_snapshot_payload(
                         or "trade_plan" in _rows(row.get("missing_trade_plan"))
                     ),
                 },
-                "focus": _workbench_queue_row(
-                    first_queue_row,
-                    candidate_by_ticker=candidate_by_ticker,
-                ),
+                "focus": focus_row,
+                "active_plan": active_plan,
                 "next_action": "Build or review a decision card before paper intent.",
                 "source_keys": ["priced_in_queue.rows", "decision_cards"],
             },
@@ -959,7 +980,14 @@ def _trading_workbench_snapshot_payload(
                     "shadow_block_count": sum(
                         1 for check in shadow_checks if check.get("status") == "blocked"
                     ),
+                    "paper_trade_block_count": len(
+                        _texts(active_risk.get("paper_trade_blocks"))
+                    ),
+                    "live_submission_block_count": len(
+                        _texts(active_risk.get("live_submission_blocks"))
+                    ),
                 },
+                "active_plan": active_plan,
                 "next_action": "Clear hard blocks before paper or live consideration.",
                 "source_keys": ["trial_readiness", "shadow_readiness", "portfolio_impact"],
             },
@@ -969,8 +997,12 @@ def _trading_workbench_snapshot_payload(
                 "metrics": {
                     "paper_trade_count": len(paper_rows),
                     "latest_trade_id": paper_rows[0].get("id") if paper_rows else None,
+                    "approved_for_paper_trade": bool(
+                        active_risk.get("approved_for_paper_trade")
+                    ),
                     "approved_for_live_submission": False,
                 },
+                "active_plan": active_plan,
                 "next_action": "Use paper execution only after risk approval.",
                 "source_keys": ["validation.paper_trades"],
             },
@@ -979,8 +1011,12 @@ def _trading_workbench_snapshot_payload(
                 "summary": "Broker desk is context-only; order submission is disabled.",
                 "metrics": {
                     "broker_connected": broker_connected,
-                    "order_submission_allowed": False,
-                    "broker_order_submitted": False,
+                    "order_submission_allowed": bool(
+                        active_order.get("submission_allowed")
+                    ),
+                    "broker_order_submitted": bool(
+                        active_order.get("broker_order_submitted")
+                    ),
                 },
                 "next_action": "Authenticate only when portfolio context is needed.",
                 "source_keys": ["broker"],
@@ -1025,6 +1061,118 @@ def _trading_workbench_snapshot_payload(
                 "source_keys": ["runtime_context", "agent_brief"],
             },
         },
+    }
+
+
+def _workbench_active_plan_payload(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    available_at: datetime | None,
+    focus_row: Mapping[str, object],
+    broker_exposure: Mapping[str, object],
+) -> dict[str, object]:
+    decision_card_id = str(focus_row.get("decision_card_id") or "").strip()
+    if not decision_card_id:
+        return _missing_workbench_active_plan("no_decision_card")
+    cutoff = available_at or datetime.now(UTC)
+    card = ValidationRepository(engine).decision_card_payload(
+        decision_card_id,
+        available_at=cutoff,
+    )
+    if card is None:
+        return _missing_workbench_active_plan(
+            "decision_card_not_found",
+            decision_card_id=decision_card_id,
+        )
+    plan = build_trading_platform_plan(
+        card,
+        available_at=cutoff,
+        config=config,
+        broker_data_stale=bool(broker_exposure.get("broker_data_stale")),
+    ).to_payload()
+    return _compact_workbench_active_plan(plan)
+
+
+def _missing_workbench_active_plan(
+    reason: str,
+    *,
+    decision_card_id: str | None = None,
+) -> dict[str, object]:
+    return {
+        "schema_version": "trading-workbench-active-plan-v1",
+        "status": "missing",
+        "reason": reason,
+        "decision_card_id": decision_card_id,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "no_execution": True,
+        "next_action": "Review a MarketRadar decision card before planning a trade.",
+    }
+
+
+def _compact_workbench_active_plan(plan: Mapping[str, object]) -> dict[str, object]:
+    risk = _mapping(plan.get("risk_approval"))
+    order = _mapping(plan.get("order_intent"))
+    controls = _mapping(plan.get("execution_controls"))
+    supervision = _mapping(plan.get("supervision"))
+    return {
+        "schema_version": "trading-workbench-active-plan-v1",
+        "source_schema_version": plan.get("schema_version"),
+        "status": plan.get("status"),
+        "autonomy_level": plan.get("autonomy_level"),
+        "decision_card_id": plan.get("decision_card_id"),
+        "ticker": plan.get("ticker"),
+        "external_calls_made": plan.get("external_calls_made", 0),
+        "db_writes_made": plan.get("db_writes_made", 0),
+        "broker_order_submitted": plan.get("broker_order_submitted", False),
+        "order_submission_allowed": plan.get("order_submission_allowed", False),
+        "no_execution": plan.get("no_execution", True),
+        "strategy_proposal": _mapping(plan.get("strategy_proposal")),
+        "risk_approval": {
+            "approved_for_paper_trade": bool(risk.get("approved_for_paper_trade")),
+            "approved_for_live_submission": False,
+            "paper_trade_blocks": _texts(risk.get("paper_trade_blocks")),
+            "live_submission_blocks": _texts(risk.get("live_submission_blocks")),
+            "portfolio_hard_blocks": _texts(risk.get("portfolio_hard_blocks")),
+            "estimated_max_loss": risk.get("estimated_max_loss"),
+            "requires_manual_approval": bool(risk.get("requires_manual_approval")),
+            "live_submission_reason": risk.get("live_submission_reason"),
+        },
+        "order_intent": {
+            "route": order.get("route"),
+            "side": order.get("side"),
+            "quantity": order.get("quantity"),
+            "limit_price": order.get("limit_price"),
+            "stop_price": order.get("stop_price"),
+            "estimated_notional": order.get("estimated_notional"),
+            "estimated_max_loss": order.get("estimated_max_loss"),
+            "submission_allowed": bool(order.get("submission_allowed")),
+            "broker_order_submitted": bool(order.get("broker_order_submitted")),
+        },
+        "execution_controls": {
+            "external_calls_made": controls.get("external_calls_made", 0),
+            "db_writes_made": controls.get("db_writes_made", 0),
+            "broker_order_submitted": bool(controls.get("broker_order_submitted")),
+            "order_submission_allowed": bool(controls.get("order_submission_allowed")),
+            "no_execution": bool(controls.get("no_execution", True)),
+            "live_trading_kill_switch": controls.get("live_trading_kill_switch"),
+            "broker_adapter_mode": controls.get("broker_adapter_mode"),
+        },
+        "supervision": {
+            "requires_manual_approval": bool(supervision.get("requires_manual_approval")),
+            "no_autonomous_execution": bool(supervision.get("no_autonomous_execution")),
+            "paper_decision_preview_command": supervision.get(
+                "paper_decision_preview_command"
+            ),
+            "paper_decision_execute_command": supervision.get(
+                "paper_decision_execute_command"
+            ),
+        },
+        "capability_map": _rows(plan.get("capability_map")),
+        "next_action": plan.get("next_action"),
     }
 
 

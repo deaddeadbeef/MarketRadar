@@ -980,8 +980,86 @@ function renderWorkbenchModuleData(moduleData) {
           </ul>
         </div>
       </div>
+      ${renderWorkbenchActivePlan(moduleData.active_plan)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
+  `;
+}
+
+function renderWorkbenchActivePlan(activePlan) {
+  if (!activePlan || typeof activePlan !== 'object' || activePlan.status === 'missing') return '';
+  const strategy = activePlan.strategy_proposal || {};
+  const risk = activePlan.risk_approval || {};
+  const order = activePlan.order_intent || {};
+  const controls = activePlan.execution_controls || {};
+  const supervision = activePlan.supervision || {};
+  return `
+    <div class="workbench-active-plan" data-testid="workbench-active-plan">
+      <div class="module-title-row">
+        <div>
+          <h2>Active Trading Plan</h2>
+          <p>${escapeHtml(compact(activePlan.next_action, 'Review the active plan before any paper action.'))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(activePlan.status || 'blocked'))}</span>
+      </div>
+      <div class="active-plan-grid">
+        ${activePlanBlock('Strategy', [
+          ['Ticker', activePlan.ticker || strategy.ticker],
+          ['Autonomy', activePlan.autonomy_level],
+          ['Direction', strategy.direction],
+          ['Entry', strategy.entry_price],
+          ['Invalidation', strategy.invalidation_price],
+          ['Reward/risk', strategy.reward_risk],
+        ])}
+        ${activePlanBlock('Risk', [
+          ['Paper approved', risk.approved_for_paper_trade],
+          ['Live approved', risk.approved_for_live_submission],
+          ['Paper blocks', Array.isArray(risk.paper_trade_blocks) ? risk.paper_trade_blocks.length : 0],
+          ['Live blocks', Array.isArray(risk.live_submission_blocks) ? risk.live_submission_blocks.length : 0],
+          ['Max loss', risk.estimated_max_loss],
+          ['Manual approval', risk.requires_manual_approval],
+        ])}
+        ${activePlanBlock('Order Intent', [
+          ['Route', order.route],
+          ['Side', order.side],
+          ['Quantity', order.quantity],
+          ['Limit', order.limit_price],
+          ['Stop', order.stop_price],
+          ['Submission', order.submission_allowed ? 'allowed' : 'disabled'],
+        ])}
+        ${activePlanBlock('Execution Controls', [
+          ['External calls', controls.external_calls_made],
+          ['DB writes', controls.db_writes_made],
+          ['Broker order', controls.broker_order_submitted],
+          ['Order allowed', controls.order_submission_allowed],
+          ['No execution', controls.no_execution],
+          ['Kill switch', controls.live_trading_kill_switch],
+        ])}
+      </div>
+      <div class="plan-command-list" data-testid="workbench-plan-controls">
+        <div>
+          <span>Preview</span>
+          <code>${escapeHtml(compact(supervision.paper_decision_preview_command, 'No preview command.'))}</code>
+        </div>
+        <div>
+          <span>Execute boundary</span>
+          <code>${escapeHtml(compact(supervision.paper_decision_execute_command, 'No execute command.'))}</code>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function activePlanBlock(title, rows) {
+  return `
+    <div class="active-plan-block">
+      <h3>${escapeHtml(title)}</h3>
+      <div class="kv-grid">
+        ${rows.map(([key, value]) => `
+          <div class="kv"><span>${escapeHtml(key)}</span><b>${escapeHtml(text(value))}</b></div>
+        `).join('')}
+      </div>
+    </div>
   `;
 }
 
