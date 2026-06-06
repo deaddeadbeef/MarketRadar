@@ -121,7 +121,7 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &DashboardApp) {
     let lines = vec![
         Line::from(vec![
             Span::styled(
-                "MARKETRADAR",
+                "MARKETRADAR TRADING WORKBENCH",
                 Style::default()
                     .fg(CYAN)
                     .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
@@ -152,7 +152,7 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &DashboardApp) {
     ];
     frame.render_widget(
         Paragraph::new(lines)
-            .block(dashboard_block(" COMMAND CENTER ", CYAN))
+            .block(dashboard_block(" TRADING WORKBENCH ", CYAN))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -182,7 +182,7 @@ fn render_nav(frame: &mut Frame<'_>, area: Rect, app: &DashboardApp) {
         .collect::<Vec<_>>();
     frame.render_widget(
         List::new(items).block(
-            dashboard_block(" WORKFLOW ", BLUE)
+            dashboard_block(" TOOLS ", BLUE)
                 .padding(Padding::new(1, 0, 0, 0))
                 .style(Style::default().bg(PANEL_BG)),
         ),
@@ -204,6 +204,18 @@ fn render_page(frame: &mut Frame<'_>, area: Rect, app: &DashboardApp) {
     match app.page {
         Page::Overview => render_overview(frame, area, snapshot),
         Page::Tutorial => render_tutorial(frame, area),
+        Page::Portfolio => render_object_summary(frame, area, snapshot, &["broker"], " PORTFOLIO "),
+        Page::MarketRadar => render_rows(frame, area, snapshot, " MARKET RADAR "),
+        Page::TradePlanner => {
+            render_object_summary(frame, area, snapshot, &["validation"], " TRADE PLANNER ")
+        }
+        Page::RiskDesk => render_object_summary(frame, area, snapshot, &["broker"], " RISK DESK "),
+        Page::PaperTrading => {
+            render_object_summary(frame, area, snapshot, &["validation"], " PAPER TRADING ")
+        }
+        Page::Backtest => {
+            render_object_summary(frame, area, snapshot, &["validation"], " BACKTEST ")
+        }
         Page::Candidates | Page::Review => render_rows(frame, area, snapshot, " ATTENTION QUEUE "),
         Page::Alerts => render_json_array(frame, area, snapshot, &["alerts", "rows"], " ALERTS "),
         Page::Features => {
@@ -229,6 +241,9 @@ fn render_page(frame: &mut Frame<'_>, area: Rect, app: &DashboardApp) {
             render_object_summary(frame, area, snapshot, &["validation"], " VALIDATION ")
         }
         Page::Costs => render_costs(frame, area, snapshot),
+        Page::Journal => {
+            render_object_summary(frame, area, snapshot, &["value_ledger"], " JOURNAL ")
+        }
         Page::Help => render_help(frame, area),
     }
 }
@@ -591,7 +606,7 @@ fn render_loading(frame: &mut Frame<'_>, area: Rect) {
             ]),
         ])
         .wrap(Wrap { trim: false })
-        .block(dashboard_block(" MARKET COMMAND CENTER ", CYAN).padding(Padding::new(1, 1, 0, 0))),
+        .block(dashboard_block(" TRADING WORKBENCH ", CYAN).padding(Padding::new(1, 1, 0, 0))),
         chunks[0],
     );
 
@@ -668,7 +683,7 @@ fn render_tutorial(frame: &mut Frame<'_>, area: Rect) {
                 "Start Path",
                 Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
             )),
-            Line::from("1 Inbox: triage what matters now."),
+            Line::from("1 Command Center: route platform work safely."),
             Line::from("2 Evidence Gaps: fix missing market or decision evidence."),
             Line::from("3 Safe Run: review provider calls before execution."),
             Line::from("4 Candidate Review: inspect a single evidence case."),
@@ -954,7 +969,7 @@ mod tests {
         app.loading = true;
         let text = render_to_text(&app, 140, 42).expect("render text");
 
-        assert!(text.contains("MARKET COMMAND CENTER"));
+        assert!(text.contains("TRADING WORKBENCH"));
         assert!(text.contains("Loading market snapshot"));
         assert!(text.contains("ZERO PROVIDER CALLS"));
         assert!(text.contains("ATTENTION QUEUE"));
@@ -985,8 +1000,8 @@ mod tests {
         let text = render_to_text(&app, 140, 42).expect("render text");
 
         assert!(text.contains("MARKETRADAR"));
-        assert!(text.contains("COMMAND CENTER"));
-        assert!(text.contains("1 Inbox"));
+        assert!(text.contains("TRADING WORKBENCH"));
+        assert!(text.contains("1 Command Center"));
         assert!(text.contains("NEXT SAFE ACTION"));
         assert!(text.contains("ATTENTION QUEUE"));
         assert!(text.contains("Import bars"));

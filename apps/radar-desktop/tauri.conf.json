@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MarketRadar",
+  "productName": "MarketRadar Trading Workbench",
   "version": "0.1.0",
   "identifier": "com.marketradar.desktop",
   "build": {
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "MarketRadar Command Center",
+        "title": "MarketRadar Trading Workbench",
         "width": 1420,
         "height": 940,
         "minWidth": 1040,

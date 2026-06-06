@@ -4,6 +4,12 @@ use serde_json::Value;
 pub enum Page {
     Tutorial,
     Overview,
+    Portfolio,
+    MarketRadar,
+    TradePlanner,
+    RiskDesk,
+    PaperTrading,
+    Backtest,
     Readiness,
     Run,
     Candidates,
@@ -18,13 +24,20 @@ pub enum Page {
     Validation,
     Costs,
     Features,
+    Journal,
     Help,
 }
 
 impl Page {
-    pub const ALL: [Page; 17] = [
+    pub const ALL: [Page; 24] = [
         Page::Tutorial,
         Page::Overview,
+        Page::Portfolio,
+        Page::MarketRadar,
+        Page::TradePlanner,
+        Page::RiskDesk,
+        Page::PaperTrading,
+        Page::Backtest,
         Page::Readiness,
         Page::Run,
         Page::Candidates,
@@ -39,6 +52,7 @@ impl Page {
         Page::Validation,
         Page::Costs,
         Page::Features,
+        Page::Journal,
         Page::Help,
     ];
 
@@ -46,6 +60,12 @@ impl Page {
         match self {
             Page::Tutorial => "tutorial",
             Page::Overview => "overview",
+            Page::Portfolio => "portfolio",
+            Page::MarketRadar => "market-radar",
+            Page::TradePlanner => "trade-planner",
+            Page::RiskDesk => "risk-desk",
+            Page::PaperTrading => "paper-trading",
+            Page::Backtest => "backtest",
             Page::Readiness => "readiness",
             Page::Run => "run",
             Page::Candidates => "candidates",
@@ -60,6 +80,7 @@ impl Page {
             Page::Validation => "validation",
             Page::Costs => "costs",
             Page::Features => "features",
+            Page::Journal => "journal",
             Page::Help => "help",
         }
     }
@@ -67,7 +88,13 @@ impl Page {
     pub fn label(self) -> &'static str {
         match self {
             Page::Tutorial => "0 Start",
-            Page::Overview => "1 Inbox",
+            Page::Overview => "1 Command Center",
+            Page::Portfolio => "Portfolio",
+            Page::MarketRadar => "Market Radar",
+            Page::TradePlanner => "Trade Planner",
+            Page::RiskDesk => "Risk Desk",
+            Page::PaperTrading => "Paper Trading",
+            Page::Backtest => "Backtest",
             Page::Readiness => "2 Evidence Gaps",
             Page::Run => "3 Safe Run",
             Page::Candidates => "4 Candidate Review",
@@ -82,6 +109,7 @@ impl Page {
             Page::Validation => "Validation",
             Page::Costs => "Costs",
             Page::Features => "F Features",
+            Page::Journal => "Journal",
             Page::Help => "? Help",
         }
     }
@@ -95,7 +123,13 @@ impl Page {
         {
             "0" | "learn" | "start" | "tut" | "tutorial" => Page::Tutorial,
             "1" | "home" | "inbox" | "insight" | "insights" | "mail" | "messages" | "overview"
-            | "o" => Page::Overview,
+            | "command_center" | "workbench" | "o" => Page::Overview,
+            "portfolio" | "portfolio_monitor" | "portfolio_monitoring" => Page::Portfolio,
+            "market" | "market_radar" | "radar" | "scout" | "scanner" => Page::MarketRadar,
+            "trade" | "trade_plan" | "trade_planner" | "planner" => Page::TradePlanner,
+            "risk" | "risk_desk" | "risk_controls" => Page::RiskDesk,
+            "paper" | "paper_trade" | "paper_trading" | "paper_trader" => Page::PaperTrading,
+            "backtest" | "backtests" | "replay" | "replays" => Page::Backtest,
             "2" | "readiness" | "ready" | "evidence" | "evidence_gaps" | "gaps" => Page::Readiness,
             "3" | "run" | "safe" | "safe_run" | "call_plan" | "plan" => Page::Run,
             "4" | "candidate" | "candidates" | "candidate_review" | "c" => Page::Candidates,
@@ -112,6 +146,7 @@ impl Page {
             }
             "cost" | "costs" | "value" | "value_report" | "value-report" => Page::Costs,
             "f" | "features" => Page::Features,
+            "journal" | "journals" | "trade_journal" | "decision_journal" => Page::Journal,
             "?" | "h" | "help" => Page::Help,
             _ => Page::Overview,
         }
@@ -313,6 +348,13 @@ mod tests {
         assert_eq!(Page::from_input("safe-run"), Page::Run);
         assert_eq!(Page::from_input("call-plan"), Page::Run);
         assert_eq!(Page::from_input("candidate-review"), Page::Candidates);
+        assert_eq!(Page::from_input("portfolio"), Page::Portfolio);
+        assert_eq!(Page::from_input("market-radar"), Page::MarketRadar);
+        assert_eq!(Page::from_input("trade-planner"), Page::TradePlanner);
+        assert_eq!(Page::from_input("risk-desk"), Page::RiskDesk);
+        assert_eq!(Page::from_input("paper-trading"), Page::PaperTrading);
+        assert_eq!(Page::from_input("backtest"), Page::Backtest);
+        assert_eq!(Page::from_input("journal"), Page::Journal);
         assert_eq!(Page::from_input("11"), Page::Review);
         assert_eq!(Page::from_input("decision_ready"), Page::Review);
         assert_eq!(Page::from_input("10"), Page::Agent);
