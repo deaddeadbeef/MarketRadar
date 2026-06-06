@@ -733,6 +733,19 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 720px;
 }
 
+.journal-ledger-preview,
+.journal-outcome-preview {
+  margin-top: 12px;
+}
+
+.journal-ledger-preview table {
+  min-width: 820px;
+}
+
+.journal-outcome-preview table {
+  min-width: 780px;
+}
+
 .order-ticket-preview table {
   min-width: 760px;
 }

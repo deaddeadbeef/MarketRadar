@@ -129,6 +129,8 @@ from catalyst_radar.storage.schema import (
     user_feedback,
     validation_results,
     validation_runs,
+    value_ledger_entries,
+    value_outcomes,
 )
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 
@@ -475,7 +477,48 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert broker["order_tickets"] == []
 
     assert modules["backtest"]["metrics"]["latest_validation_run"] == "validation-run-latest"
-    assert modules["journal"]["metrics"]["feedback_label_count"] == 1
+    journal = modules["journal"]
+    assert journal["metrics"]["value_ledger_entry_count"] == 1
+    assert journal["metrics"]["outcome_count"] == 1
+    assert journal["metrics"]["journal_entry_preview_count"] == 1
+    assert journal["metrics"]["journal_outcome_preview_count"] == 1
+    assert journal["metrics"]["feedback_label_count"] == 1
+    assert journal["next_action"] == "Review local value ledger and outcome evidence."
+    assert journal["value_ledger_entries"] == [
+        {
+            "id": "value-ledger-msft",
+            "entry_date": AVAILABLE_AT.date().isoformat(),
+            "ticker": "MSFT",
+            "label": "useful",
+            "artifact_type": "paper_trade",
+            "artifact_id": "paper-msft",
+            "supported_action": "paper_trade",
+            "user_decision": "approved",
+            "estimated_value_usd": 12.5,
+            "confidence": 0.8,
+            "confidence_weighted_value_usd": 10.0,
+            "outcome_status": "computed",
+            "source": "dashboard_fixture",
+            "next_action": "Review outcome evidence or update the local journal.",
+        }
+    ]
+    assert journal["value_outcomes"] == [
+        {
+            "id": "value-outcome-msft",
+            "value_ledger_entry_id": "value-ledger-msft",
+            "ticker": "MSFT",
+            "status": "computed",
+            "trading_days_observed": 20,
+            "entry_price": 101.0,
+            "return_20d": 0.08,
+            "spy_relative_return_20d": 0.05,
+            "max_adverse_excursion": -0.03,
+            "max_favorable_excursion": 0.11,
+            "invalidation_touched": False,
+            "outcome_available_at": AVAILABLE_AT.isoformat(),
+            "next_action": "Compare realized outcome with the original decision.",
+        }
+    ]
     assert modules["agent"]["metrics"]["external_calls_made"] == 0
 
 
@@ -11987,6 +12030,83 @@ def _insert_dashboard_fixture(engine: Engine) -> None:
                 source_ts=SOURCE_TS,
                 available_at=AVAILABLE_AT,
                 payload={"no_execution": True},
+                created_at=AVAILABLE_AT,
+                updated_at=AVAILABLE_AT,
+            )
+        )
+        conn.execute(
+            insert(value_ledger_entries).values(
+                id="value-ledger-msft",
+                entry_date=AVAILABLE_AT.date(),
+                as_of=AS_OF.date(),
+                scan_run_id="validation-run-latest",
+                candidate_state_id="state-msft-latest",
+                candidate_packet_id="packet-msft-latest",
+                decision_card_id="card-msft-latest",
+                artifact_type="paper_trade",
+                artifact_id="paper-msft",
+                ticker="MSFT",
+                label="useful",
+                action_state="manual_review",
+                priced_in_status="bullish_not_priced_in",
+                priced_in_direction="bullish",
+                emotion_score=0.72,
+                reaction_score=0.28,
+                emotion_reaction_gap=0.44,
+                final_score=0.81,
+                setup_type="earnings_revision",
+                supported_action="paper_trade",
+                user_decision="approved",
+                estimated_value_usd=12.5,
+                confidence=0.8,
+                cost_to_produce_usd=1.25,
+                provider_call_count=0,
+                llm_call_count=0,
+                outcome_status="computed",
+                source="dashboard_fixture",
+                notes="paper trade follow-through",
+                available_at=AVAILABLE_AT,
+                payload={"no_external_calls": True},
+                created_at=AVAILABLE_AT,
+                updated_at=AVAILABLE_AT,
+            )
+        )
+        conn.execute(
+            insert(value_outcomes).values(
+                id="value-outcome-msft",
+                value_ledger_entry_id="value-ledger-msft",
+                ticker="MSFT",
+                as_of=AS_OF.date(),
+                outcome_available_at=AVAILABLE_AT,
+                status="computed",
+                entry_price=101.0,
+                trading_days_observed=20,
+                return_5d=0.02,
+                return_10d=0.04,
+                return_20d=0.08,
+                return_60d=None,
+                spy_return_5d=0.01,
+                spy_return_10d=0.02,
+                spy_return_20d=0.03,
+                spy_return_60d=None,
+                spy_relative_return_5d=0.01,
+                spy_relative_return_10d=0.02,
+                spy_relative_return_20d=0.05,
+                spy_relative_return_60d=None,
+                sector_etf_ticker="XLK",
+                sector_return_5d=0.01,
+                sector_return_10d=0.02,
+                sector_return_20d=0.04,
+                sector_return_60d=None,
+                sector_relative_return_5d=0.01,
+                sector_relative_return_10d=0.02,
+                sector_relative_return_20d=0.04,
+                sector_relative_return_60d=None,
+                max_adverse_excursion=-0.03,
+                max_favorable_excursion=0.11,
+                invalidation_price=94.0,
+                invalidation_touched=False,
+                payload={"outcome_direction": "positive"},
                 created_at=AVAILABLE_AT,
                 updated_at=AVAILABLE_AT,
             )
