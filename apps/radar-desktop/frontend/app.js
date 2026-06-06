@@ -989,6 +989,7 @@ function renderWorkbenchModuleData(moduleData) {
         </div>
       </div>
       ${renderWorkbenchActivePlan(moduleData.active_plan)}
+      ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
@@ -1133,6 +1134,30 @@ function renderWorkbenchModuleRows(rows) {
               <td data-label="Signal">${escapeHtml(compact(row.subject || row.title || row.summary, '-'))}</td>
               <td data-label="Decision Card">${escapeHtml(compact(row.decision_card_id || row.card, '-'))}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action || row.command, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchPaperTrades(trades) {
+  if (!Array.isArray(trades) || !trades.length) return '';
+  return `
+    <div class="table-wrap paper-trade-preview" data-testid="workbench-paper-trades">
+      <table aria-label="Paper trade ledger">
+        <thead><tr><th>Ticker</th><th>Decision</th><th>State</th><th>Shares</th><th>Entry</th><th>Max Loss</th><th>Boundary</th></tr></thead>
+        <tbody>
+          ${trades.slice(0, 8).map((trade) => `
+            <tr data-testid="workbench-paper-trade-row">
+              <td data-label="Ticker">${escapeHtml(compact(trade.ticker, '-'))}</td>
+              <td data-label="Decision">${escapeHtml(catalogLabel(trade.decision || '-'))}</td>
+              <td data-label="State">${escapeHtml(catalogLabel(trade.state || '-'))}</td>
+              <td data-label="Shares">${escapeHtml(compact(trade.shares, '0'))}</td>
+              <td data-label="Entry">${escapeHtml(compact(trade.entry_price, '-'))}</td>
+              <td data-label="Max Loss">${escapeHtml(compact(trade.max_loss, '-'))}</td>
+              <td data-label="Boundary">${escapeHtml(trade.no_execution ? 'no execution' : 'local review')}</td>
             </tr>
           `).join('')}
         </tbody>

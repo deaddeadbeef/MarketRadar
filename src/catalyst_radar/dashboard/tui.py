@@ -899,6 +899,9 @@ def _trading_workbench_snapshot_payload(
     )
     active_risk = _mapping(active_plan.get("risk_approval"))
     active_order = _mapping(active_plan.get("order_intent"))
+    paper_trade_rows = [
+        _workbench_paper_trade_row(row) for row in paper_rows[:5]
+    ]
     broker_ticket_rows = [
         _workbench_order_ticket_row(row) for row in broker_tickets[:5]
     ]
@@ -1009,14 +1012,28 @@ def _trading_workbench_snapshot_payload(
                 "summary": "Paper-only execution history and supervised intent boundary.",
                 "metrics": {
                     "paper_trade_count": len(paper_rows),
-                    "latest_trade_id": paper_rows[0].get("id") if paper_rows else None,
+                    "open_paper_trade_count": sum(
+                        1
+                        for row in paper_rows
+                        if str(row.get("state") or "").lower() == "open"
+                    ),
+                    "latest_trade_id": (
+                        paper_trade_rows[0].get("id")
+                        if paper_trade_rows
+                        else None
+                    ),
                     "approved_for_paper_trade": bool(
                         active_risk.get("approved_for_paper_trade")
                     ),
                     "approved_for_live_submission": False,
                 },
                 "active_plan": active_plan,
-                "next_action": "Use paper execution only after risk approval.",
+                "paper_trades": paper_trade_rows,
+                "next_action": (
+                    "Review local paper outcomes; broker submission remains disabled."
+                    if paper_trade_rows
+                    else "Use paper execution only after risk approval."
+                ),
                 "source_keys": ["validation.paper_trades"],
             },
             "broker": {
@@ -1333,6 +1350,26 @@ def _workbench_order_ticket_row(row: Mapping[str, object]) -> dict[str, object]:
         "created_at": row.get("created_at"),
         "hard_blocks": _texts(preview.get("hard_blocks")),
         "next_action": "Review manually; broker submission is disabled.",
+    }
+
+
+def _workbench_paper_trade_row(row: Mapping[str, object]) -> dict[str, object]:
+    payload = _mapping(row.get("payload"))
+    return {
+        "id": row.get("id"),
+        "decision_card_id": row.get("decision_card_id"),
+        "ticker": row.get("ticker"),
+        "decision": row.get("decision"),
+        "state": row.get("state"),
+        "entry_price": row.get("entry_price"),
+        "entry_at": row.get("entry_at"),
+        "invalidation_price": row.get("invalidation_price"),
+        "shares": row.get("shares"),
+        "notional": row.get("notional"),
+        "max_loss": row.get("max_loss"),
+        "available_at": row.get("available_at"),
+        "no_execution": bool(payload.get("no_execution", True)),
+        "next_action": "Track outcome locally; no broker order was submitted.",
     }
 
 

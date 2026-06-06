@@ -725,6 +725,14 @@ tr[data-testid="queue-row"]:focus-visible td {
   margin-top: 12px;
 }
 
+.paper-trade-preview {
+  margin-top: 12px;
+}
+
+.paper-trade-preview table {
+  min-width: 720px;
+}
+
 .order-ticket-preview table {
   min-width: 760px;
 }
