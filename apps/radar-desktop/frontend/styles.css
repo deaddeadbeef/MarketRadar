@@ -467,6 +467,140 @@ tr[data-testid="queue-row"]:focus-visible td {
   color: var(--muted);
 }
 
+.platform-map,
+.module-page,
+.platform-boundary {
+  min-width: 0;
+}
+
+.platform-heading,
+.module-title-row {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.platform-heading p,
+.module-title-row p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.platform-summary {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px 10px;
+  min-width: 180px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+
+.platform-summary span,
+.tool-source span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.platform-summary b,
+.tool-source b {
+  color: var(--ink);
+}
+
+.platform-tools {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.platform-tool-card {
+  min-height: 168px;
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111923;
+  cursor: pointer;
+}
+
+.platform-tool-card:hover,
+.platform-tool-card:focus-visible {
+  border-color: rgba(84, 215, 255, .72);
+  outline: 2px solid rgba(84, 215, 255, .38);
+  outline-offset: 2px;
+}
+
+.platform-tool-card[data-status="active"] {
+  border-color: rgba(85, 216, 150, .48);
+}
+
+.platform-tool-card[data-status="read_only"],
+.platform-tool-card[data-status="preview_only"] {
+  border-color: rgba(240, 189, 92, .46);
+}
+
+.tool-card-top {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tool-card-top h3 {
+  font-size: 15px;
+}
+
+.tool-status {
+  flex: 0 0 auto;
+  max-width: 132px;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--amber);
+  background: #0c1218;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.platform-tool-card p {
+  color: var(--ink);
+}
+
+.tool-source {
+  display: grid;
+  gap: 3px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.module-kpis,
+.boundary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.boundary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.platform-boundary {
+  border-color: rgba(240, 189, 92, .5);
+}
+
+.platform-boundary .kv b {
+  color: var(--amber);
+}
+
 .right-rail {
   grid-column: 3;
   grid-row: 2;
@@ -677,6 +811,14 @@ dialog::backdrop {
   .footer {
     grid-row: 4;
   }
+
+  .platform-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .boundary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 860px) {
@@ -730,8 +872,16 @@ dialog::backdrop {
 
   .toolbar,
   .metric-grid,
-  .kv-grid {
+  .kv-grid,
+  .platform-tools,
+  .module-kpis,
+  .boundary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .platform-heading,
+  .module-title-row {
+    display: grid;
   }
 
   .main .panel,

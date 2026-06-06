@@ -20,6 +20,8 @@ from catalyst_radar.storage.db import create_schema, engine_from_url
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
+TRADING_WORKBENCH_TITLE = "MarketRadar Trading Workbench"
+
 
 @dataclass(frozen=True)
 class DashboardPageRequest:
@@ -56,9 +58,45 @@ DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
     },
     {
         "key": "overview",
-        "label": "1 Inbox",
+        "label": "1 Command Center",
         "shortcut": "1",
-        "description": "Inbox, status, first blocker, and next safe action.",
+        "description": "Trading workbench command center, account state, and next safe action.",
+    },
+    {
+        "key": "portfolio",
+        "label": "Portfolio",
+        "shortcut": "portfolio",
+        "description": "Positions, exposure, cash, and portfolio context.",
+    },
+    {
+        "key": "market-radar",
+        "label": "Market Radar",
+        "shortcut": "radar",
+        "description": "MarketRadar catalyst scout, mispricing queue, and evidence gaps.",
+    },
+    {
+        "key": "trade-planner",
+        "label": "Trade Planner",
+        "shortcut": "planner",
+        "description": "Trade thesis, sizing, reward/risk, and decision-card planning.",
+    },
+    {
+        "key": "risk-desk",
+        "label": "Risk Desk",
+        "shortcut": "risk",
+        "description": "Policy gates, portfolio impact, concentration, and hard blocks.",
+    },
+    {
+        "key": "paper-trading",
+        "label": "Paper Trading",
+        "shortcut": "paper",
+        "description": "Paper-only tickets, fills, and shadow validation.",
+    },
+    {
+        "key": "backtest",
+        "label": "Backtest",
+        "shortcut": "replay",
+        "description": "Replay, backtest, and validation evidence.",
     },
     {
         "key": "readiness",
@@ -145,12 +183,139 @@ DASHBOARD_DESKTOP_PAGES: tuple[dict[str, str], ...] = (
         "description": "Feature inventory and where each feature lives.",
     },
     {
+        "key": "journal",
+        "label": "Journal",
+        "shortcut": "journal",
+        "description": "Decision journal, feedback, value ledger, and outcome review.",
+    },
+    {
         "key": "help",
         "label": "? Help",
         "shortcut": "?",
         "description": "Keyboard, automation, and command reference.",
     },
 )
+
+TRADING_PLATFORM_MODULES: tuple[dict[str, str], ...] = (
+    {
+        "key": "command-center",
+        "label": "Command Center",
+        "role": "Operating home for account state, safe action, and agent handoff.",
+        "source": "local dashboard snapshot",
+        "status": "active",
+        "page": "overview",
+        "test_id": "platform-tool-command-center",
+        "next_action": "Review the safe action and route work to a tool.",
+    },
+    {
+        "key": "portfolio",
+        "label": "Portfolio",
+        "role": "Positions, exposure, cash, watch intent, and broker context.",
+        "source": "read-only broker and local portfolio records",
+        "status": "route_ready",
+        "page": "portfolio",
+        "test_id": "platform-tool-portfolio",
+        "next_action": "Inspect exposure before any trade plan.",
+    },
+    {
+        "key": "market-radar",
+        "label": "Market Radar",
+        "role": "Scouted catalysts, mispricing queues, evidence gaps, and watchlists.",
+        "source": "priced-in queue and catalyst evidence",
+        "status": "active",
+        "page": "market-radar",
+        "test_id": "platform-tool-market-radar",
+        "next_action": "Open the top evidence row or fill missing sources.",
+    },
+    {
+        "key": "trade-planner",
+        "label": "Trade Planner",
+        "role": "Candidate sizing, thesis, reward/risk, and decision-card assembly.",
+        "source": "decision cards and validation evidence",
+        "status": "route_ready",
+        "page": "trade-planner",
+        "test_id": "platform-tool-trade-planner",
+        "next_action": "Draft a plan from a decision-ready candidate.",
+    },
+    {
+        "key": "risk-desk",
+        "label": "Risk Desk",
+        "role": "Policy gates, portfolio impact, concentration, and hard blocks.",
+        "source": "policy scan, broker context, and validation artifacts",
+        "status": "route_ready",
+        "page": "risk-desk",
+        "test_id": "platform-tool-risk-desk",
+        "next_action": "Resolve hard blocks before paper or live consideration.",
+    },
+    {
+        "key": "paper-trading",
+        "label": "Paper Trading",
+        "role": "Paper-only tickets, fills, outcomes, and shadow validation.",
+        "source": "paper trades and value outcomes",
+        "status": "preview_only",
+        "page": "paper-trading",
+        "test_id": "platform-tool-paper-trading",
+        "next_action": "Use paper execution only after risk approval.",
+    },
+    {
+        "key": "broker-desk",
+        "label": "Broker Desk",
+        "role": "Read-only broker connection, order-ticket previews, and sync boundaries.",
+        "source": "broker snapshot and local order-ticket records",
+        "status": "read_only",
+        "page": "broker",
+        "test_id": "platform-tool-broker-desk",
+        "next_action": "Authenticate only for portfolio context; order submission is disabled.",
+    },
+    {
+        "key": "backtest",
+        "label": "Backtest / Replay",
+        "role": "Historical replay, shadow-mode validation, and strategy evidence.",
+        "source": "validation runs and backtest artifacts",
+        "status": "route_ready",
+        "page": "backtest",
+        "test_id": "platform-tool-backtest",
+        "next_action": "Compare candidate logic against replay evidence.",
+    },
+    {
+        "key": "alerts",
+        "label": "Alerts",
+        "role": "Research notifications, watch triggers, and operator routing.",
+        "source": "local alert rows",
+        "status": "active",
+        "page": "alerts",
+        "test_id": "platform-tool-alerts",
+        "next_action": "Open an alert as research context, not trade approval.",
+    },
+    {
+        "key": "journal",
+        "label": "Journal",
+        "role": "Decision notes, feedback, value ledger, and outcome review.",
+        "source": "local feedback and value ledger records",
+        "status": "route_ready",
+        "page": "journal",
+        "test_id": "platform-tool-journal",
+        "next_action": "Record feedback and outcome evidence locally.",
+    },
+    {
+        "key": "agent-cockpit",
+        "label": "Agent Cockpit",
+        "role": "Agent brief, proposed tool use, budget gates, and execution review.",
+        "source": "agent brief and runtime context",
+        "status": "preview_only",
+        "page": "agent",
+        "test_id": "platform-tool-agent-cockpit",
+        "next_action": "Preview agent reasoning; execute remains gated.",
+    },
+)
+
+TRADING_PLATFORM_BOUNDARY: dict[str, object] = {
+    "live_trading_enabled": False,
+    "broker_order_submission": "disabled",
+    "autonomous_execution": "disabled",
+    "paper_trading": "preview_only",
+    "provider_calls_for_browsing": 0,
+}
 
 DASHBOARD_COMMAND_BOX_COMMANDS: tuple[dict[str, str], ...] = (
     {
@@ -353,12 +518,22 @@ def _command_box_commands() -> list[dict[str, str]]:
     return [dict(command) for command in DASHBOARD_COMMAND_BOX_COMMANDS]
 
 
+def _trading_platform_manifest() -> dict[str, object]:
+    return {
+        "schema_version": "trading-platform-manifest-v1",
+        "name": TRADING_WORKBENCH_TITLE,
+        "primary_tool": "market-radar",
+        "modules": [dict(module) for module in TRADING_PLATFORM_MODULES],
+        "execution_boundary": dict(TRADING_PLATFORM_BOUNDARY),
+    }
+
+
 def _automation_recipe() -> dict[str, object]:
     return {
         "schema_version": "dashboard-computer-use-recipe-v1",
         "launch": {
             "executable": "target\\release\\radar-desktop.exe",
-            "window_title": "MarketRadar Command Center",
+            "window_title": TRADING_WORKBENCH_TITLE,
         },
         "state_sources": {
             "page": "automation-state",
@@ -580,7 +755,7 @@ def _automation_recipe() -> dict[str, object]:
                 "expected_nav": None,
                 "expected_provider_calls": 0,
                 "expected_state": [
-                    "native MarketRadar Command Center window closes",
+                    "native MarketRadar Trading Workbench window closes",
                 ],
                 "requires_review": True,
             },
@@ -593,12 +768,14 @@ def manifest() -> dict[str, object]:
     return {
         "schema_version": "dashboard-ui-manifest-v1",
         "external_calls_made": 0,
+        "app_name": TRADING_WORKBENCH_TITLE,
         "surfaces": {
             "default": "tauri_desktop",
             "terminal": "rust_tui",
             "legacy": "python_textual",
         },
         "pages": _desktop_pages(),
+        "platform": _trading_platform_manifest(),
         "automation": {
             "contract_version": "market-radar-desktop-automation-v1",
             "landmarks": [
@@ -689,7 +866,7 @@ def manifest() -> dict[str, object]:
             ],
             "command_box_commands": _command_box_commands(),
             "automation_recipe": _automation_recipe(),
-            "native_window_title": "MarketRadar Command Center",
+            "native_window_title": TRADING_WORKBENCH_TITLE,
             "native_executable": "target\\release\\radar-desktop.exe",
             "computer_use_steps": [
                 {
@@ -699,12 +876,14 @@ def manifest() -> dict[str, object]:
                         "then select the returned window object."
                     ),
                     "target": "target\\release\\radar-desktop.exe",
-                    "expected": "A native window titled MarketRadar Command Center is targetable.",
+                    "expected": (
+                        "A native window titled MarketRadar Trading Workbench is targetable."
+                    ),
                 },
                 {
                     "step": "capture",
                     "action": "Capture screenshot and accessibility text for the selected window.",
-                    "target": "MarketRadar Command Center",
+                    "target": "MarketRadar Trading Workbench",
                     "expected": (
                         "The window exposes MarketRadar workflow tabs, dashboard-page, "
                         "command-input, command-state, automation-state, "
@@ -917,7 +1096,7 @@ def manifest() -> dict[str, object]:
                     ),
                     "target": "command-input",
                     "expected": (
-                        "The native MarketRadar Command Center window closes "
+                        "The native MarketRadar Trading Workbench window closes "
                         "without provider, OpenAI, broker, or DB-write actions."
                     ),
                 },

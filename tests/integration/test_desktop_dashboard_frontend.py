@@ -19,6 +19,9 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     assert "ticker=all scan_mode=all stocks_only=false limit=50 offset=0" in source
     assert 'data-testid="command-state"' in source
     assert 'last_command=none page=overview nav=overview provider_calls=0' in source
+    assert "<title>MarketRadar Trading Workbench</title>" in source
+    assert 'data-testid="platform-state"' in source
+    assert "primary_tool=market-radar live_trading_enabled=false" in source
     assert 'data-testid="automation-json"' in source
     match = re.search(
         r'<pre id="automation-json"[^>]*>(?P<payload>.*?)</pre>',
@@ -31,6 +34,90 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     assert automation_payload["provider_calls"] == 0
     assert automation_payload["filters"]["scan_mode"] == "all"
     assert automation_payload["filters"]["stocks_only"] is False
+
+
+def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
+    html = Path("apps/radar-desktop/frontend/index.html").read_text(
+        encoding="utf-8",
+    )
+    source = Path("apps/radar-desktop/frontend/app.js").read_text(
+        encoding="utf-8",
+    )
+    styles = Path("apps/radar-desktop/frontend/styles.css").read_text(
+        encoding="utf-8",
+    )
+    rust_source = Path("apps/radar-desktop/src/main.rs").read_text(
+        encoding="utf-8",
+    )
+    model_source = Path("crates/radar-tui/src/model.rs").read_text(
+        encoding="utf-8",
+    )
+    tauri_config = Path("apps/radar-desktop/tauri.conf.json").read_text(
+        encoding="utf-8",
+    )
+
+    assert "MarketRadar Trading Workbench" in html
+    assert "MarketRadar Trading Workbench" in tauri_config
+    assert "const TRADING_WORKBENCH_TITLE" in rust_source
+    assert "app_name: TRADING_WORKBENCH_TITLE" in rust_source
+    assert 'schema_version: "trading-platform-manifest-v1"' in rust_source
+    assert 'primary_tool: "market-radar"' in rust_source
+    assert "live_trading_enabled: false" in rust_source
+    assert 'broker_order_submission: "disabled"' in rust_source
+
+    for page in (
+        "Portfolio",
+        "MarketRadar",
+        "TradePlanner",
+        "RiskDesk",
+        "PaperTrading",
+        "Backtest",
+        "Journal",
+    ):
+        assert f"Page::{page}" in model_source
+
+    for text in (
+        "fallbackPlatformModules",
+        "function renderTradingWorkbenchOverview",
+        'data-testid="trading-workbench-overview"',
+        'data-testid="platform-tool-card"',
+        'data-tool="${escapeHtml(module.key)}"',
+        "function renderPlatformModulePage",
+        'data-testid="platform-module-page"',
+        'data-testid="live-trading-disabled"',
+        "function bindPlatformToolCards",
+        "platform: {",
+        "primary_tool: platformManifest().primary_tool",
+        "live_trading_enabled: Boolean(platformBoundary().live_trading_enabled)",
+    ):
+        assert text in source
+
+    for alias in (
+        "['portfolio', 'portfolio']",
+        "['market-radar', 'market-radar']",
+        "['trade-planner', 'trade-planner']",
+        "['risk-desk', 'risk-desk']",
+        "['paper-trading', 'paper-trading']",
+        "['broker-desk', 'broker']",
+        "['backtest', 'backtest']",
+        "['journal', 'journal']",
+        "['agent-cockpit', 'agent']",
+    ):
+        assert alias in source
+
+    for tool in (
+        "platform-tool-market-radar",
+        "platform-tool-trade-planner",
+        "platform-tool-risk-desk",
+        "platform-tool-paper-trading",
+        "platform-tool-agent-cockpit",
+    ):
+        assert tool in rust_source
+
+    assert ".platform-tools" in styles
+    assert ".platform-tool-card" in styles
+    assert ".platform-boundary" in styles
+    assert ".module-page" in styles
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:
@@ -155,7 +242,7 @@ def test_tauri_dashboard_quit_command_closes_native_window() -> None:
     )
 
     assert "['q', 'quit', 'exit'].includes(command)" in source
-    assert "setCommandStatus('Closing MarketRadar.');" in source
+    assert "setCommandStatus('Closing MarketRadar Trading Workbench.');" in source
     assert "await closeDashboardWindow();" in source
     assert "await invoke('close_dashboard_window');" in source
     assert "fn close_dashboard_window(app: AppHandle) -> Result<(), String>" in rust_source
@@ -206,7 +293,7 @@ def test_tauri_dashboard_global_keys_match_rust_tui() -> None:
     assert "if (plainKey === 'r')" in source
     assert "if (plainKey === 'j')" in source
     assert "if (plainKey === 'k')" in source
-    assert "setCommandStatus('Closing MarketRadar.');" in source
+    assert "setCommandStatus('Closing MarketRadar Trading Workbench.');" in source
     assert "closeDashboardWindow();" in source
     assert "setCommandStatus('Refreshed.');" in source
     assert "refreshSnapshot();" in source

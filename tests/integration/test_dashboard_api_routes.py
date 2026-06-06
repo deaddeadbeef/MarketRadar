@@ -341,13 +341,52 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     payload = response.json()
     assert payload["schema_version"] == "dashboard-ui-manifest-v1"
     assert payload["external_calls_made"] == 0
+    assert payload["app_name"] == "MarketRadar Trading Workbench"
     assert payload["surfaces"]["default"] == "tauri_desktop"
     assert any(page["key"] == "overview" for page in payload["pages"])
+    assert any(
+        page["key"] == "market-radar"
+        and page["label"] == "Market Radar"
+        and page["test_id"] == "nav-page-market-radar"
+        for page in payload["pages"]
+    )
+    assert any(
+        page["key"] == "trade-planner"
+        and page["shortcut"] == "planner"
+        for page in payload["pages"]
+    )
+    assert any(
+        page["key"] == "risk-desk"
+        and page["shortcut"] == "risk"
+        for page in payload["pages"]
+    )
+    assert any(
+        page["key"] == "paper-trading"
+        and page["shortcut"] == "paper"
+        for page in payload["pages"]
+    )
+    assert any(page["key"] == "journal" for page in payload["pages"])
     assert all(
         page["test_id"] == f"nav-page-{page['key']}"
         and page["description"]
         for page in payload["pages"]
     )
+    platform = payload["platform"]
+    assert platform["schema_version"] == "trading-platform-manifest-v1"
+    assert platform["name"] == "MarketRadar Trading Workbench"
+    assert platform["primary_tool"] == "market-radar"
+    assert platform["execution_boundary"]["live_trading_enabled"] is False
+    assert platform["execution_boundary"]["broker_order_submission"] == "disabled"
+    assert platform["execution_boundary"]["autonomous_execution"] == "disabled"
+    assert platform["execution_boundary"]["provider_calls_for_browsing"] == 0
+    platform_modules = {module["key"]: module for module in platform["modules"]}
+    assert platform_modules["market-radar"]["page"] == "market-radar"
+    assert platform_modules["market-radar"]["status"] == "active"
+    assert platform_modules["trade-planner"]["page"] == "trade-planner"
+    assert platform_modules["risk-desk"]["page"] == "risk-desk"
+    assert platform_modules["paper-trading"]["status"] == "preview_only"
+    assert platform_modules["broker-desk"]["page"] == "broker"
+    assert platform_modules["agent-cockpit"]["page"] == "agent"
     assert any(
         page["key"] == "costs" and page["label"] == "Costs" and page["shortcut"] == "V"
         for page in payload["pages"]
@@ -501,7 +540,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
     )
     recipe = payload["automation"]["automation_recipe"]
     assert recipe["schema_version"] == "dashboard-computer-use-recipe-v1"
-    assert recipe["launch"]["window_title"] == "MarketRadar Command Center"
+    assert recipe["launch"]["window_title"] == "MarketRadar Trading Workbench"
     assert recipe["launch"]["executable"].endswith("radar-desktop.exe")
     assert recipe["state_sources"] == {
         "page": "automation-state",
@@ -564,7 +603,7 @@ def test_get_dashboard_manifest_returns_desktop_automation_contract(
         and "snapshot-page" in note
         for note in payload["automation"]["notes"]
     )
-    assert payload["automation"]["native_window_title"] == "MarketRadar Command Center"
+    assert payload["automation"]["native_window_title"] == "MarketRadar Trading Workbench"
     assert payload["automation"]["native_executable"].endswith(
         "radar-desktop.exe"
     )

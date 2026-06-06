@@ -27,6 +27,37 @@ const keyAliases = new Map([
   ['insights', 'overview'],
   ['mail', 'overview'],
   ['messages', 'overview'],
+  ['command-center', 'overview'],
+  ['command_center', 'overview'],
+  ['workbench', 'overview'],
+  ['portfolio', 'portfolio'],
+  ['portfolio-monitor', 'portfolio'],
+  ['portfolio_monitor', 'portfolio'],
+  ['market', 'market-radar'],
+  ['market-radar', 'market-radar'],
+  ['market_radar', 'market-radar'],
+  ['radar', 'market-radar'],
+  ['scout', 'market-radar'],
+  ['scanner', 'market-radar'],
+  ['trade', 'trade-planner'],
+  ['trade-plan', 'trade-planner'],
+  ['trade_plan', 'trade-planner'],
+  ['trade-planner', 'trade-planner'],
+  ['trade_planner', 'trade-planner'],
+  ['planner', 'trade-planner'],
+  ['risk', 'risk-desk'],
+  ['risk-desk', 'risk-desk'],
+  ['risk_desk', 'risk-desk'],
+  ['risk-controls', 'risk-desk'],
+  ['paper', 'paper-trading'],
+  ['paper-trade', 'paper-trading'],
+  ['paper_trade', 'paper-trading'],
+  ['paper-trading', 'paper-trading'],
+  ['paper_trading', 'paper-trading'],
+  ['backtest', 'backtest'],
+  ['backtests', 'backtest'],
+  ['replay', 'backtest'],
+  ['replays', 'backtest'],
   ['2', 'readiness'],
   ['blockers', 'readiness'],
   ['evidence', 'readiness'],
@@ -49,9 +80,13 @@ const keyAliases = new Map([
   ['6', 'ipo'],
   ['s1', 'ipo'],
   ['7', 'broker'],
+  ['broker-desk', 'broker'],
+  ['broker_desk', 'broker'],
   ['8', 'ops'],
   ['9', 'telemetry'],
   ['10', 'agent'],
+  ['agent-cockpit', 'agent'],
+  ['agent_cockpit', 'agent'],
   ['o', 'overview'],
   ['e', 'readiness'],
   ['g', 'readiness'],
@@ -76,11 +111,23 @@ const keyAliases = new Map([
   ['value', 'costs'],
   ['value_report', 'costs'],
   ['f', 'features'],
+  ['journal', 'journal'],
+  ['journals', 'journal'],
+  ['trade-journal', 'journal'],
+  ['trade_journal', 'journal'],
+  ['decision-journal', 'journal'],
+  ['decision_journal', 'journal'],
   ['h', 'help'],
   ['?', 'help'],
 ]);
 
 const pagePaths = {
+  portfolio: [['broker'], ['broker', 'exposure'], ['portfolio'], ['runtime_context']],
+  'market-radar': [['priced_in_queue'], ['candidates'], ['alerts'], ['ipo_s1'], ['themes']],
+  'trade-planner': [['validation'], ['decision_cards'], ['candidate_packets'], ['value_report']],
+  'risk-desk': [['broker'], ['policy'], ['portfolio_impacts'], ['validation']],
+  'paper-trading': [['validation'], ['paper_trading'], ['paper_trades'], ['value_outcomes']],
+  backtest: [['validation'], ['validation', 'latest_run'], ['validation', 'report'], ['telemetry']],
   readiness: [['readiness'], ['real_results'], ['full_market_trust_gate']],
   run: [['call_plan'], ['radar_run'], ['operator_next_step']],
   broker: [['broker'], ['runtime_context']],
@@ -89,6 +136,7 @@ const pagePaths = {
   agent: [['agent_brief'], ['runtime_context']],
   validation: [['validation'], ['validation', 'latest_run'], ['validation', 'report']],
   costs: [['costs'], ['value_ledger'], ['value_outcomes'], ['value_report']],
+  journal: [['value_ledger'], ['value_outcomes'], ['feedback'], ['telemetry']],
 };
 
 const executeClassCommands = new Set([
@@ -196,6 +244,8 @@ const powershellCommandPrefixes = new Set([
 
 const fallbackCommandReference = [
   ['0..9, Ctrl+A, Ctrl+N/P, Tab, J/K, V, F, ?, or page name', 'Switch pages; Ctrl+A opens Agent and V opens Costs.'],
+  ['portfolio / market-radar / trade-planner / risk-desk', 'Open the trading workbench platform tools without provider calls.'],
+  ['paper-trading / broker-desk / backtest / journal / agent-cockpit', 'Open execution, replay, journal, and agent surfaces with live trading disabled.'],
   ['themes / validation / costs / features', 'Open local evidence pages for clustered themes, validation, costs, and feature inventory.'],
   ['setup / first', 'Show the first setup command and where to run it.'],
   ['open #|TICKER', 'Open a row from Candidate Review or show its next command.'],
@@ -223,6 +273,20 @@ const fallbackCommandReference = [
   ['clear-filters / refresh / q', 'Reset filters, reload, or close the native window.'],
 ];
 
+const fallbackPlatformModules = [
+  ['command-center', 'Command Center', 'overview', 'Operating home for account state, safe action, and agent handoff.', 'active'],
+  ['portfolio', 'Portfolio', 'portfolio', 'Positions, exposure, cash, watch intent, and broker context.', 'route_ready'],
+  ['market-radar', 'Market Radar', 'market-radar', 'Scouted catalysts, mispricing queues, evidence gaps, and watchlists.', 'active'],
+  ['trade-planner', 'Trade Planner', 'trade-planner', 'Candidate sizing, thesis, reward/risk, and decision-card assembly.', 'route_ready'],
+  ['risk-desk', 'Risk Desk', 'risk-desk', 'Policy gates, portfolio impact, concentration, and hard blocks.', 'route_ready'],
+  ['paper-trading', 'Paper Trading', 'paper-trading', 'Paper-only tickets, fills, outcomes, and shadow validation.', 'preview_only'],
+  ['broker-desk', 'Broker Desk', 'broker', 'Read-only broker connection, order-ticket previews, and sync boundaries.', 'read_only'],
+  ['backtest', 'Backtest / Replay', 'backtest', 'Historical replay, shadow-mode validation, and strategy evidence.', 'route_ready'],
+  ['alerts', 'Alerts', 'alerts', 'Research notifications, watch triggers, and operator routing.', 'active'],
+  ['journal', 'Journal', 'journal', 'Decision notes, feedback, value ledger, and outcome review.', 'route_ready'],
+  ['agent-cockpit', 'Agent Cockpit', 'agent', 'Agent brief, proposed tool use, budget gates, and execution review.', 'preview_only'],
+];
+
 function commandReference() {
   const manifestCommands = state.config?.automation?.command_box_commands;
   if (Array.isArray(manifestCommands) && manifestCommands.length) {
@@ -234,6 +298,59 @@ function commandReference() {
     ]);
   }
   return fallbackCommandReference.map(([command, meaning]) => [command, meaning, '', '']);
+}
+
+function platformManifest() {
+  return state.config?.platform || {
+    name: 'MarketRadar Trading Workbench',
+    primary_tool: 'market-radar',
+    modules: fallbackPlatformModules.map(([key, label, page, role, status]) => ({
+      key,
+      label,
+      page,
+      role,
+      status,
+      source: 'local dashboard snapshot',
+      test_id: `platform-tool-${key}`,
+      next_action: 'Open the local tool page.',
+    })),
+    execution_boundary: {
+      live_trading_enabled: false,
+      broker_order_submission: 'disabled',
+      autonomous_execution: 'disabled',
+      paper_trading: 'preview_only',
+      provider_calls_for_browsing: 0,
+    },
+  };
+}
+
+function platformModules() {
+  const modules = platformManifest().modules;
+  return Array.isArray(modules) ? modules : [];
+}
+
+function platformBoundary() {
+  return platformManifest().execution_boundary || {};
+}
+
+function platformModuleForPage(pageKey) {
+  return platformModules().find((module) => module.page === pageKey || module.key === pageKey);
+}
+
+function updatePlatformState() {
+  const manifest = platformManifest();
+  const boundary = platformBoundary();
+  setText(
+    '#platform-state',
+    [
+      `app=${manifest.name || 'MarketRadar Trading Workbench'}`,
+      `primary_tool=${manifest.primary_tool || 'market-radar'}`,
+      `modules=${platformModules().length}`,
+      `live_trading_enabled=${Boolean(boundary.live_trading_enabled)}`,
+      `broker_order_submission=${boundary.broker_order_submission || 'disabled'}`,
+      `autonomous_execution=${boundary.autonomous_execution || 'disabled'}`,
+    ].join(' ')
+  );
 }
 
 function catalogLabel(value) {
@@ -330,6 +447,7 @@ async function boot() {
   bindControls();
   state.config = await invoke('desktop_config');
   state.page = state.config.initial_page || 'overview';
+  updatePlatformState();
   renderNav();
   renderAutomation();
   renderKeys();
@@ -456,13 +574,15 @@ function renderSnapshot() {
   setText('#provider-calls', `provider_calls=${compact(snapshot.external_calls_made, '0')}`);
   setText('#next-action', compact(snapshot.next_action || snapshot.canonical_next_action, 'Review the current page.'));
   setText('#next-command', compact(snapshot.next_command || snapshot.canonical_next_command, 'No command reported.'));
-  setText('#boundary-copy', `Snapshot mode ${compact(snapshot.snapshot_mode, 'unknown')}; provider calls reported ${compact(snapshot.external_calls_made, '0')}.`);
+  setText('#boundary-copy', `Snapshot mode ${compact(snapshot.snapshot_mode, 'unknown')}; provider calls reported ${compact(snapshot.external_calls_made, '0')}; live trading disabled.`);
   renderSnapshotMeta(snapshot, pageInfo);
   updateAutomationState(snapshot, status, pageInfo);
   updateFilterState();
   updateCommandState();
+  updatePlatformState();
   updateAutomationJson(snapshot, status, pageInfo);
   renderContent(snapshot);
+  bindPlatformToolCards();
   bindQueueRows();
 }
 
@@ -476,12 +596,13 @@ function renderLoadingDashboard() {
   setText('#snapshot-mode', 'snapshot pending');
   updateFilterState();
   updateCommandState();
+  updatePlatformState();
   updateAutomationJson();
   qs('#content').innerHTML = `
     <section class="panel wide loading-dashboard" data-testid="loading-dashboard">
-      <h2>Market Command Center</h2>
+      <h2>Trading Workbench</h2>
       <p>Loading market snapshot</p>
-      <p>MarketRadar is reading the local dashboard contract.</p>
+      <p>MarketRadar is reading the local trading platform contract.</p>
       <p>Rendering remains local and makes zero provider calls.</p>
     </section>
     <div class="metric-grid" data-testid="loading-metric-strip" aria-label="Loading dashboard metrics">
@@ -616,6 +737,11 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
     last_command: state.lastCommand || 'none',
     command_result: qs('#command-status')?.textContent?.trim() || 'command=ready',
     filters: automationFilterState(),
+    platform: {
+      primary_tool: platformManifest().primary_tool || 'market-radar',
+      live_trading_enabled: Boolean(platformBoundary().live_trading_enabled),
+      modules: platformModules().map((module) => module.key),
+    },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
   };
@@ -665,6 +791,12 @@ function renderContent(snapshot) {
   const renderers = {
     tutorial: renderTutorial,
     overview: renderOverview,
+    portfolio: () => renderPlatformModulePage('portfolio', snapshot),
+    'market-radar': () => renderPlatformModulePage('market-radar', snapshot),
+    'trade-planner': () => renderPlatformModulePage('trade-planner', snapshot),
+    'risk-desk': () => renderPlatformModulePage('risk-desk', snapshot),
+    'paper-trading': () => renderPlatformModulePage('paper-trading', snapshot),
+    backtest: () => renderPlatformModulePage('backtest', snapshot),
     readiness: () => renderStructuredPage('Evidence Gaps', pagePaths.readiness),
     run: () => renderStructuredPage('Safe Run', pagePaths.run),
     candidates: () => renderQueuePage('Candidate Review', rowsFromSnapshot(snapshot)),
@@ -679,6 +811,7 @@ function renderContent(snapshot) {
     validation: () => renderStructuredPage('Validation', pagePaths.validation),
     costs: renderCosts,
     features: renderFeatures,
+    journal: () => renderPlatformModulePage('journal', snapshot),
     help: renderHelp,
   };
   const renderer = renderers[state.page] || renderOverview;
@@ -704,6 +837,8 @@ function metric(label, value, caption) {
 
 function renderOverview(snapshot) {
   return `
+    ${renderTradingWorkbenchOverview(snapshot)}
+    ${renderLiveTradingBoundary()}
     <section class="panel" data-testid="first-blocker">
       <h2>First Blocker</h2>
       <p>${escapeHtml(compact(snapshot.first_blocker || at(snapshot, ['readiness', 'first_blocker']), 'No blocker reported.'))}</p>
@@ -717,12 +852,123 @@ function renderOverview(snapshot) {
   `;
 }
 
+function renderTradingWorkbenchOverview(snapshot) {
+  const modules = platformModules();
+  const queueCount = rowsFromSnapshot(snapshot).length;
+  return `
+    <section class="panel wide platform-map" data-testid="trading-workbench-overview">
+      <div class="platform-heading">
+        <div>
+          <h2>Trading Workbench</h2>
+          <p>MarketRadar is one tool in a local, zero-call trading platform shell.</p>
+        </div>
+        <div class="platform-summary" data-testid="platform-summary">
+          <span>primary tool</span>
+          <b>${escapeHtml(platformManifest().primary_tool || 'market-radar')}</b>
+          <span>queue</span>
+          <b>${escapeHtml(queueCount)}</b>
+        </div>
+      </div>
+      <div class="platform-tools" data-testid="platform-tools">
+        ${modules.map(platformToolCard).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function platformToolCard(module) {
+  const status = catalogLabel(module.status || 'route_ready');
+  return `
+    <article
+      class="platform-tool-card"
+      data-testid="platform-tool-card"
+      data-tool="${escapeHtml(module.key)}"
+      data-page="${escapeHtml(module.page || module.key)}"
+      data-status="${escapeHtml(module.status || 'route_ready')}"
+      tabindex="0"
+      role="button"
+      aria-label="Open ${escapeHtml(module.label)}"
+      title="${escapeHtml(module.next_action || module.role || module.label)}"
+    >
+      <div class="tool-card-top">
+        <h3>${escapeHtml(module.label)}</h3>
+        <span class="tool-status">${escapeHtml(status)}</span>
+      </div>
+      <p>${escapeHtml(module.role || 'Local trading platform module.')}</p>
+      <div class="tool-source">
+        <span>Source</span>
+        <b>${escapeHtml(module.source || 'local dashboard snapshot')}</b>
+      </div>
+    </article>
+  `;
+}
+
+function renderPlatformModulePage(pageKey, snapshot) {
+  const module = platformModuleForPage(pageKey) || {
+    key: pageKey,
+    label: pageLabelFor(pageKey, state.config?.pages?.find((page) => page.key === pageKey)),
+    role: 'Local trading platform module.',
+    source: 'local dashboard snapshot',
+    status: 'route_ready',
+    next_action: 'Review the local evidence before taking action.',
+  };
+  const paths = pagePaths[pageKey] || [];
+  const dataPanel = pageKey === 'market-radar'
+    ? queuePanel('Market Radar Queue', rowsFromSnapshot(snapshot))
+    : renderStructuredPage(module.label, paths);
+  return `
+    <section class="panel wide module-page" data-testid="platform-module-page" data-tool="${escapeHtml(module.key)}">
+      <div class="module-title-row">
+        <div>
+          <h2>${escapeHtml(module.label)}</h2>
+          <p>${escapeHtml(module.role)}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(module.status || 'route_ready'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Source</span><b>${escapeHtml(module.source || 'local dashboard snapshot')}</b></div>
+        <div class="kv"><span>Next</span><b>${escapeHtml(module.next_action || 'Review local evidence.')}</b></div>
+        <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(snapshot.external_calls_made, '0'))}</b></div>
+      </div>
+    </section>
+    ${renderLiveTradingBoundary()}
+    ${dataPanel}
+  `;
+}
+
+function renderLiveTradingBoundary() {
+  const boundary = platformBoundary();
+  const liveEnabled = Boolean(boundary.live_trading_enabled);
+  return `
+    <section class="panel wide platform-boundary" data-testid="live-trading-disabled" data-live-trading-enabled="${liveEnabled}">
+      <h2>Execution Boundary</h2>
+      <div class="boundary-grid">
+        <div class="kv"><span>Live trading</span><b>${liveEnabled ? 'enabled' : 'disabled'}</b></div>
+        <div class="kv"><span>Broker orders</span><b>${escapeHtml(boundary.broker_order_submission || 'disabled')}</b></div>
+        <div class="kv"><span>Autonomous execution</span><b>${escapeHtml(boundary.autonomous_execution || 'disabled')}</b></div>
+        <div class="kv"><span>Paper trading</span><b>${escapeHtml(boundary.paper_trading || 'preview_only')}</b></div>
+      </div>
+    </section>
+  `;
+}
+
+function bindPlatformToolCards() {
+  document.querySelectorAll('[data-testid="platform-tool-card"]').forEach((card) => {
+    card.addEventListener('click', () => setPage(card.dataset.page));
+    card.addEventListener('keydown', (event) => {
+      if (!['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      setPage(card.dataset.page);
+    });
+  });
+}
+
 function renderTutorial() {
   return `
     <section class="panel wide" data-testid="tutorial-panel">
       <h2>First 90 Seconds</h2>
       <div class="stack">
-        <p>1 Inbox: triage what matters now.</p>
+        <p>1 Command Center: route platform work safely.</p>
         <p>2 Evidence Gaps: fix missing market or decision evidence.</p>
         <p>3 Safe Run: review provider calls before execution.</p>
         <p>4 Candidate Review: inspect a single evidence case.</p>
@@ -1069,7 +1315,7 @@ async function applyCommand(raw) {
   const value = parts.join(' ').trim();
 
   if (['q', 'quit', 'exit'].includes(command)) {
-    setCommandStatus('Closing MarketRadar.');
+    setCommandStatus('Closing MarketRadar Trading Workbench.');
     await closeDashboardWindow();
     return false;
   }
@@ -1864,7 +2110,7 @@ function handleKeyboard(event) {
   if (!commandModifier) {
     if (plainKey === 'q') {
       event.preventDefault();
-      setCommandStatus('Closing MarketRadar.');
+      setCommandStatus('Closing MarketRadar Trading Workbench.');
       closeDashboardWindow();
       return;
     }

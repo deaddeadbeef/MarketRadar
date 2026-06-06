@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager, State};
 
+const TRADING_WORKBENCH_TITLE: &str = "MarketRadar Trading Workbench";
+
 #[derive(Clone, Debug, Serialize)]
 struct PageInfo {
     key: &'static str,
@@ -30,6 +32,7 @@ struct DesktopConfig {
     source_label: String,
     repo_root: String,
     pages: Vec<PageInfo>,
+    platform: TradingPlatformManifest,
     automation: AutomationManifest,
     data_contract: DashboardDataContract,
 }
@@ -45,6 +48,36 @@ struct DashboardSurfaces {
 struct DashboardDataContract {
     snapshot_endpoint: &'static str,
     snapshot_command: &'static str,
+    provider_calls_for_browsing: u16,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct TradingPlatformManifest {
+    schema_version: &'static str,
+    name: &'static str,
+    primary_tool: &'static str,
+    modules: Vec<TradingPlatformModule>,
+    execution_boundary: TradingExecutionBoundary,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct TradingPlatformModule {
+    key: &'static str,
+    label: &'static str,
+    role: &'static str,
+    source: &'static str,
+    status: &'static str,
+    page: &'static str,
+    test_id: &'static str,
+    next_action: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct TradingExecutionBoundary {
+    live_trading_enabled: bool,
+    broker_order_submission: &'static str,
+    autonomous_execution: &'static str,
+    paper_trading: &'static str,
     provider_calls_for_browsing: u16,
 }
 
@@ -261,7 +294,7 @@ fn main() {
             close_dashboard_window
         ])
         .run(tauri::generate_context!())
-        .expect("error while running MarketRadar desktop dashboard");
+        .expect("error while running MarketRadar Trading Workbench");
 }
 
 fn build_desktop_config(args: &DesktopArgs, repo_root: &Path) -> DesktopConfig {
@@ -270,11 +303,12 @@ fn build_desktop_config(args: &DesktopArgs, repo_root: &Path) -> DesktopConfig {
         schema_version: "dashboard-ui-manifest-v1",
         external_calls_made: 0,
         surfaces: dashboard_surfaces(),
-        app_name: "MarketRadar",
+        app_name: TRADING_WORKBENCH_TITLE,
         initial_page: initial_page_key(args.page.as_deref()),
         source_label: source.label(),
         repo_root: repo_root.display().to_string(),
         pages: page_infos(),
+        platform: trading_platform_manifest(),
         automation: automation_manifest(),
         data_contract: dashboard_data_contract(),
     }
@@ -415,6 +449,137 @@ fn dashboard_data_contract() -> DashboardDataContract {
     }
 }
 
+fn trading_platform_manifest() -> TradingPlatformManifest {
+    TradingPlatformManifest {
+        schema_version: "trading-platform-manifest-v1",
+        name: TRADING_WORKBENCH_TITLE,
+        primary_tool: "market-radar",
+        modules: trading_platform_modules(),
+        execution_boundary: TradingExecutionBoundary {
+            live_trading_enabled: false,
+            broker_order_submission: "disabled",
+            autonomous_execution: "disabled",
+            paper_trading: "preview_only",
+            provider_calls_for_browsing: 0,
+        },
+    }
+}
+
+fn trading_platform_modules() -> Vec<TradingPlatformModule> {
+    vec![
+        TradingPlatformModule {
+            key: "command-center",
+            label: "Command Center",
+            role: "Operating home for account state, safe action, and agent handoff.",
+            source: "local dashboard snapshot",
+            status: "active",
+            page: "overview",
+            test_id: "platform-tool-command-center",
+            next_action: "Review the safe action and route work to a tool.",
+        },
+        TradingPlatformModule {
+            key: "portfolio",
+            label: "Portfolio",
+            role: "Positions, exposure, cash, watch intent, and broker context.",
+            source: "read-only broker and local portfolio records",
+            status: "route_ready",
+            page: "portfolio",
+            test_id: "platform-tool-portfolio",
+            next_action: "Inspect exposure before any trade plan.",
+        },
+        TradingPlatformModule {
+            key: "market-radar",
+            label: "Market Radar",
+            role: "Scouted catalysts, mispricing queues, evidence gaps, and watchlists.",
+            source: "priced-in queue and catalyst evidence",
+            status: "active",
+            page: "market-radar",
+            test_id: "platform-tool-market-radar",
+            next_action: "Open the top evidence row or fill missing sources.",
+        },
+        TradingPlatformModule {
+            key: "trade-planner",
+            label: "Trade Planner",
+            role: "Candidate sizing, thesis, reward/risk, and decision-card assembly.",
+            source: "decision cards and validation evidence",
+            status: "route_ready",
+            page: "trade-planner",
+            test_id: "platform-tool-trade-planner",
+            next_action: "Draft a plan from a decision-ready candidate.",
+        },
+        TradingPlatformModule {
+            key: "risk-desk",
+            label: "Risk Desk",
+            role: "Policy gates, portfolio impact, concentration, and hard blocks.",
+            source: "policy scan, broker context, and validation artifacts",
+            status: "route_ready",
+            page: "risk-desk",
+            test_id: "platform-tool-risk-desk",
+            next_action: "Resolve hard blocks before paper or live consideration.",
+        },
+        TradingPlatformModule {
+            key: "paper-trading",
+            label: "Paper Trading",
+            role: "Paper-only tickets, fills, outcomes, and shadow validation.",
+            source: "paper trades and value outcomes",
+            status: "preview_only",
+            page: "paper-trading",
+            test_id: "platform-tool-paper-trading",
+            next_action: "Use paper execution only after risk approval.",
+        },
+        TradingPlatformModule {
+            key: "broker-desk",
+            label: "Broker Desk",
+            role: "Read-only broker connection, order-ticket previews, and sync boundaries.",
+            source: "broker snapshot and local order-ticket records",
+            status: "read_only",
+            page: "broker",
+            test_id: "platform-tool-broker-desk",
+            next_action: "Authenticate only for portfolio context; order submission is disabled.",
+        },
+        TradingPlatformModule {
+            key: "backtest",
+            label: "Backtest / Replay",
+            role: "Historical replay, shadow-mode validation, and strategy evidence.",
+            source: "validation runs and backtest artifacts",
+            status: "route_ready",
+            page: "backtest",
+            test_id: "platform-tool-backtest",
+            next_action: "Compare candidate logic against replay evidence.",
+        },
+        TradingPlatformModule {
+            key: "alerts",
+            label: "Alerts",
+            role: "Research notifications, watch triggers, and operator routing.",
+            source: "local alert rows",
+            status: "active",
+            page: "alerts",
+            test_id: "platform-tool-alerts",
+            next_action: "Open an alert as research context, not trade approval.",
+        },
+        TradingPlatformModule {
+            key: "journal",
+            label: "Journal",
+            role: "Decision notes, feedback, value ledger, and outcome review.",
+            source: "local feedback and value ledger records",
+            status: "route_ready",
+            page: "journal",
+            test_id: "platform-tool-journal",
+            next_action: "Record feedback and outcome evidence locally.",
+        },
+        TradingPlatformModule {
+            key: "agent-cockpit",
+            label: "Agent Cockpit",
+            role: "Agent brief, proposed tool use, budget gates, and execution review.",
+            source: "agent brief and runtime context",
+            status: "preview_only",
+            page: "agent",
+            test_id: "platform-tool-agent-cockpit",
+            next_action: "Preview agent reasoning; execute remains gated.",
+        },
+    ]
+}
+
 fn local_python(repo_root: &Path) -> Option<PathBuf> {
     let path = if cfg!(windows) {
         repo_root.join(".venv").join("Scripts").join("python.exe")
@@ -491,6 +656,12 @@ fn page_shortcut(page: Page) -> &'static str {
     match page {
         Page::Tutorial => "0",
         Page::Overview => "1",
+        Page::Portfolio => "portfolio",
+        Page::MarketRadar => "radar",
+        Page::TradePlanner => "planner",
+        Page::RiskDesk => "risk",
+        Page::PaperTrading => "paper",
+        Page::Backtest => "replay",
         Page::Readiness => "2",
         Page::Run => "3",
         Page::Candidates => "4",
@@ -505,6 +676,7 @@ fn page_shortcut(page: Page) -> &'static str {
         Page::Validation => "valid",
         Page::Costs => "V",
         Page::Features => "F",
+        Page::Journal => "journal",
         Page::Help => "?",
     }
 }
@@ -512,7 +684,13 @@ fn page_shortcut(page: Page) -> &'static str {
 fn page_description(page: Page) -> &'static str {
     match page {
         Page::Tutorial => "First-run path and safe operating boundary.",
-        Page::Overview => "Inbox, status, first blocker, and next safe action.",
+        Page::Overview => "Trading workbench command center, account state, and next safe action.",
+        Page::Portfolio => "Positions, exposure, cash, and portfolio context.",
+        Page::MarketRadar => "MarketRadar catalyst scout, mispricing queue, and evidence gaps.",
+        Page::TradePlanner => "Trade thesis, sizing, reward/risk, and decision-card planning.",
+        Page::RiskDesk => "Policy gates, portfolio impact, concentration, and hard blocks.",
+        Page::PaperTrading => "Paper-only tickets, fills, and shadow validation.",
+        Page::Backtest => "Replay, backtest, and validation evidence.",
         Page::Readiness => "Evidence gaps and setup blockers before relying on output.",
         Page::Run => "Safe run plan, provider-call budget, and execution gates.",
         Page::Candidates => "Candidate queue with source and decision gaps.",
@@ -527,6 +705,7 @@ fn page_description(page: Page) -> &'static str {
         Page::Validation => "Shadow, paper, and value validation evidence.",
         Page::Costs => "Value ledger, outcomes, validation, and cost evidence.",
         Page::Features => "Feature inventory and where each feature lives.",
+        Page::Journal => "Decision journal, feedback, value ledger, and outcome review.",
         Page::Help => "Keyboard, automation, and command reference.",
     }
 }
@@ -590,7 +769,7 @@ fn automation_manifest() -> AutomationManifest {
         ],
         command_box_commands: command_box_commands(),
         automation_recipe: automation_recipe(),
-        native_window_title: "MarketRadar Command Center",
+        native_window_title: TRADING_WORKBENCH_TITLE,
         native_executable: "target\\release\\radar-desktop.exe",
         computer_use_steps: computer_use_steps(),
         zero_call_assertions: vec![
@@ -793,7 +972,7 @@ fn automation_recipe() -> AutomationRecipe {
         schema_version: "dashboard-computer-use-recipe-v1",
         launch: AutomationRecipeLaunch {
             executable: "target\\release\\radar-desktop.exe",
-            window_title: "MarketRadar Command Center",
+            window_title: TRADING_WORKBENCH_TITLE,
         },
         state_sources: AutomationStateSources {
             page: "automation-state",
@@ -1014,7 +1193,7 @@ fn automation_recipe() -> AutomationRecipe {
                 expected_page: None,
                 expected_nav: None,
                 expected_provider_calls: Some(0),
-                expected_state: vec!["native MarketRadar Command Center window closes"],
+                expected_state: vec!["native MarketRadar Trading Workbench window closes"],
                 requires_review: true,
             },
         ],
@@ -1027,12 +1206,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "launch",
             action: "Launch the app by executable path through Computer Use, then select the returned window object.",
             target: "target\\release\\radar-desktop.exe",
-            expected: "A native window titled MarketRadar Command Center is targetable.",
+            expected: "A native window titled MarketRadar Trading Workbench is targetable.",
         },
         ComputerUseStep {
             step: "capture",
             action: "Capture screenshot and accessibility text for the selected window.",
-            target: "MarketRadar Command Center",
+            target: "MarketRadar Trading Workbench",
             expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, command-state, automation-state, automation-json, filter-state, loading-dashboard before first data, next-safe-action, keys-panel, snapshot-panel, page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and provider_calls=0.",
         },
         ComputerUseStep {
@@ -1147,7 +1326,7 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "close-command",
             action: "Type q and press Return only when the automation session is finished.",
             target: "command-input",
-            expected: "The native MarketRadar Command Center window closes without provider, OpenAI, broker, or DB-write actions.",
+            expected: "The native MarketRadar Trading Workbench window closes without provider, OpenAI, broker, or DB-write actions.",
         },
     ]
 }
@@ -1338,6 +1517,7 @@ mod tests {
 
         assert_eq!(payload["schema_version"], "dashboard-ui-manifest-v1");
         assert_eq!(payload["external_calls_made"], 0);
+        assert_eq!(payload["app_name"], TRADING_WORKBENCH_TITLE);
         assert_eq!(payload["initial_page"], "overview");
         assert_eq!(
             payload["source_label"],
@@ -1356,6 +1536,27 @@ mod tests {
             "catalyst-radar dashboard-snapshot --json --fast"
         );
         assert_eq!(payload["data_contract"]["provider_calls_for_browsing"], 0);
+        assert_eq!(
+            payload["platform"]["schema_version"],
+            "trading-platform-manifest-v1"
+        );
+        assert_eq!(payload["platform"]["primary_tool"], "market-radar");
+        assert_eq!(
+            payload["platform"]["execution_boundary"]["live_trading_enabled"],
+            false
+        );
+        assert_eq!(
+            payload["platform"]["execution_boundary"]["broker_order_submission"],
+            "disabled"
+        );
+        assert!(
+            payload["platform"]["modules"]
+                .as_array()
+                .expect("platform modules")
+                .iter()
+                .any(|module| module["key"] == "trade-planner"
+                    && module["page"] == "trade-planner")
+        );
         assert!(payload["automation"]["landmarks"].is_array());
         assert_eq!(
             payload["automation"]["automation_recipe"]["schema_version"],
@@ -1388,6 +1589,11 @@ mod tests {
         assert_eq!(request.snapshot_page, Page::Run);
         assert_eq!(request.selected_page, "run");
         assert_eq!(request.detail_ticker, None);
+
+        let platform_request = page_request("trade-planner");
+        assert_eq!(platform_request.snapshot_page, Page::TradePlanner);
+        assert_eq!(platform_request.selected_page, "trade-planner");
+        assert_eq!(platform_request.detail_ticker, None);
     }
 
     #[test]
@@ -1413,14 +1619,14 @@ mod tests {
     fn automation_manifest_exposes_native_computer_use_recipe() {
         let manifest = automation_manifest();
 
-        assert_eq!(manifest.native_window_title, "MarketRadar Command Center");
+        assert_eq!(manifest.native_window_title, TRADING_WORKBENCH_TITLE);
         assert_eq!(
             manifest.native_executable,
             "target\\release\\radar-desktop.exe"
         );
         let recipe = &manifest.automation_recipe;
         assert_eq!(recipe.schema_version, "dashboard-computer-use-recipe-v1");
-        assert_eq!(recipe.launch.window_title, "MarketRadar Command Center");
+        assert_eq!(recipe.launch.window_title, TRADING_WORKBENCH_TITLE);
         assert_eq!(
             recipe.launch.executable,
             "target\\release\\radar-desktop.exe"
@@ -1680,7 +1886,7 @@ mod tests {
                 && step.action.contains("Type q")
                 && step
                     .expected
-                    .contains("native MarketRadar Command Center window closes")
+                    .contains("native MarketRadar Trading Workbench window closes")
         }));
         assert!(
             manifest

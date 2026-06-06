@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MarketRadar Command Center</title>
+  <title>MarketRadar Trading Workbench</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="shell" data-testid="desktop-shell">
     <header class="topbar" role="banner">
       <div>
-        <div class="eyebrow">MarketRadar</div>
+        <div class="eyebrow">MarketRadar Trading Workbench</div>
         <h1 id="page-title" data-testid="page-title">Command Center</h1>
       </div>
       <div class="topbar-actions" role="group" aria-label="Dashboard actions">
@@ -19,9 +19,9 @@
       </div>
     </header>
 
-    <aside class="sidebar" role="navigation" aria-label="MarketRadar workflow" data-testid="workflow-nav">
-      <div class="nav-title">Workflow</div>
-      <div id="workflow-tabs" class="workflow-tabs" role="tablist" aria-label="Dashboard pages"></div>
+    <aside class="sidebar" role="navigation" aria-label="Trading workbench tools" data-testid="workflow-nav">
+      <div class="nav-title">Tools</div>
+      <div id="workflow-tabs" class="workflow-tabs" role="tablist" aria-label="Trading platform pages"></div>
     </aside>
 
     <main id="dashboard-main" class="main" role="main" tabindex="-1" aria-labelledby="page-title" data-testid="dashboard-page" data-current-page="overview" data-current-nav-page="overview">
@@ -55,9 +55,9 @@
 
       <section id="content" class="content-grid" aria-live="polite">
         <section class="panel wide loading-dashboard" data-testid="loading-dashboard">
-          <h2>Market Command Center</h2>
+          <h2>Trading Workbench</h2>
           <p>Loading market snapshot</p>
-          <p>MarketRadar is reading the local dashboard contract.</p>
+          <p>MarketRadar is reading the local trading platform contract.</p>
           <p>Rendering remains local and makes zero provider calls.</p>
         </section>
         <div class="metric-grid" data-testid="loading-metric-strip" aria-label="Loading dashboard metrics">
@@ -154,6 +154,9 @@
     </div>
     <div id="command-state" class="sr-only" data-testid="command-state" aria-live="polite">
       last_command=none page=overview nav=overview provider_calls=0 result="command=ready"
+    </div>
+    <div id="platform-state" class="sr-only" data-testid="platform-state" aria-live="polite">
+      app=MarketRadar Trading Workbench primary_tool=market-radar live_trading_enabled=false
     </div>
     <pre id="automation-json" class="sr-only" data-testid="automation-json" aria-live="polite" role="status" aria-label="Automation JSON state">{"contract_version":"market-radar-desktop-automation-v1","page":"overview","nav":"overview","status":"loading","provider_calls":0,"last_command":"none","filters":{"ticker":"all","scan_mode":"all","stocks_only":false,"limit":50,"offset":0,"usefulness":"all","source_gap":[],"decision_gap":[],"available_at":"latest","alert_status":"all","alert_route":"all"}}</pre>
   </div>
