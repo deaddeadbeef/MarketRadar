@@ -1710,12 +1710,19 @@ For manual paper decisions and outcome follow-up, the CLI is also
 preview-first:
 
 ```powershell
+catalyst-radar trading-platform-plan --decision-card-id <CARD_ID> --available-at <UTC-cutoff> --entry-price <price> --json
 catalyst-radar agentic-paper-intent --decision-card-id <CARD_ID> --available-at <UTC-cutoff> --entry-price <price> --json
 catalyst-radar paper-decision --decision-card-id <CARD_ID> --decision approved --available-at <UTC-cutoff> --entry-price <price> --preview --json
 catalyst-radar paper-decision --decision-card-id <CARD_ID> --decision approved --available-at <UTC-cutoff> --entry-price <price> --execute --json
 catalyst-radar paper-update-outcomes --decision-card-id <CARD_ID> --available-at <UTC-outcome-cutoff> --preview --json
 catalyst-radar paper-update-outcomes --decision-card-id <CARD_ID> --available-at <UTC-outcome-cutoff> --execute --json
 ```
+
+`trading-platform-plan` is the read-only agentic platform envelope. It reads one
+stored Decision Card and returns the strategy proposal, risk approval,
+paper-only order intent, supervision steps, capability map, and live-submission
+kill-switch state. It makes 0 provider/model/broker calls, writes 0 database
+rows, emits `approved_for_live_submission=false`, and cannot submit orders.
 
 `agentic-paper-intent` is the zero-call manager preview. It reads one stored
 Decision Card, emits catalyst/skeptic/market-structure/portfolio/execution/risk

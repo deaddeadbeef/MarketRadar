@@ -170,6 +170,7 @@ from catalyst_radar.storage.schema import daily_bars
 from catalyst_radar.storage.text_repositories import TextRepository
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.textint.pipeline import run_text_pipeline
+from catalyst_radar.trading.platform import build_trading_platform_plan
 from catalyst_radar.universe.builder import UniverseBuilder
 from catalyst_radar.universe.filters import UniverseFilterConfig
 from catalyst_radar.validation.baselines import (
@@ -692,6 +693,15 @@ def build_parser() -> argparse.ArgumentParser:
     agentic_paper.add_argument("--entry-at", type=_parse_aware_datetime)
     agentic_paper.add_argument("--override-reason")
     agentic_paper.add_argument("--json", action="store_true")
+
+    trading_platform = subparsers.add_parser("trading-platform-plan")
+    trading_platform.add_argument("--decision-card-id", required=True)
+    trading_platform.add_argument("--available-at", type=_parse_aware_datetime, required=True)
+    trading_platform.add_argument("--entry-price", type=float)
+    trading_platform.add_argument("--entry-at", type=_parse_aware_datetime)
+    trading_platform.add_argument("--override-reason")
+    trading_platform.add_argument("--broker-data-stale", action="store_true")
+    trading_platform.add_argument("--json", action="store_true")
 
     paper_update = subparsers.add_parser("paper-update-outcomes")
     paper_update.add_argument("--decision-card-id", required=True)
@@ -3163,6 +3173,44 @@ def main(argv: list[str] | None = None) -> int:
                 f"hard_blocks={len(payload['hard_blocks'])} "
                 f"external_calls=0 broker_order_submitted=false no_execution=true "
                 f"preview_command={payload['paper_decision']['preview_command']}"
+            )
+        return 0
+
+    if args.command == "trading-platform-plan":
+        create_schema(engine)
+        validation_repo = ValidationRepository(engine)
+        card = validation_repo.decision_card_payload(
+            args.decision_card_id,
+            available_at=args.available_at,
+        )
+        if card is None:
+            print(f"decision card not found: {args.decision_card_id}", file=sys.stderr)
+            return 1
+        plan = build_trading_platform_plan(
+            card,
+            available_at=args.available_at,
+            entry_price=args.entry_price,
+            entry_at=args.entry_at,
+            override_reason=_optional_cli_text(args.override_reason),
+            config=config,
+            broker_data_stale=bool(args.broker_data_stale),
+        )
+        payload = plan.to_payload()
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(
+                f"trading_platform_plan status={payload['status']} "
+                f"decision_card_id={payload['decision_card_id']} "
+                f"ticker={payload['ticker']} "
+                f"autonomy_level={payload['autonomy_level']} "
+                "approved_for_paper_trade="
+                f"{str(bool(payload['risk_approval']['approved_for_paper_trade'])).lower()} "
+                "approved_for_live_submission=false "
+                f"paper_trade_blocks={len(payload['risk_approval']['paper_trade_blocks'])} "
+                f"live_submission_blocks={len(payload['risk_approval']['live_submission_blocks'])} "
+                "external_calls=0 db_writes=0 broker_order_submitted=false "
+                "order_submission_allowed=false no_execution=true"
             )
         return 0
 
