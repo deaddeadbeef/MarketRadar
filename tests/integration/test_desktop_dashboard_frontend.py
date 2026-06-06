@@ -91,6 +91,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function activePlanBlock",
         "function workbenchModuleRows",
         "function renderWorkbenchModuleRows",
+        "function renderWorkbenchPaperTrades",
         "function renderWorkbenchOrderTickets",
         "broker: () => renderPlatformModulePage('broker', snapshot)",
         'data-testid="platform-module-page"',
@@ -98,6 +99,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="platform-module-metrics"',
         'data-testid="platform-module-sources"',
         'data-testid="platform-module-row"',
+        'data-testid="workbench-paper-trades"',
+        'data-testid="workbench-paper-trade-row"',
         'data-testid="workbench-order-tickets"',
         'data-testid="workbench-order-ticket-row"',
         'data-testid="workbench-active-plan"',
@@ -125,6 +128,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Record Paper Decision",
         "Preview Ticket",
         "Save Ticket",
+        "Paper trade ledger",
+        "no execution",
         "Blocked workbench order tickets",
         "Hard Blocks",
         'data-testid="live-trading-disabled"',
@@ -161,6 +166,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".platform-tool-card" in styles
     assert ".platform-boundary" in styles
     assert ".module-page" in styles
+    assert ".paper-trade-preview" in styles
     assert ".order-ticket-preview" in styles
 
 

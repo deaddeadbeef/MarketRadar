@@ -439,9 +439,31 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
 
     paper_trading = modules["paper-trading"]
     assert paper_trading["metrics"]["paper_trade_count"] == 1
+    assert paper_trading["metrics"]["open_paper_trade_count"] == 1
     assert paper_trading["metrics"]["latest_trade_id"] == "paper-msft"
     assert paper_trading["metrics"]["approved_for_paper_trade"] is False
     assert paper_trading["metrics"]["approved_for_live_submission"] is False
+    assert paper_trading["next_action"] == (
+        "Review local paper outcomes; broker submission remains disabled."
+    )
+    assert paper_trading["paper_trades"] == [
+        {
+            "id": "paper-msft",
+            "decision_card_id": "card-msft-latest",
+            "ticker": "MSFT",
+            "decision": "approved",
+            "state": "open",
+            "entry_price": 101.0,
+            "entry_at": AVAILABLE_AT,
+            "invalidation_price": 94.0,
+            "shares": 20.0,
+            "notional": 2080.0,
+            "max_loss": 200.0,
+            "available_at": AVAILABLE_AT,
+            "no_execution": True,
+            "next_action": "Track outcome locally; no broker order was submitted.",
+        }
+    ]
 
     broker = modules["broker"]
     assert broker["status"] == "read_only"
