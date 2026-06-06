@@ -917,6 +917,11 @@ def _trading_workbench_snapshot_payload(
         _workbench_value_outcome_row(row)
         for row in _rows(journal_outcomes_payload.get("outcomes"))
     ]
+    validation_result_rows = _workbench_validation_result_rows(
+        engine=engine,
+        latest_validation=latest_validation,
+        available_at=available_at,
+    )
     paper_trade_rows = [
         _workbench_paper_trade_row(row) for row in paper_rows[:5]
     ]
@@ -1097,8 +1102,14 @@ def _trading_workbench_snapshot_payload(
                         validation_report.get("candidate_count")
                     ),
                     "paper_trade_count": len(paper_rows),
+                    "validation_result_preview_count": len(validation_result_rows),
                 },
-                "next_action": "Compare candidate logic against validation evidence.",
+                "validation_results": validation_result_rows,
+                "next_action": (
+                    "Compare candidate logic against local validation evidence."
+                    if validation_result_rows
+                    else "Compare candidate logic against validation evidence."
+                ),
                 "source_keys": ["validation.latest_run", "validation.report"],
             },
             "journal": {
@@ -1436,6 +1447,46 @@ def _workbench_value_outcome_row(row: Mapping[str, object]) -> dict[str, object]
         "outcome_available_at": row.get("outcome_available_at"),
         "next_action": "Compare realized outcome with the original decision.",
     }
+
+
+def _workbench_validation_result_rows(
+    *,
+    engine: Engine,
+    latest_validation: Mapping[str, object],
+    available_at: datetime | None,
+) -> list[dict[str, object]]:
+    run_id = str(latest_validation.get("id") or "").strip()
+    if not run_id:
+        return []
+    results = ValidationRepository(engine).list_validation_results(
+        run_id,
+        available_at=available_at,
+    )
+    rows: list[dict[str, object]] = []
+    for result in results[:5]:
+        labels = _mapping(result.labels)
+        positive_labels = [
+            str(key)
+            for key, value in labels.items()
+            if value is True and str(key).strip()
+        ]
+        rows.append(
+            {
+                "id": result.id,
+                "run_id": result.run_id,
+                "ticker": result.ticker,
+                "as_of": result.as_of.isoformat(),
+                "available_at": result.available_at.isoformat(),
+                "state": result.state.value,
+                "final_score": result.final_score,
+                "decision_card_id": result.decision_card_id,
+                "baseline": result.baseline,
+                "positive_labels": positive_labels,
+                "leakage_flags": list(result.leakage_flags),
+                "next_action": "Review replay result before changing strategy logic.",
+            }
+        )
+    return rows
 
 
 def _dashboard_real_results_payload(

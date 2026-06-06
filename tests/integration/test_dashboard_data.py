@@ -476,7 +476,31 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert broker["metrics"]["broker_order_submitted"] is False
     assert broker["order_tickets"] == []
 
-    assert modules["backtest"]["metrics"]["latest_validation_run"] == "validation-run-latest"
+    backtest = modules["backtest"]
+    assert backtest["metrics"]["latest_validation_run"] == "validation-run-latest"
+    assert backtest["metrics"]["validation_result_preview_count"] == 1
+    assert backtest["next_action"] == (
+        "Compare candidate logic against local validation evidence."
+    )
+    assert backtest["validation_results"] == [
+        {
+            "id": "validation-result-msft",
+            "run_id": "validation-run-latest",
+            "ticker": "MSFT",
+            "as_of": AS_OF.isoformat(),
+            "available_at": AVAILABLE_AT.isoformat(),
+            "state": "Warning",
+            "final_score": 88.0,
+            "decision_card_id": "card-msft-latest",
+            "baseline": None,
+            "positive_labels": ["target_20d_25"],
+            "leakage_flags": [],
+            "next_action": "Review replay result before changing strategy logic.",
+        }
+    ]
+    assert "validation-result-msft-future" not in {
+        row["id"] for row in backtest["validation_results"]
+    }
     journal = modules["journal"]
     assert journal["metrics"]["value_ledger_entry_count"] == 1
     assert journal["metrics"]["outcome_count"] == 1

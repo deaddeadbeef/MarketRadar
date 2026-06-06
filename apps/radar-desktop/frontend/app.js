@@ -993,6 +993,7 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
       ${renderWorkbenchJournalOutcomes(moduleData.value_outcomes)}
+      ${renderWorkbenchValidationResults(moduleData.validation_results)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
   `;
@@ -1232,6 +1233,30 @@ function renderWorkbenchJournalOutcomes(outcomes) {
               <td data-label="20D">${escapeHtml(compact(outcome.return_20d, '-'))}</td>
               <td data-label="SPY Rel 20D">${escapeHtml(compact(outcome.spy_relative_return_20d, '-'))}</td>
               <td data-label="Invalidation">${escapeHtml(outcome.invalidation_touched ? 'touched' : 'clear')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchValidationResults(results) {
+  if (!Array.isArray(results) || !results.length) return '';
+  return `
+    <div class="table-wrap validation-result-preview" data-testid="workbench-validation-results">
+      <table aria-label="Backtest validation results">
+        <thead><tr><th>Ticker</th><th>State</th><th>Score</th><th>Baseline</th><th>Labels</th><th>Leakage</th><th>Decision Card</th></tr></thead>
+        <tbody>
+          ${results.slice(0, 8).map((result) => `
+            <tr data-testid="workbench-validation-result-row">
+              <td data-label="Ticker">${escapeHtml(compact(result.ticker, '-'))}</td>
+              <td data-label="State">${escapeHtml(catalogLabel(result.state || '-'))}</td>
+              <td data-label="Score">${escapeHtml(compact(result.final_score, '-'))}</td>
+              <td data-label="Baseline">${escapeHtml(compact(result.baseline, 'candidate'))}</td>
+              <td data-label="Labels">${escapeHtml(compact(result.positive_labels, 'none'))}</td>
+              <td data-label="Leakage">${escapeHtml(compact(result.leakage_flags, 'clear'))}</td>
+              <td data-label="Decision Card">${escapeHtml(compact(result.decision_card_id, '-'))}</td>
             </tr>
           `).join('')}
         </tbody>
