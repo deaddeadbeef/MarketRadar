@@ -850,6 +850,7 @@ def _trading_workbench_snapshot_payload(
     broker_snapshot = _mapping(_mapping(broker_summary.get("snapshot")))
     broker_exposure = _mapping(_mapping(broker_summary.get("exposure")))
     broker_tickets = _rows(broker_summary.get("order_tickets"))
+    broker_positions = _rows(broker_summary.get("positions"))
     validation_report = _mapping(validation_summary.get("report"))
     latest_validation = _mapping(validation_summary.get("latest_run"))
     paper_rows = _rows(validation_summary.get("paper_trades"))
@@ -885,6 +886,10 @@ def _trading_workbench_snapshot_payload(
         broker_exposure.get("broker_connected")
         or str(broker_snapshot.get("connection_status") or "").lower()
         in {"connected", "ok", "ready"}
+    )
+    portfolio_equity = _first_value(
+        broker_exposure.get("portfolio_equity"),
+        broker_snapshot.get("portfolio_equity"),
     )
     focus_row = _workbench_queue_row(
         first_queue_row,
@@ -925,6 +930,10 @@ def _trading_workbench_snapshot_payload(
     paper_trade_rows = [
         _workbench_paper_trade_row(row) for row in paper_rows[:5]
     ]
+    portfolio_position_rows = [
+        _workbench_portfolio_position_row(row, portfolio_equity=portfolio_equity)
+        for row in broker_positions[:5]
+    ]
     broker_ticket_rows = [
         _workbench_order_ticket_row(row) for row in broker_tickets[:5]
     ]
@@ -958,9 +967,15 @@ def _trading_workbench_snapshot_payload(
                         broker_exposure.get("portfolio_equity"),
                         broker_snapshot.get("portfolio_equity"),
                     ),
+                    "position_preview_count": len(portfolio_position_rows),
                 },
-                "next_action": "Use broker sync only for read-only portfolio context.",
-                "source_keys": ["broker.snapshot", "broker.exposure"],
+                "positions": portfolio_position_rows,
+                "next_action": (
+                    "Review read-only positions before planning risk."
+                    if portfolio_position_rows
+                    else "Use broker sync only for read-only portfolio context."
+                ),
+                "source_keys": ["broker.snapshot", "broker.exposure", "broker.positions"],
             },
             "market-radar": {
                 "status": "ready" if queue_rows else "blocked",
@@ -1387,6 +1402,32 @@ def _workbench_order_ticket_row(row: Mapping[str, object]) -> dict[str, object]:
         "created_at": row.get("created_at"),
         "hard_blocks": _texts(preview.get("hard_blocks")),
         "next_action": "Review manually; broker submission is disabled.",
+    }
+
+
+def _workbench_portfolio_position_row(
+    row: Mapping[str, object],
+    *,
+    portfolio_equity: object,
+) -> dict[str, object]:
+    market_value = _optional_float(row.get("market_value"))
+    equity = _optional_float(portfolio_equity)
+    return {
+        "account_id": row.get("account_id"),
+        "as_of": row.get("as_of"),
+        "ticker": row.get("ticker"),
+        "quantity": row.get("quantity"),
+        "average_price": row.get("average_price"),
+        "market_value": market_value,
+        "unrealized_pnl": row.get("unrealized_pnl"),
+        "sector": row.get("sector"),
+        "theme": row.get("theme"),
+        "exposure_pct": (
+            round(market_value / equity, 4)
+            if market_value is not None and equity not in (None, 0)
+            else None
+        ),
+        "next_action": "Use as read-only portfolio context; order submission is disabled.",
     }
 
 
