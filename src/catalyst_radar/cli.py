@@ -170,6 +170,10 @@ from catalyst_radar.storage.schema import daily_bars
 from catalyst_radar.storage.text_repositories import TextRepository
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.textint.pipeline import run_text_pipeline
+from catalyst_radar.trading.paper_decision import (
+    PaperDecisionExecutionError,
+    run_paper_decision,
+)
 from catalyst_radar.trading.platform import build_trading_platform_plan
 from catalyst_radar.universe.builder import UniverseBuilder
 from catalyst_radar.universe.filters import UniverseFilterConfig
@@ -194,7 +198,7 @@ from catalyst_radar.validation.models import (
     validation_result_id,
 )
 from catalyst_radar.validation.outcomes import compute_forward_outcomes, outcome_labels_as_dict
-from catalyst_radar.validation.paper import create_paper_trade_from_card, update_trade_outcome
+from catalyst_radar.validation.paper import update_trade_outcome
 from catalyst_radar.validation.replay import build_replay_results, deterministic_replay_run_id
 from catalyst_radar.validation.reports import build_validation_report, validation_report_payload
 from catalyst_radar.validation.shadow_mode import (
@@ -3216,57 +3220,33 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "paper-decision":
         create_schema(engine)
-        validation_repo = ValidationRepository(engine)
-        card = validation_repo.decision_card_payload(
-            args.decision_card_id,
-            available_at=args.available_at,
-        )
-        if card is None:
-            print(f"decision card not found: {args.decision_card_id}", file=sys.stderr)
-            return 1
-        hard_blocks = _card_hard_blocks(card)
-        override_reason = _optional_cli_text(args.override_reason)
-        if args.decision == PaperDecision.APPROVED.value and hard_blocks and not override_reason:
-            print("--override-reason is required to approve a blocked card", file=sys.stderr)
-            return 1
-        entry_at = args.entry_at or (args.available_at if args.entry_price is not None else None)
-        trade = create_paper_trade_from_card(
-            card,
-            PaperDecision(args.decision),
-            available_at=args.available_at,
-            entry_price=args.entry_price,
-            entry_at=entry_at,
-        )
         execute = bool(args.execute)
-        payload = _paper_decision_payload(
-            trade=trade,
-            decision_card_id=args.decision_card_id,
-            decision=PaperDecision(args.decision),
-            available_at=args.available_at,
-            entry_price=args.entry_price,
-            entry_at=entry_at,
-            override_reason=override_reason,
-            hard_blocks=hard_blocks,
-            execute=execute,
-        )
-        if execute:
-            validation_repo.upsert_paper_trade(trade)
-            _append_paper_decision_audit_events(
+        try:
+            payload = run_paper_decision(
                 engine,
-                card=card,
-                trade=trade,
-                decision=PaperDecision(args.decision),
-                hard_blocks=hard_blocks,
-                override_reason=override_reason,
-                occurred_at=args.available_at,
+                decision_card_id=args.decision_card_id,
+                decision=args.decision,
+                available_at=args.available_at,
+                entry_price=args.entry_price,
+                entry_at=args.entry_at,
+                override_reason=_optional_cli_text(args.override_reason),
+                execute=execute,
+                actor_source="cli",
             )
+        except PaperDecisionExecutionError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        trade = payload["trade"]
+        if not isinstance(trade, Mapping):
+            print("paper decision result did not include a trade payload", file=sys.stderr)
+            return 1
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             print(
-                f"paper_trade mode={payload['mode']} id={trade.id} "
-                f"decision_card_id={trade.decision_card_id} ticker={trade.ticker} "
-                f"decision={trade.decision.value} state={trade.state.value} "
+                f"paper_trade mode={payload['mode']} id={trade['id']} "
+                f"decision_card_id={trade['decision_card_id']} ticker={trade['ticker']} "
+                f"decision={trade['decision']} state={trade['state']} "
                 f"no_execution=true db_writes_required={payload['db_writes_required']} "
                 f"db_writes_made={payload['db_writes_made']} "
                 f"execute_command={payload.get('execute_command') or 'n/a'}"

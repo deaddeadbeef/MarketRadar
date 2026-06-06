@@ -170,6 +170,8 @@ const backendCommandWords = new Set([
   'options_flow',
   'outcome',
   'outcomes',
+  'paper-decision',
+  'paper_decision',
   'sec',
   'sec-cik',
   'sec_cik',
@@ -267,6 +269,7 @@ const fallbackCommandReference = [
   ['alert-status STATUS|all / alert-route ROUTE|all', 'Filter alerts.'],
   ['run / run execute', 'Open Safe Run or show the capped run execution boundary.'],
   ['action / trigger / ticket / feedback', 'Run guarded local Broker or Alert commands through the dashboard backend.'],
+  ['paper-decision preview / execute', 'Preview or record the active plan as a local paper decision.'],
   ['ledger coverage / record', 'Run guarded local value-ledger commands through the dashboard backend.'],
   ['outcome coverage / update', 'Run guarded local value-outcome commands through the dashboard backend.'],
   ['json', 'Open and focus the raw JSON snapshot.'],
@@ -594,6 +597,7 @@ function renderSnapshot() {
   updateAutomationJson(snapshot, status, pageInfo);
   renderContent(snapshot);
   bindPlatformToolCards();
+  bindWorkbenchPaperControls();
   bindQueueRows();
 }
 
@@ -993,6 +997,8 @@ function renderWorkbenchActivePlan(activePlan) {
   const order = activePlan.order_intent || {};
   const controls = activePlan.execution_controls || {};
   const supervision = activePlan.supervision || {};
+  const paperDecision = activePlan.paper_decision || {};
+  const canPaperDecision = Boolean(paperDecision.decision_card_id && paperDecision.decision && paperDecision.available_at);
   return `
     <div class="workbench-active-plan" data-testid="workbench-active-plan">
       <div class="module-title-row">
@@ -1006,6 +1012,7 @@ function renderWorkbenchActivePlan(activePlan) {
         ${activePlanBlock('Strategy', [
           ['Ticker', activePlan.ticker || strategy.ticker],
           ['Autonomy', activePlan.autonomy_level],
+          ['Paper decision', activePlan.recommended_paper_decision || paperDecision.decision],
           ['Direction', strategy.direction],
           ['Entry', strategy.entry_price],
           ['Invalidation', strategy.invalidation_price],
@@ -1039,12 +1046,27 @@ function renderWorkbenchActivePlan(activePlan) {
       <div class="plan-command-list" data-testid="workbench-plan-controls">
         <div>
           <span>Preview</span>
-          <code>${escapeHtml(compact(supervision.paper_decision_preview_command, 'No preview command.'))}</code>
+          <code>${escapeHtml(compact(paperDecision.preview_command || supervision.paper_decision_preview_command, 'No preview command.'))}</code>
         </div>
         <div>
           <span>Execute boundary</span>
-          <code>${escapeHtml(compact(supervision.paper_decision_execute_command, 'No execute command.'))}</code>
+          <code>${escapeHtml(compact(paperDecision.execute_command || supervision.paper_decision_execute_command, 'No execute command.'))}</code>
         </div>
+      </div>
+      <div class="plan-action-row" data-testid="workbench-paper-actions">
+        <button
+          type="button"
+          data-testid="workbench-paper-preview"
+          data-paper-mode="preview"
+          ${canPaperDecision ? '' : 'disabled'}
+        >Preview Paper</button>
+        <button
+          type="button"
+          data-testid="workbench-paper-record"
+          data-paper-mode="execute"
+          ${canPaperDecision ? '' : 'disabled'}
+        >Record Paper Decision</button>
+        <span>${escapeHtml(compact(paperDecision.decision ? `decision=${paperDecision.decision}` : '', 'No active paper decision.'))}</span>
       </div>
     </div>
   `;
@@ -1120,6 +1142,19 @@ function bindPlatformToolCards() {
       setPage(card.dataset.page);
     });
   });
+}
+
+function bindWorkbenchPaperControls() {
+  document.querySelectorAll('[data-paper-mode]').forEach((button) => {
+    button.addEventListener('click', () => runWorkbenchPaperDecision(button.dataset.paperMode));
+  });
+}
+
+async function runWorkbenchPaperDecision(mode) {
+  const resolvedMode = mode === 'execute' ? 'execute' : 'preview';
+  const command = `paper-decision ${resolvedMode}`;
+  state.lastCommand = command;
+  await handleBackendDashboardCommand(command);
 }
 
 function renderTutorial() {
