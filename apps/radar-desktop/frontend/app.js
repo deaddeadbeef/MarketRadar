@@ -991,6 +991,8 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchActivePlan(moduleData.active_plan)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
+      ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
+      ${renderWorkbenchJournalOutcomes(moduleData.value_outcomes)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
   `;
@@ -1182,6 +1184,54 @@ function renderWorkbenchOrderTickets(tickets) {
               <td data-label="Invalidation">${escapeHtml(compact(ticket.invalidation_price, '-'))}</td>
               <td data-label="Status">${escapeHtml(catalogLabel(ticket.status || 'blocked'))}</td>
               <td data-label="Hard Blocks">${escapeHtml(compact(ticket.hard_blocks, 'broker_submission_disabled'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchJournalLedger(entries) {
+  if (!Array.isArray(entries) || !entries.length) return '';
+  return `
+    <div class="table-wrap journal-ledger-preview" data-testid="workbench-journal-ledger">
+      <table aria-label="Journal value ledger entries">
+        <thead><tr><th>Ticker</th><th>Label</th><th>Action</th><th>Decision</th><th>Value</th><th>Confidence</th><th>Outcome</th></tr></thead>
+        <tbody>
+          ${entries.slice(0, 8).map((entry) => `
+            <tr data-testid="workbench-journal-ledger-row">
+              <td data-label="Ticker">${escapeHtml(compact(entry.ticker, '-'))}</td>
+              <td data-label="Label">${escapeHtml(catalogLabel(entry.label || '-'))}</td>
+              <td data-label="Action">${escapeHtml(catalogLabel(entry.supported_action || '-'))}</td>
+              <td data-label="Decision">${escapeHtml(catalogLabel(entry.user_decision || '-'))}</td>
+              <td data-label="Value">${escapeHtml(compact(entry.estimated_value_usd, '-'))}</td>
+              <td data-label="Confidence">${escapeHtml(compact(entry.confidence, '-'))}</td>
+              <td data-label="Outcome">${escapeHtml(catalogLabel(entry.outcome_status || 'pending'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchJournalOutcomes(outcomes) {
+  if (!Array.isArray(outcomes) || !outcomes.length) return '';
+  return `
+    <div class="table-wrap journal-outcome-preview" data-testid="workbench-journal-outcomes">
+      <table aria-label="Journal value outcomes">
+        <thead><tr><th>Ticker</th><th>Status</th><th>Days</th><th>Entry</th><th>20D</th><th>SPY Rel 20D</th><th>Invalidation</th></tr></thead>
+        <tbody>
+          ${outcomes.slice(0, 8).map((outcome) => `
+            <tr data-testid="workbench-journal-outcome-row">
+              <td data-label="Ticker">${escapeHtml(compact(outcome.ticker, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(outcome.status || '-'))}</td>
+              <td data-label="Days">${escapeHtml(compact(outcome.trading_days_observed, '0'))}</td>
+              <td data-label="Entry">${escapeHtml(compact(outcome.entry_price, '-'))}</td>
+              <td data-label="20D">${escapeHtml(compact(outcome.return_20d, '-'))}</td>
+              <td data-label="SPY Rel 20D">${escapeHtml(compact(outcome.spy_relative_return_20d, '-'))}</td>
+              <td data-label="Invalidation">${escapeHtml(outcome.invalidation_touched ? 'touched' : 'clear')}</td>
             </tr>
           `).join('')}
         </tbody>

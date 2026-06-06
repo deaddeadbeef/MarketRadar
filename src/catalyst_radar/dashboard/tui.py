@@ -899,6 +899,24 @@ def _trading_workbench_snapshot_payload(
     )
     active_risk = _mapping(active_plan.get("risk_approval"))
     active_order = _mapping(active_plan.get("order_intent"))
+    journal_ledger_payload = load_value_ledger_entries_payload(
+        engine,
+        available_at=available_at,
+        limit=5,
+    )
+    journal_outcomes_payload = load_value_outcomes_payload(
+        engine,
+        available_at=available_at,
+        limit=5,
+    )
+    journal_entry_rows = [
+        _workbench_value_ledger_entry_row(row)
+        for row in _rows(journal_ledger_payload.get("entries"))
+    ]
+    journal_outcome_rows = [
+        _workbench_value_outcome_row(row)
+        for row in _rows(journal_outcomes_payload.get("outcomes"))
+    ]
     paper_trade_rows = [
         _workbench_paper_trade_row(row) for row in paper_rows[:5]
     ]
@@ -1091,10 +1109,18 @@ def _trading_workbench_snapshot_payload(
                 "metrics": {
                     "value_ledger_entry_count": ledger_entries,
                     "outcome_count": outcome_count,
+                    "journal_entry_preview_count": len(journal_entry_rows),
+                    "journal_outcome_preview_count": len(journal_outcome_rows),
                     "feedback_label_count": len(useful_labels),
                     "monthly_value_status": value_report.get("status"),
                 },
-                "next_action": "Record feedback and outcome evidence locally.",
+                "value_ledger_entries": journal_entry_rows,
+                "value_outcomes": journal_outcome_rows,
+                "next_action": (
+                    "Review local value ledger and outcome evidence."
+                    if journal_entry_rows or journal_outcome_rows
+                    else "Record feedback and outcome evidence locally."
+                ),
                 "source_keys": ["value_ledger", "value_outcomes", "value_report"],
             },
             "agent": {
@@ -1370,6 +1396,45 @@ def _workbench_paper_trade_row(row: Mapping[str, object]) -> dict[str, object]:
         "available_at": row.get("available_at"),
         "no_execution": bool(payload.get("no_execution", True)),
         "next_action": "Track outcome locally; no broker order was submitted.",
+    }
+
+
+def _workbench_value_ledger_entry_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "entry_date": row.get("entry_date"),
+        "ticker": row.get("ticker"),
+        "label": row.get("label"),
+        "artifact_type": row.get("artifact_type"),
+        "artifact_id": row.get("artifact_id"),
+        "supported_action": row.get("supported_action"),
+        "user_decision": row.get("user_decision"),
+        "estimated_value_usd": row.get("estimated_value_usd"),
+        "confidence": row.get("confidence"),
+        "confidence_weighted_value_usd": row.get(
+            "confidence_weighted_value_usd"
+        ),
+        "outcome_status": row.get("outcome_status"),
+        "source": row.get("source"),
+        "next_action": "Review outcome evidence or update the local journal.",
+    }
+
+
+def _workbench_value_outcome_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "value_ledger_entry_id": row.get("value_ledger_entry_id"),
+        "ticker": row.get("ticker"),
+        "status": row.get("status"),
+        "trading_days_observed": row.get("trading_days_observed"),
+        "entry_price": row.get("entry_price"),
+        "return_20d": row.get("return_20d"),
+        "spy_relative_return_20d": row.get("spy_relative_return_20d"),
+        "max_adverse_excursion": row.get("max_adverse_excursion"),
+        "max_favorable_excursion": row.get("max_favorable_excursion"),
+        "invalidation_touched": bool(row.get("invalidation_touched")),
+        "outcome_available_at": row.get("outcome_available_at"),
+        "next_action": "Compare realized outcome with the original decision.",
     }
 
 
