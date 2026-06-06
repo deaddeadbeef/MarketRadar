@@ -89,6 +89,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchModuleData",
         "function renderWorkbenchActivePlan",
         "function activePlanBlock",
+        "function renderWorkbenchAgentCapabilities",
         "function workbenchModuleRows",
         "function renderWorkbenchModuleRows",
         "function renderWorkbenchPaperTrades",
@@ -122,10 +123,14 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-paper-record"',
         'data-testid="workbench-ticket-preview"',
         'data-testid="workbench-ticket-record"',
+        'data-testid="workbench-agent-capabilities"',
+        'data-testid="workbench-agent-capability-row"',
         "strategy_proposal",
         "risk_approval",
         "order_intent",
         "execution_controls",
+        "capability_map",
+        "Agent capability map",
         "recommended_paper_decision",
         "paper_decision",
         "order_ticket",
@@ -148,6 +153,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Backtest validation results",
         "Portfolio positions",
         "Hard Blocks",
+        "Provider Calls",
+        "Broker Order",
         'data-testid="live-trading-disabled"',
         "function bindPlatformToolCards",
         "platform: {",
@@ -188,6 +195,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".journal-outcome-preview" in styles
     assert ".validation-result-preview" in styles
     assert ".portfolio-position-preview" in styles
+    assert ".agent-capability-preview" in styles
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:

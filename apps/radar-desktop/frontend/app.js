@@ -989,6 +989,7 @@ function renderWorkbenchModuleData(moduleData) {
         </div>
       </div>
       ${renderWorkbenchActivePlan(moduleData.active_plan)}
+      ${renderWorkbenchAgentCapabilities(moduleData.capability_map)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
@@ -1114,6 +1115,31 @@ function activePlanBlock(title, rows) {
           <div class="kv"><span>${escapeHtml(key)}</span><b>${escapeHtml(text(value))}</b></div>
         `).join('')}
       </div>
+    </div>
+  `;
+}
+
+function renderWorkbenchAgentCapabilities(capabilities) {
+  if (!Array.isArray(capabilities) || !capabilities.length) return '';
+  return `
+    <div class="table-wrap agent-capability-preview" data-testid="workbench-agent-capabilities">
+      <table aria-label="Agent capability map">
+        <thead><tr><th>Level</th><th>Capability</th><th>Status</th><th>Boundary</th><th>Provider Calls</th><th>DB Writes</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${capabilities.slice(0, 8).map((capability) => `
+            <tr data-testid="workbench-agent-capability-row">
+              <td data-label="Level">${escapeHtml(compact(capability.level, '-'))}</td>
+              <td data-label="Capability">${escapeHtml(catalogLabel(capability.name || '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(capability.status || 'preview_only'))}</td>
+              <td data-label="Boundary">${escapeHtml(catalogLabel(capability.boundary || 'preview_only'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(capability.external_calls_made, '0'))}</td>
+              <td data-label="DB Writes">${escapeHtml(compact(capability.db_writes_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(capability.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(capability.description || capability.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
     </div>
   `;
 }

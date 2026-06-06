@@ -400,6 +400,31 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert active_plan["supervision"]["no_autonomous_execution"] is True
     assert "--preview" in active_plan["supervision"]["paper_decision_preview_command"]
     assert "--execute" in active_plan["supervision"]["paper_decision_execute_command"]
+    capability_map = active_plan["capability_map"]
+    assert [row["level"] for row in capability_map] == [
+        "L0",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+    ]
+    assert [row["name"] for row in capability_map] == [
+        "market_scout",
+        "agentic_review",
+        "supervised_paper_trade",
+        "broker_order_ticket_preview",
+        "supervised_live_submission",
+        "autonomous_live_trading",
+    ]
+    assert [row["status"] for row in capability_map] == [
+        "available",
+        "blocked",
+        "blocked",
+        "disabled",
+        "disabled",
+        "out_of_scope",
+    ]
 
     boundary = workbench["execution_boundary"]
     assert boundary["live_trading_enabled"] is False
@@ -570,7 +595,30 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "next_action": "Compare realized outcome with the original decision.",
         }
     ]
-    assert modules["agent"]["metrics"]["external_calls_made"] == 0
+    agent = modules["agent"]
+    assert agent["metrics"]["external_calls_made"] == 0
+    assert agent["metrics"]["capability_count"] == 6
+    assert agent["metrics"]["ready_capability_count"] == 1
+    assert agent["metrics"]["blocked_capability_count"] == 5
+    assert "trading_workbench.active_plan.capability_map" in agent["source_keys"]
+    assert agent["next_action"] == "Review agent capabilities; execution remains gated."
+    assert agent["capability_map"][0] == {
+        "level": "L0",
+        "name": "market_scout",
+        "status": "available",
+        "description": "Stored MarketRadar scan, packet, and decision-card evidence.",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "boundary": "read_only",
+        "next_action": "Review manually; no autonomous execution is enabled.",
+    }
+    assert agent["capability_map"][-1]["boundary"] == "out_of_scope"
+    assert all(row["external_calls_made"] == 0 for row in agent["capability_map"])
+    assert all(row["db_writes_made"] == 0 for row in agent["capability_map"])
+    assert all(not row["broker_order_submitted"] for row in agent["capability_map"])
+    assert all(not row["order_submission_allowed"] for row in agent["capability_map"])
 
 
 def test_dashboard_paper_decision_command_previews_and_records_locally(

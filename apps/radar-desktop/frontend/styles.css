@@ -729,6 +729,14 @@ tr[data-testid="queue-row"]:focus-visible td {
   margin-top: 12px;
 }
 
+.agent-capability-preview {
+  margin-top: 12px;
+}
+
+.agent-capability-preview table {
+  min-width: 880px;
+}
+
 .paper-trade-preview table {
   min-width: 720px;
 }

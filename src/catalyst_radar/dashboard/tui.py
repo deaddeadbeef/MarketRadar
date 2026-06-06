@@ -904,6 +904,10 @@ def _trading_workbench_snapshot_payload(
     )
     active_risk = _mapping(active_plan.get("risk_approval"))
     active_order = _mapping(active_plan.get("order_intent"))
+    agent_capability_rows = [
+        _workbench_agent_capability_row(row)
+        for row in _rows(active_plan.get("capability_map"))
+    ]
     journal_ledger_payload = load_value_ledger_entries_payload(
         engine,
         available_at=available_at,
@@ -1157,9 +1161,31 @@ def _trading_workbench_snapshot_payload(
                         _mapping(runtime_context.get("agent")).get("agent_sdk_enabled")
                     ),
                     "external_calls_made": 0,
+                    "capability_count": len(agent_capability_rows),
+                    "ready_capability_count": sum(
+                        1
+                        for row in agent_capability_rows
+                        if str(row.get("status") or "").lower()
+                        in {"available", "ready"}
+                    ),
+                    "blocked_capability_count": sum(
+                        1
+                        for row in agent_capability_rows
+                        if str(row.get("status") or "").lower()
+                        not in {"available", "ready"}
+                    ),
                 },
-                "next_action": "Preview agent reasoning; execute remains gated.",
-                "source_keys": ["runtime_context", "agent_brief"],
+                "capability_map": agent_capability_rows,
+                "next_action": (
+                    "Review agent capabilities; execution remains gated."
+                    if agent_capability_rows
+                    else "Preview agent reasoning; execute remains gated."
+                ),
+                "source_keys": [
+                    "runtime_context",
+                    "agent_brief",
+                    "trading_workbench.active_plan.capability_map",
+                ],
             },
         },
     }
@@ -1384,6 +1410,32 @@ def _workbench_queue_row(
             or row.get("next_step")
             or row.get("command")
         ),
+    }
+
+
+def _workbench_agent_capability_row(row: Mapping[str, object]) -> dict[str, object]:
+    status = str(row.get("status") or "unknown").strip() or "unknown"
+    level = str(row.get("level") or "").strip()
+    name = str(row.get("name") or "capability").strip() or "capability"
+    boundary_by_status = {
+        "available": "read_only",
+        "ready": "manual_approval_required",
+        "blocked": "blocked",
+        "disabled": "disabled",
+        "out_of_scope": "out_of_scope",
+    }
+    boundary = boundary_by_status.get(status.lower(), "preview_only")
+    return {
+        "level": level or None,
+        "name": name,
+        "status": status,
+        "description": row.get("description"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "boundary": boundary,
+        "next_action": "Review manually; no autonomous execution is enabled.",
     }
 
 
