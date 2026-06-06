@@ -589,6 +589,73 @@ tr[data-testid="queue-row"]:focus-visible td {
   gap: 8px;
 }
 
+.platform-module-data {
+  min-width: 0;
+}
+
+.module-data-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.module-data-block {
+  min-width: 0;
+}
+
+.module-data-block h2 {
+  margin-bottom: 10px;
+}
+
+.source-key-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-key-list li {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.module-row-preview {
+  margin-top: 12px;
+}
+
+.module-row-preview table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.module-row-preview th,
+.module-row-preview td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.module-row-preview th:nth-child(1),
+.module-row-preview td:nth-child(1) {
+  width: 11%;
+}
+
+.module-row-preview th:nth-child(2),
+.module-row-preview td:nth-child(2) {
+  width: 17%;
+}
+
+.module-row-preview th:nth-child(4),
+.module-row-preview td:nth-child(4) {
+  width: 19%;
+}
+
 .boundary-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -874,6 +941,7 @@ dialog::backdrop {
   .metric-grid,
   .kv-grid,
   .platform-tools,
+  .module-data-columns,
   .module-kpis,
   .boundary-grid {
     grid-template-columns: 1fr;
@@ -882,6 +950,48 @@ dialog::backdrop {
   .platform-heading,
   .module-title-row {
     display: grid;
+  }
+
+  .module-row-preview table,
+  .module-row-preview thead,
+  .module-row-preview tbody,
+  .module-row-preview tr,
+  .module-row-preview th,
+  .module-row-preview td {
+    display: block;
+    width: 100%;
+  }
+
+  .module-row-preview thead {
+    display: none;
+  }
+
+  .module-row-preview tr {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .module-row-preview td {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 10px;
+    width: 100%;
+    padding: 6px 0;
+    border-bottom: 0;
+  }
+
+  .module-row-preview td:nth-child(1),
+  .module-row-preview td:nth-child(2),
+  .module-row-preview td:nth-child(4) {
+    width: 100%;
+  }
+
+  .module-row-preview td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
   }
 
   .main .panel,

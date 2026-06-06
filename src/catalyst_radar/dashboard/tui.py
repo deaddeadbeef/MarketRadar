@@ -712,6 +712,19 @@ def dashboard_snapshot_payload(
         candidate_rows=candidate_rows,
         discovery_snapshot=discovery_snapshot,
     )
+    trading_workbench = _trading_workbench_snapshot_payload(
+        priced_in_queue=display_priced_in_queue,
+        candidate_rows=candidate_rows,
+        alert_rows=alert_rows,
+        broker_summary=broker_summary,
+        validation_summary=validation_summary,
+        value_ledger=value_ledger,
+        value_outcomes=value_outcomes,
+        value_report=value_report,
+        trial_readiness=trial_readiness,
+        shadow_readiness=shadow_readiness,
+        runtime_context=runtime_context,
+    )
     payload = {
         "schema_version": "dashboard-cli-snapshot-v1",
         "snapshot_mode": "fast_view" if fast_view else "full",
@@ -787,6 +800,7 @@ def dashboard_snapshot_payload(
         ),
         "call_plan": call_plan,
         "broker": broker_summary,
+        "trading_workbench": trading_workbench,
         "ops_health": ops_health,
         "telemetry": telemetry,
         "telemetry_coverage": dashboard_data.telemetry_coverage_payload(engine),
@@ -795,6 +809,263 @@ def dashboard_snapshot_payload(
     payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
     redacted = redact_restricted_external_payload(payload)
     return redacted if isinstance(redacted, dict) else payload
+
+
+def _trading_workbench_snapshot_payload(
+    *,
+    priced_in_queue: Mapping[str, object],
+    candidate_rows: Sequence[Mapping[str, object]],
+    alert_rows: Sequence[Mapping[str, object]],
+    broker_summary: Mapping[str, object],
+    validation_summary: Mapping[str, object],
+    value_ledger: Mapping[str, object],
+    value_outcomes: Mapping[str, object],
+    value_report: Mapping[str, object],
+    trial_readiness: Mapping[str, object],
+    shadow_readiness: Mapping[str, object],
+    runtime_context: Mapping[str, object],
+) -> dict[str, object]:
+    queue_rows = _rows(priced_in_queue.get("rows") or priced_in_queue.get("items"))
+    candidate_by_ticker = {
+        str(row.get("ticker") or "").strip().upper(): row
+        for row in candidate_rows
+        if str(row.get("ticker") or "").strip()
+    }
+    broker_snapshot = _mapping(_mapping(broker_summary.get("snapshot")))
+    broker_exposure = _mapping(_mapping(broker_summary.get("exposure")))
+    validation_report = _mapping(validation_summary.get("report"))
+    latest_validation = _mapping(validation_summary.get("latest_run"))
+    paper_rows = _rows(validation_summary.get("paper_trades"))
+    useful_labels = _rows(validation_summary.get("useful_labels"))
+    ledger_entries = _first_nonnegative_int(
+        _mapping(value_ledger.get("summary")).get("entry_count"),
+        value_ledger.get("entry_count"),
+        len(_rows(value_ledger.get("entries"))),
+    )
+    outcome_count = _first_nonnegative_int(
+        value_outcomes.get("outcome_count"),
+        _mapping(value_outcomes.get("summary")).get("outcome_count"),
+        len(_rows(value_outcomes.get("rows"))),
+    )
+    decision_ready_rows = [
+        row for row in queue_rows if _workbench_decision_ready(row)
+    ]
+    decision_card_count = sum(
+        1 for row in candidate_rows if row.get("decision_card_id") or row.get("card")
+    )
+    hard_block_rows = [
+        row
+        for row in queue_rows
+        if bool(row.get("blocked"))
+        or _rows(row.get("blockers"))
+        or _rows(_mapping(row.get("portfolio_impact")).get("hard_blocks"))
+        or _rows(row.get("portfolio_hard_blocks"))
+    ]
+    first_queue_row = queue_rows[0] if queue_rows else {}
+    trial_checks = _rows(trial_readiness.get("checks"))
+    shadow_checks = _rows(shadow_readiness.get("checks"))
+    broker_connected = bool(
+        broker_exposure.get("broker_connected")
+        or str(broker_snapshot.get("connection_status") or "").lower()
+        in {"connected", "ok", "ready"}
+    )
+    return {
+        "schema_version": "trading-workbench-snapshot-v1",
+        "external_calls_made": 0,
+        "primary_tool": "market-radar",
+        "execution_boundary": {
+            "live_trading_enabled": False,
+            "broker_order_submission": "disabled",
+            "autonomous_execution": "disabled",
+            "paper_trading": "preview_only",
+            "provider_calls_for_browsing": 0,
+        },
+        "modules": {
+            "portfolio": {
+                "status": "ready" if broker_summary else "blocked",
+                "summary": "Read-only portfolio and broker context.",
+                "metrics": {
+                    "broker_connected": broker_connected,
+                    "position_count": _first_nonnegative_int(
+                        broker_exposure.get("position_count"),
+                        broker_snapshot.get("position_count"),
+                    ),
+                    "account_count": _first_nonnegative_int(
+                        broker_exposure.get("account_count"),
+                        broker_snapshot.get("account_count"),
+                    ),
+                    "portfolio_equity": _first_value(
+                        broker_exposure.get("portfolio_equity"),
+                        broker_snapshot.get("portfolio_equity"),
+                    ),
+                },
+                "next_action": "Use broker sync only for read-only portfolio context.",
+                "source_keys": ["broker.snapshot", "broker.exposure"],
+            },
+            "market-radar": {
+                "status": "ready" if queue_rows else "blocked",
+                "summary": "Scouted catalyst queue and decision-usefulness triage.",
+                "metrics": {
+                    "queue_count": _first_nonnegative_int(
+                        priced_in_queue.get("returned_count"),
+                        priced_in_queue.get("count"),
+                        len(queue_rows),
+                    ),
+                    "total_count": _first_nonnegative_int(
+                        priced_in_queue.get("total_count"),
+                        len(queue_rows),
+                    ),
+                    "candidate_count": len(candidate_rows),
+                    "alert_count": len(alert_rows),
+                },
+                "rows": [
+                    _workbench_queue_row(row, candidate_by_ticker=candidate_by_ticker)
+                    for row in queue_rows[:5]
+                ],
+                "next_action": "Open the top queue row before planning a trade.",
+                "source_keys": ["priced_in_queue", "candidates", "alerts"],
+            },
+            "trade-planner": {
+                "status": (
+                    "ready" if decision_ready_rows or decision_card_count else "blocked"
+                ),
+                "summary": "Decision-card trade-plan readiness and next candidate.",
+                "metrics": {
+                    "decision_ready_count": len(decision_ready_rows),
+                    "decision_card_count": decision_card_count,
+                    "queue_count": len(queue_rows),
+                    "missing_trade_plan_count": sum(
+                        1
+                        for row in queue_rows
+                        if row.get("decision_gap") == "trade_plan"
+                        or "trade_plan" in _rows(row.get("missing_trade_plan"))
+                    ),
+                },
+                "focus": _workbench_queue_row(
+                    first_queue_row,
+                    candidate_by_ticker=candidate_by_ticker,
+                ),
+                "next_action": "Build or review a decision card before paper intent.",
+                "source_keys": ["priced_in_queue.rows", "decision_cards"],
+            },
+            "risk-desk": {
+                "status": "ready" if not hard_block_rows else "blocked",
+                "summary": "Portfolio impact, hard blocks, and readiness gates.",
+                "metrics": {
+                    "hard_block_count": len(hard_block_rows),
+                    "trial_block_count": sum(
+                        1 for check in trial_checks if check.get("status") == "blocked"
+                    ),
+                    "shadow_block_count": sum(
+                        1 for check in shadow_checks if check.get("status") == "blocked"
+                    ),
+                },
+                "next_action": "Clear hard blocks before paper or live consideration.",
+                "source_keys": ["trial_readiness", "shadow_readiness", "portfolio_impact"],
+            },
+            "paper-trading": {
+                "status": "ready" if paper_rows else "blocked",
+                "summary": "Paper-only execution history and supervised intent boundary.",
+                "metrics": {
+                    "paper_trade_count": len(paper_rows),
+                    "latest_trade_id": paper_rows[0].get("id") if paper_rows else None,
+                    "approved_for_live_submission": False,
+                },
+                "next_action": "Use paper execution only after risk approval.",
+                "source_keys": ["validation.paper_trades"],
+            },
+            "broker": {
+                "status": "read_only",
+                "summary": "Broker desk is context-only; order submission is disabled.",
+                "metrics": {
+                    "broker_connected": broker_connected,
+                    "order_submission_allowed": False,
+                    "broker_order_submitted": False,
+                },
+                "next_action": "Authenticate only when portfolio context is needed.",
+                "source_keys": ["broker"],
+            },
+            "backtest": {
+                "status": "ready" if validation_report or latest_validation else "blocked",
+                "summary": "Validation, replay, and historical evidence.",
+                "metrics": {
+                    "latest_validation_run": latest_validation.get("id"),
+                    "candidate_count": _first_nonnegative_int(
+                        validation_report.get("candidate_count")
+                    ),
+                    "paper_trade_count": len(paper_rows),
+                },
+                "next_action": "Compare candidate logic against validation evidence.",
+                "source_keys": ["validation.latest_run", "validation.report"],
+            },
+            "journal": {
+                "status": (
+                    "ready" if ledger_entries or outcome_count or useful_labels else "blocked"
+                ),
+                "summary": "Decision feedback, value ledger, and outcomes.",
+                "metrics": {
+                    "value_ledger_entry_count": ledger_entries,
+                    "outcome_count": outcome_count,
+                    "feedback_label_count": len(useful_labels),
+                    "monthly_value_status": value_report.get("status"),
+                },
+                "next_action": "Record feedback and outcome evidence locally.",
+                "source_keys": ["value_ledger", "value_outcomes", "value_report"],
+            },
+            "agent": {
+                "status": "preview_only",
+                "summary": "Agent cockpit remains preview and budget-gated.",
+                "metrics": {
+                    "agent_sdk_enabled": bool(
+                        _mapping(runtime_context.get("agent")).get("agent_sdk_enabled")
+                    ),
+                    "external_calls_made": 0,
+                },
+                "next_action": "Preview agent reasoning; execute remains gated.",
+                "source_keys": ["runtime_context", "agent_brief"],
+            },
+        },
+    }
+
+
+def _workbench_decision_ready(row: Mapping[str, object]) -> bool:
+    usefulness = _mapping(row.get("usefulness"))
+    if usefulness.get("decision_ready") is True:
+        return True
+    status = str(usefulness.get("status") or row.get("usefulness") or "").lower()
+    return status in {"decision_useful", "actionable", "eligible"}
+
+
+def _workbench_queue_row(
+    row: Mapping[str, object],
+    *,
+    candidate_by_ticker: Mapping[str, Mapping[str, object]] | None = None,
+) -> dict[str, object]:
+    if not row:
+        return {}
+    ticker = str(
+        row.get("ticker") or row.get("symbol") or row.get("security") or ""
+    ).upper()
+    candidate = _mapping((candidate_by_ticker or {}).get(ticker)) if ticker else {}
+    usefulness = _mapping(row.get("usefulness"))
+    return {
+        "ticker": ticker or None,
+        "state": row.get("state") or row.get("status") or row.get("usefulness"),
+        "subject": row.get("subject") or row.get("title") or row.get("why_now"),
+        "usefulness_status": usefulness.get("status"),
+        "decision_ready": bool(usefulness.get("decision_ready")),
+        "decision_card_id": (
+            row.get("decision_card_id")
+            or candidate.get("decision_card_id")
+            or candidate.get("card")
+        ),
+        "next_action": (
+            row.get("next_action")
+            or usefulness.get("next_action")
+            or row.get("next_step")
+            or row.get("command")
+        ),
+    }
 
 
 def _dashboard_real_results_payload(
