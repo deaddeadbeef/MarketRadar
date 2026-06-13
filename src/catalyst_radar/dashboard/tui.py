@@ -871,6 +871,8 @@ def _trading_workbench_snapshot_payload(
     broker_exposure = _mapping(_mapping(broker_summary.get("exposure")))
     broker_tickets = _rows(broker_summary.get("order_tickets"))
     broker_positions = _rows(broker_summary.get("positions"))
+    broker_balances = _rows(broker_summary.get("balances"))
+    broker_open_orders = _rows(broker_summary.get("open_orders"))
     broker_triggers = _rows(broker_summary.get("triggers"))
     broker_opportunity_actions = _rows(broker_summary.get("opportunity_actions"))
     validation_report = _mapping(validation_summary.get("report"))
@@ -1018,6 +1020,13 @@ def _trading_workbench_snapshot_payload(
         _workbench_portfolio_position_row(row, portfolio_equity=portfolio_equity)
         for row in broker_positions[:5]
     ]
+    portfolio_balance_rows = [
+        _workbench_portfolio_balance_row(row) for row in broker_balances[:5]
+    ]
+    portfolio_exposure_rows = _workbench_portfolio_exposure_rows(broker_exposure)
+    portfolio_open_order_rows = _workbench_portfolio_open_order_rows(
+        broker_open_orders[:5]
+    )
     broker_ticket_rows = [
         _workbench_order_ticket_row(row) for row in broker_tickets[:5]
     ]
@@ -1071,15 +1080,46 @@ def _trading_workbench_snapshot_payload(
                         broker_exposure.get("portfolio_equity"),
                         broker_snapshot.get("portfolio_equity"),
                     ),
+                    "cash": _first_value(broker_exposure.get("cash")),
+                    "buying_power": _first_value(broker_exposure.get("buying_power")),
+                    "broker_data_stale": bool(broker_exposure.get("broker_data_stale")),
                     "position_preview_count": len(portfolio_position_rows),
+                    "balance_count": len(portfolio_balance_rows),
+                    "open_order_count": _first_nonnegative_int(
+                        broker_snapshot.get("open_order_count"),
+                        len(broker_open_orders),
+                    ),
+                    "gross_exposure_pct": _nested(
+                        broker_exposure,
+                        "exposure_before",
+                        "gross_exposure_pct",
+                    ),
+                    "single_name_exposure_count": len(
+                        _mapping(
+                            _nested(
+                                broker_exposure,
+                                "exposure_before",
+                                "single_name",
+                            )
+                        )
+                    ),
                 },
                 "positions": portfolio_position_rows,
+                "balances": portfolio_balance_rows,
+                "exposure_rows": portfolio_exposure_rows,
+                "open_order_checks": portfolio_open_order_rows,
                 "next_action": (
                     "Review read-only positions before planning risk."
                     if portfolio_position_rows
                     else "Use broker sync only for read-only portfolio context."
                 ),
-                "source_keys": ["broker.snapshot", "broker.exposure", "broker.positions"],
+                "source_keys": [
+                    "broker.snapshot",
+                    "broker.exposure",
+                    "broker.positions",
+                    "broker.balances",
+                    "broker.open_orders",
+                ],
             },
             "market-radar": {
                 "status": "ready" if queue_rows else "blocked",
@@ -2574,7 +2614,123 @@ def _workbench_portfolio_position_row(
             if market_value is not None and equity not in (None, 0)
             else None
         ),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
         "next_action": "Use as read-only portfolio context; order submission is disabled.",
+    }
+
+
+def _workbench_portfolio_balance_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "account_id": row.get("account_id"),
+        "display_name": row.get("display_name"),
+        "as_of": row.get("as_of"),
+        "cash": row.get("cash"),
+        "buying_power": row.get("buying_power"),
+        "liquidation_value": row.get("liquidation_value"),
+        "equity": row.get("equity"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Use balance context for sizing only; broker submission is disabled.",
+    }
+
+
+def _workbench_portfolio_exposure_rows(
+    exposure: Mapping[str, object],
+) -> list[dict[str, object]]:
+    exposure_before = _mapping(exposure.get("exposure_before"))
+    single_name = _mapping(exposure_before.get("single_name"))
+    gross_exposure = exposure_before.get("gross_exposure_pct")
+    snapshot_as_of = exposure.get("snapshot_as_of")
+    stale = bool(exposure.get("broker_data_stale"))
+    status = (
+        "missing"
+        if gross_exposure is None and not snapshot_as_of
+        else "stale"
+        if stale
+        else "ready"
+    )
+    rows = [
+        {
+            "scope": "portfolio",
+            "metric": "gross_exposure_pct",
+            "value": gross_exposure,
+            "status": status,
+            "snapshot_as_of": snapshot_as_of,
+            "broker_data_stale": stale,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Review concentration before sizing any new plan.",
+        }
+    ]
+    rows.extend(
+        {
+            "scope": "single_name",
+            "metric": ticker,
+            "value": value,
+            "status": status,
+            "snapshot_as_of": snapshot_as_of,
+            "broker_data_stale": stale,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Compare against single-name limits before paper review.",
+        }
+        for ticker, value in sorted(single_name.items())
+    )
+    return rows
+
+
+def _workbench_portfolio_open_order_rows(
+    rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    if not rows:
+        return [
+            {
+                "id": None,
+                "account_id": None,
+                "ticker": None,
+                "side": None,
+                "order_type": None,
+                "quantity": 0,
+                "limit_price": None,
+                "status": "none",
+                "submitted_at": None,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "broker_order_submitted": False,
+                "order_submission_allowed": False,
+                "next_action": "No open broker orders in the read-only snapshot.",
+            }
+        ]
+    return [_workbench_portfolio_open_order_row(row) for row in rows]
+
+
+def _workbench_portfolio_open_order_row(
+    row: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "account_id": row.get("account_id"),
+        "ticker": row.get("ticker"),
+        "side": row.get("side"),
+        "order_type": row.get("order_type"),
+        "quantity": row.get("quantity"),
+        "limit_price": row.get("limit_price"),
+        "status": row.get("status"),
+        "submitted_at": row.get("submitted_at"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Read-only open-order context; no broker order is submitted.",
     }
 
 

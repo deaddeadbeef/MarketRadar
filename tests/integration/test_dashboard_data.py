@@ -509,7 +509,14 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert portfolio["metrics"]["position_count"] == 1
     assert portfolio["metrics"]["account_count"] == 1
     assert portfolio["metrics"]["portfolio_equity"] == 250000.0
+    assert portfolio["metrics"]["cash"] == 50000.0
+    assert portfolio["metrics"]["buying_power"] == 100000.0
+    assert portfolio["metrics"]["broker_data_stale"] is True
     assert portfolio["metrics"]["position_preview_count"] == 1
+    assert portfolio["metrics"]["balance_count"] == 1
+    assert portfolio["metrics"]["open_order_count"] == 0
+    assert portfolio["metrics"]["gross_exposure_pct"] == 0.038
+    assert portfolio["metrics"]["single_name_exposure_count"] == 1
     assert portfolio["next_action"] == "Review read-only positions before planning risk."
     account_id = broker_account_id("schwab", "account-hash-123")
     assert portfolio["positions"] == [
@@ -524,11 +531,83 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "sector": "technology",
             "theme": "broker_synced",
             "exposure_pct": 0.038,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
             "next_action": (
                 "Use as read-only portfolio context; order submission is disabled."
             ),
         }
     ]
+    assert portfolio["balances"] == [
+        {
+            "account_id": account_id,
+            "display_name": "MARGIN ending 5678",
+            "as_of": AVAILABLE_AT.isoformat(),
+            "cash": 50000.0,
+            "buying_power": 100000.0,
+            "liquidation_value": 250000.0,
+            "equity": 250000.0,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": (
+                "Use balance context for sizing only; broker submission is disabled."
+            ),
+        }
+    ]
+    assert portfolio["exposure_rows"] == [
+        {
+            "scope": "portfolio",
+            "metric": "gross_exposure_pct",
+            "value": 0.038,
+            "status": "stale",
+            "snapshot_as_of": AVAILABLE_AT.isoformat(),
+            "broker_data_stale": True,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Review concentration before sizing any new plan.",
+        },
+        {
+            "scope": "single_name",
+            "metric": "GLW",
+            "value": 0.038,
+            "status": "stale",
+            "snapshot_as_of": AVAILABLE_AT.isoformat(),
+            "broker_data_stale": True,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": (
+                "Compare against single-name limits before paper review."
+            ),
+        },
+    ]
+    assert portfolio["open_order_checks"] == [
+        {
+            "id": None,
+            "account_id": None,
+            "ticker": None,
+            "side": None,
+            "order_type": None,
+            "quantity": 0,
+            "limit_price": None,
+            "status": "none",
+            "submitted_at": None,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "No open broker orders in the read-only snapshot.",
+        }
+    ]
+    assert "broker.balances" in portfolio["source_keys"]
+    assert "broker.open_orders" in portfolio["source_keys"]
 
     market_radar = modules["market-radar"]
     assert market_radar["metrics"]["queue_count"] == 2

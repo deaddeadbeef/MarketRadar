@@ -829,12 +829,18 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 920px;
 }
 
-.portfolio-position-preview {
+.portfolio-position-preview,
+.portfolio-balance-preview,
+.portfolio-exposure-preview,
+.portfolio-open-order-preview {
   margin-top: 12px;
 }
 
-.portfolio-position-preview table {
-  min-width: 820px;
+.portfolio-position-preview table,
+.portfolio-balance-preview table,
+.portfolio-exposure-preview table,
+.portfolio-open-order-preview table {
+  min-width: 920px;
 }
 
 .order-ticket-preview table {

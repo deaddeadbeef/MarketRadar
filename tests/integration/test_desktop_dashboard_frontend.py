@@ -118,6 +118,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchValidationResults",
         "function renderWorkbenchUsefulLabels",
         "function renderWorkbenchPortfolioPositions",
+        "function renderWorkbenchPortfolioBalances",
+        "function renderWorkbenchPortfolioExposure",
+        "function renderWorkbenchPortfolioOpenOrders",
         "function renderWorkbenchFeatureRows",
         "broker: () => renderPlatformModulePage('broker', snapshot)",
         "run: () => renderPlatformModulePage('run', snapshot)",
@@ -143,6 +146,12 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-useful-label-row"',
         'data-testid="workbench-portfolio-positions"',
         'data-testid="workbench-portfolio-position-row"',
+        'data-testid="workbench-portfolio-balances"',
+        'data-testid="workbench-portfolio-balance-row"',
+        'data-testid="workbench-portfolio-exposure"',
+        'data-testid="workbench-portfolio-exposure-row"',
+        'data-testid="workbench-portfolio-open-orders"',
+        'data-testid="workbench-portfolio-open-order-row"',
         'data-testid="workbench-feature-inventory"',
         'data-testid="workbench-feature-row"',
         'data-testid="workbench-active-plan"',
@@ -202,6 +211,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "risk_blocks",
         "readiness_checks",
         "opportunity_actions",
+        "balances",
+        "exposure_rows",
+        "open_order_checks",
         "Agent capability map",
         "Agent contribution brief",
         "Agent proposed human actions",
@@ -243,6 +255,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Backtest validation results",
         "Validation useful labels",
         "Portfolio positions",
+        "Portfolio account balances",
+        "Portfolio exposure summary",
+        "Portfolio open order boundary",
         "Workbench feature inventory",
         "Hard Blocks",
         "Provider Calls",
@@ -329,6 +344,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".useful-label-preview" in styles
     assert ".feature-inventory-preview" in styles
     assert ".portfolio-position-preview" in styles
+    assert ".portfolio-balance-preview" in styles
+    assert ".portfolio-exposure-preview" in styles
+    assert ".portfolio-open-order-preview" in styles
     assert ".agent-capability-preview" in styles
     assert ".agent-contribution-preview" in styles
     assert ".agent-action-preview" in styles
