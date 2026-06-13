@@ -484,6 +484,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "portfolio",
         "market-radar",
         "candidates",
+        "review",
         "readiness",
         "run",
         "alerts",
@@ -570,6 +571,31 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "Open a candidate row and review evidence before planning."
     )
     assert "candidate_packets" in candidates_module["source_keys"]
+
+    review_module = modules["review"]
+    assert review_module["status"] == "blocked"
+    assert review_module["summary"] == (
+        "Full scan blocked by catalyst_events core evidence gap (1 row(s)); "
+        "2 scanned row(s)."
+    )
+    assert review_module["metrics"]["priced_in_answer_ready"] is False
+    assert review_module["metrics"]["can_make_investment_decision"] is False
+    assert review_module["metrics"]["manual_investment_decision_ready"] is False
+    assert review_module["metrics"]["visible_rows"] == 2
+    assert review_module["metrics"]["total_rows"] == 2
+    assert review_module["metrics"]["decision_ready_rows"] == 0
+    assert review_module["metrics"]["actionable_mismatch_rows"] == 0
+    assert review_module["metrics"]["trust_blocker_count"] == 5
+    assert review_module["metrics"]["decision_readiness_status"] == "blocked"
+    assert review_module["metrics"]["external_calls_made"] == 0
+    assert [row["ticker"] for row in review_module["rows"]] == ["MSFT", "AAPL"]
+    assert review_module["rows"][0]["decision_card_id"] == "card-msft-latest"
+    assert review_module["rows"][0]["broker_order_submitted"] is False
+    assert all(row["external_calls_made"] == 0 for row in review_module["rows"])
+    assert review_module["next_action"] == (
+        "Review the run call plan and refresh event ingestion before trusting emotion."
+    )
+    assert "priced_in_answer.trust_blockers" in review_module["source_keys"]
 
     readiness = modules["readiness"]
     assert readiness["status"] == "research_only"
