@@ -957,6 +957,11 @@ def _trading_workbench_snapshot_payload(
     )
     active_risk = _mapping(active_plan.get("risk_approval"))
     active_order = _mapping(active_plan.get("order_intent"))
+    trade_setup_rows = _workbench_trade_setup_rows(active_plan)
+    trade_sizing_rows = _workbench_trade_sizing_rows(active_plan)
+    trade_paper_intent_rows = _workbench_paper_intent_rows(active_plan)
+    trade_order_intent_rows = _workbench_order_intent_rows(active_plan)
+    risk_approval_rows = _workbench_risk_approval_rows(active_plan)
     agent_capability_rows = [
         _workbench_agent_capability_row(row)
         for row in _rows(active_plan.get("capability_map"))
@@ -1457,6 +1462,10 @@ def _trading_workbench_snapshot_payload(
                     "queue_count": len(queue_rows),
                     "active_plan_status": active_plan.get("status"),
                     "active_plan_autonomy": active_plan.get("autonomy_level"),
+                    "trade_setup_count": len(trade_setup_rows),
+                    "sizing_row_count": len(trade_sizing_rows),
+                    "paper_intent_count": len(trade_paper_intent_rows),
+                    "order_intent_count": len(trade_order_intent_rows),
                     "missing_trade_plan_count": sum(
                         1
                         for row in queue_rows
@@ -1466,8 +1475,19 @@ def _trading_workbench_snapshot_payload(
                 },
                 "focus": focus_row,
                 "active_plan": active_plan,
+                "trade_setup_rows": trade_setup_rows,
+                "sizing_rows": trade_sizing_rows,
+                "paper_intent_rows": trade_paper_intent_rows,
+                "order_intent_rows": trade_order_intent_rows,
                 "next_action": "Build or review a decision card before paper intent.",
-                "source_keys": ["priced_in_queue.rows", "decision_cards"],
+                "source_keys": [
+                    "priced_in_queue.rows",
+                    "decision_cards",
+                    "trading_workbench.active_plan.strategy_proposal",
+                    "trading_workbench.active_plan.order_intent",
+                    "trading_workbench.active_plan.paper_decision",
+                    "trading_workbench.active_plan.order_ticket",
+                ],
             },
             "risk-desk": {
                 "status": (
@@ -1495,12 +1515,20 @@ def _trading_workbench_snapshot_payload(
                     "live_submission_block_count": len(
                         _texts(active_risk.get("live_submission_blocks"))
                     ),
+                    "risk_approval_row_count": len(risk_approval_rows),
                 },
                 "active_plan": active_plan,
+                "risk_approval_rows": risk_approval_rows,
                 "risk_blocks": risk_block_rows,
                 "readiness_checks": readiness_check_rows,
                 "next_action": "Clear hard blocks before paper or live consideration.",
-                "source_keys": ["trial_readiness", "shadow_readiness", "portfolio_impact"],
+                "source_keys": [
+                    "trial_readiness",
+                    "shadow_readiness",
+                    "portfolio_impact",
+                    "trading_workbench.active_plan.risk_approval",
+                    "trading_workbench.active_plan.execution_controls",
+                ],
             },
             "paper-trading": {
                 "status": "ready" if paper_rows else "blocked",
@@ -2103,6 +2131,200 @@ def _workbench_decision_ready(row: Mapping[str, object]) -> bool:
         return True
     status = str(usefulness.get("status") or row.get("usefulness") or "").lower()
     return status in {"decision_useful", "actionable", "eligible"}
+
+
+def _workbench_trade_setup_rows(
+    active_plan: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not active_plan or active_plan.get("status") == "missing":
+        return []
+    strategy = _mapping(active_plan.get("strategy_proposal"))
+    return [
+        {
+            "decision_card_id": active_plan.get("decision_card_id"),
+            "ticker": active_plan.get("ticker") or strategy.get("ticker"),
+            "setup_type": strategy.get("setup_type"),
+            "action_state": strategy.get("action_state"),
+            "direction": strategy.get("direction"),
+            "entry_zone": strategy.get("entry_zone"),
+            "entry_price": strategy.get("entry_price"),
+            "entry_price_source": strategy.get("entry_price_source"),
+            "invalidation_price": strategy.get("invalidation_price"),
+            "target_price": strategy.get("target_price"),
+            "reward_risk": strategy.get("reward_risk"),
+            "final_score": strategy.get("final_score"),
+            "time_stop_days": strategy.get("time_stop_days"),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": (
+                active_plan.get("next_action")
+                or "Review the setup before any paper intent."
+            ),
+        }
+    ]
+
+
+def _workbench_trade_sizing_rows(
+    active_plan: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not active_plan or active_plan.get("status") == "missing":
+        return []
+    order = _mapping(active_plan.get("order_intent"))
+    risk = _mapping(active_plan.get("risk_approval"))
+    ticket = _mapping(active_plan.get("order_ticket"))
+    return [
+        {
+            "ticker": active_plan.get("ticker") or ticket.get("ticker"),
+            "side": order.get("side") or ticket.get("side"),
+            "quantity": order.get("quantity"),
+            "estimated_notional": order.get("estimated_notional"),
+            "estimated_max_loss": _first_value(
+                order.get("estimated_max_loss"),
+                risk.get("estimated_max_loss"),
+            ),
+            "risk_per_trade_pct": ticket.get("risk_per_trade_pct"),
+            "entry_price": _first_value(order.get("limit_price"), ticket.get("entry_price")),
+            "invalidation_price": _first_value(
+                order.get("stop_price"),
+                ticket.get("invalidation_price"),
+            ),
+            "paper_approved": bool(risk.get("approved_for_paper_trade")),
+            "live_approved": False,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Use sizing as paper-review input; broker submission is disabled.",
+        }
+    ]
+
+
+def _workbench_paper_intent_rows(
+    active_plan: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not active_plan or active_plan.get("status") == "missing":
+        return []
+    paper = _mapping(active_plan.get("paper_decision"))
+    return [
+        {
+            "decision_card_id": paper.get("decision_card_id")
+            or active_plan.get("decision_card_id"),
+            "ticker": active_plan.get("ticker"),
+            "decision": paper.get("decision"),
+            "available_at": paper.get("available_at"),
+            "entry_price": paper.get("entry_price"),
+            "entry_at": paper.get("entry_at"),
+            "hard_block_count": len(_texts(paper.get("hard_blocks"))),
+            "external_calls_required": paper.get("external_calls_required", 0),
+            "external_calls_made": paper.get("external_calls_made", 0),
+            "db_writes_required": paper.get("db_writes_required", 0),
+            "db_writes_made": paper.get("db_writes_made", 0),
+            "broker_order_submitted": bool(paper.get("broker_order_submitted")),
+            "order_submission_allowed": bool(paper.get("order_submission_allowed")),
+            "no_execution": bool(paper.get("no_execution", True)),
+            "preview_command": paper.get("preview_command"),
+            "execute_command": paper.get("execute_command"),
+            "next_action": "Preview or record locally; no broker order is submitted.",
+        }
+    ]
+
+
+def _workbench_order_intent_rows(
+    active_plan: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not active_plan or active_plan.get("status") == "missing":
+        return []
+    order = _mapping(active_plan.get("order_intent"))
+    ticket = _mapping(active_plan.get("order_ticket"))
+    return [
+        {
+            "ticker": active_plan.get("ticker") or ticket.get("ticker"),
+            "route": order.get("route"),
+            "side": order.get("side") or ticket.get("side"),
+            "quantity": order.get("quantity"),
+            "limit_price": order.get("limit_price"),
+            "stop_price": order.get("stop_price"),
+            "estimated_notional": order.get("estimated_notional"),
+            "estimated_max_loss": order.get("estimated_max_loss"),
+            "submission_allowed": bool(order.get("submission_allowed")),
+            "ticket_entry_price": ticket.get("entry_price"),
+            "ticket_invalidation_price": ticket.get("invalidation_price"),
+            "preview_command": ticket.get("preview_command"),
+            "record_command": ticket.get("record_command"),
+            "external_calls_required": ticket.get("external_calls_required", 0),
+            "external_calls_made": ticket.get("external_calls_made", 0),
+            "db_writes_required": ticket.get("db_writes_required", 0),
+            "db_writes_made": ticket.get("db_writes_made", 0),
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "no_execution": bool(ticket.get("no_execution", True)),
+            "next_action": "Save only as a blocked local ticket after manual review.",
+        }
+    ]
+
+
+def _workbench_risk_approval_rows(
+    active_plan: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not active_plan or active_plan.get("status") == "missing":
+        return []
+    risk = _mapping(active_plan.get("risk_approval"))
+    controls = _mapping(active_plan.get("execution_controls"))
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    return [
+        {
+            "gate": "paper_trade",
+            "status": "approved" if risk.get("approved_for_paper_trade") else "blocked",
+            "approved": bool(risk.get("approved_for_paper_trade")),
+            "block_count": len(paper_blocks),
+            "blocks": paper_blocks,
+            "estimated_max_loss": risk.get("estimated_max_loss"),
+            "requires_manual_approval": bool(risk.get("requires_manual_approval")),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Resolve paper blocks before supervised paper review.",
+        },
+        {
+            "gate": "live_submission",
+            "status": "disabled",
+            "approved": False,
+            "block_count": len(live_blocks),
+            "blocks": live_blocks,
+            "estimated_max_loss": risk.get("estimated_max_loss"),
+            "requires_manual_approval": True,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": risk.get("live_submission_reason")
+            or "Live submission remains disabled by the platform boundary.",
+        },
+        {
+            "gate": "execution_controls",
+            "status": "disabled"
+            if controls.get("no_execution", True)
+            else "manual_review",
+            "approved": False,
+            "block_count": 0,
+            "blocks": [],
+            "estimated_max_loss": risk.get("estimated_max_loss"),
+            "requires_manual_approval": bool(
+                risk.get("requires_manual_approval", True)
+            ),
+            "external_calls_made": controls.get("external_calls_made", 0),
+            "db_writes_made": controls.get("db_writes_made", 0),
+            "broker_order_submitted": bool(controls.get("broker_order_submitted")),
+            "order_submission_allowed": bool(controls.get("order_submission_allowed")),
+            "next_action": (
+                "Execution controls enforce no-execution and read-only broker mode."
+            ),
+        },
+    ]
 
 
 def _workbench_queue_row(

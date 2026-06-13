@@ -1004,8 +1004,80 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert trade_planner["metrics"]["decision_card_count"] == 1
     assert trade_planner["metrics"]["active_plan_status"] == "blocked"
     assert trade_planner["metrics"]["active_plan_autonomy"] == "L1_agentic_review"
+    assert trade_planner["metrics"]["trade_setup_count"] == 1
+    assert trade_planner["metrics"]["sizing_row_count"] == 1
+    assert trade_planner["metrics"]["paper_intent_count"] == 1
+    assert trade_planner["metrics"]["order_intent_count"] == 1
     assert trade_planner["focus"]["decision_card_id"] == "card-msft-latest"
     assert trade_planner["active_plan"]["decision_card_id"] == "card-msft-latest"
+    assert trade_planner["trade_setup_rows"][0] == {
+        "decision_card_id": "card-msft-latest",
+        "ticker": "MSFT",
+        "setup_type": "breakout",
+        "action_state": "Warning",
+        "direction": "bullish",
+        "entry_zone": [100.0, 104.0],
+        "entry_price": 100.0,
+        "entry_price_source": "trade_plan_entry_zone_low",
+        "invalidation_price": 94.0,
+        "target_price": None,
+        "reward_risk": 2.7,
+        "final_score": 88.0,
+        "time_stop_days": None,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": active_plan["next_action"],
+    }
+    assert trade_planner["sizing_rows"][0] == {
+        "ticker": "MSFT",
+        "side": "buy",
+        "quantity": 0.0,
+        "estimated_notional": 0.0,
+        "estimated_max_loss": 200.0,
+        "risk_per_trade_pct": 0.005,
+        "entry_price": 100.0,
+        "invalidation_price": 94.0,
+        "paper_approved": False,
+        "live_approved": False,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": (
+            "Use sizing as paper-review input; broker submission is disabled."
+        ),
+    }
+    paper_intent = trade_planner["paper_intent_rows"][0]
+    assert paper_intent["decision_card_id"] == "card-msft-latest"
+    assert paper_intent["decision"] == "deferred"
+    assert paper_intent["hard_block_count"] == 2
+    assert paper_intent["external_calls_made"] == 0
+    assert paper_intent["db_writes_made"] == 0
+    assert paper_intent["broker_order_submitted"] is False
+    assert paper_intent["order_submission_allowed"] is False
+    assert paper_intent["no_execution"] is True
+    assert "--preview" in paper_intent["preview_command"]
+    assert "--execute" in paper_intent["execute_command"]
+    order_intent = trade_planner["order_intent_rows"][0]
+    assert order_intent["ticker"] == "MSFT"
+    assert order_intent["route"] == "paper_trade_only"
+    assert order_intent["quantity"] == 0.0
+    assert order_intent["limit_price"] == 100.0
+    assert order_intent["stop_price"] == 94.0
+    assert order_intent["submission_allowed"] is False
+    assert order_intent["db_writes_required"] == 1
+    assert order_intent["db_writes_made"] == 0
+    assert order_intent["broker_order_submitted"] is False
+    assert order_intent["order_submission_allowed"] is False
+    assert order_intent["no_execution"] is True
+    assert "trading_workbench.active_plan.strategy_proposal" in trade_planner[
+        "source_keys"
+    ]
+    assert "trading_workbench.active_plan.paper_decision" in trade_planner[
+        "source_keys"
+    ]
 
     risk_desk = modules["risk-desk"]
     assert risk_desk["status"] == "blocked"
@@ -1017,6 +1089,45 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert risk_desk["metrics"]["shadow_block_count"] == 7
     assert risk_desk["metrics"]["paper_trade_block_count"] == 2
     assert risk_desk["metrics"]["live_submission_block_count"] == 3
+    assert risk_desk["metrics"]["risk_approval_row_count"] == 3
+    assert [row["gate"] for row in risk_desk["risk_approval_rows"]] == [
+        "paper_trade",
+        "live_submission",
+        "execution_controls",
+    ]
+    assert risk_desk["risk_approval_rows"][0] == {
+        "gate": "paper_trade",
+        "status": "blocked",
+        "approved": False,
+        "block_count": 2,
+        "blocks": [
+            "action_state_not_manual_review_eligible",
+            "missing_position_sizing:shares",
+        ],
+        "estimated_max_loss": 200.0,
+        "requires_manual_approval": True,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Resolve paper blocks before supervised paper review.",
+    }
+    assert risk_desk["risk_approval_rows"][1]["status"] == "disabled"
+    assert risk_desk["risk_approval_rows"][1]["block_count"] == 3
+    assert "broker_submission_disabled" in risk_desk["risk_approval_rows"][1][
+        "blocks"
+    ]
+    assert risk_desk["risk_approval_rows"][2]["status"] == "disabled"
+    assert risk_desk["risk_approval_rows"][2]["external_calls_made"] == 0
+    assert risk_desk["risk_approval_rows"][2]["db_writes_made"] == 0
+    assert all(
+        row["broker_order_submitted"] is False
+        for row in risk_desk["risk_approval_rows"]
+    )
+    assert all(
+        row["order_submission_allowed"] is False
+        for row in risk_desk["risk_approval_rows"]
+    )
     assert [row["code"] for row in risk_desk["risk_blocks"]] == [
         "action_state_not_manual_review_eligible",
         "missing_position_sizing:shares",
@@ -1059,6 +1170,10 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     ]
     assert all(row["external_calls_made"] == 0 for row in risk_desk["risk_blocks"])
     assert all(row["db_writes_made"] == 0 for row in risk_desk["risk_blocks"])
+    assert "trading_workbench.active_plan.risk_approval" in risk_desk["source_keys"]
+    assert "trading_workbench.active_plan.execution_controls" in risk_desk[
+        "source_keys"
+    ]
 
     paper_trading = modules["paper-trading"]
     assert paper_trading["metrics"]["paper_trade_count"] == 1
