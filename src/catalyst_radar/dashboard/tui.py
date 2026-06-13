@@ -737,6 +737,8 @@ def dashboard_snapshot_payload(
         value_ledger=value_ledger,
         value_outcomes=value_outcomes,
         value_report=value_report,
+        ops_health=ops_health,
+        call_plan=call_plan,
         trial_readiness=trial_readiness,
         shadow_readiness=shadow_readiness,
         runtime_context=runtime_context,
@@ -843,6 +845,8 @@ def _trading_workbench_snapshot_payload(
     value_ledger: Mapping[str, object],
     value_outcomes: Mapping[str, object],
     value_report: Mapping[str, object],
+    ops_health: Mapping[str, object],
+    call_plan: Mapping[str, object],
     trial_readiness: Mapping[str, object],
     shadow_readiness: Mapping[str, object],
     runtime_context: Mapping[str, object],
@@ -895,6 +899,20 @@ def _trading_workbench_snapshot_payload(
         or str(broker_snapshot.get("connection_status") or "").lower()
         in {"connected", "ok", "ready"}
     )
+    ops_database = _mapping(ops_health.get("database"))
+    ops_stale = _mapping(ops_health.get("stale_data"))
+    ops_degraded = _mapping(ops_health.get("degraded_mode"))
+    ops_telemetry = _mapping(ops_health.get("telemetry"))
+    ops_provider_rows = [
+        _workbench_ops_provider_row(row) for row in _rows(ops_health.get("providers"))[:6]
+    ]
+    ops_job_rows = [
+        _workbench_ops_job_row(row) for row in _rows(ops_health.get("jobs"))[:6]
+    ]
+    ops_call_plan_rows = [
+        _workbench_call_plan_row(row) for row in _rows(call_plan.get("rows"))[:8]
+    ]
+    ops_call_plan_status = str(call_plan.get("status") or "unknown")
     portfolio_equity = _first_value(
         broker_exposure.get("portfolio_equity"),
         broker_snapshot.get("portfolio_equity"),
@@ -1346,6 +1364,63 @@ def _trading_workbench_snapshot_payload(
                 ),
                 "source_keys": ["value_ledger", "value_outcomes", "value_report"],
             },
+            "ops": {
+                "status": (
+                    "blocked"
+                    if bool(ops_degraded.get("enabled"))
+                    or ops_call_plan_status == "blocked"
+                    else "ready"
+                ),
+                "summary": "Provider health, runtime context, and call boundaries.",
+                "metrics": {
+                    "database_status": ops_database.get("status"),
+                    "candidate_state_count": _first_nonnegative_int(
+                        ops_database.get("candidate_state_count")
+                    ),
+                    "provider_count": len(ops_provider_rows),
+                    "stale_provider_count": len(_texts(ops_stale.get("providers"))),
+                    "degraded_mode_enabled": bool(ops_degraded.get("enabled")),
+                    "job_count": len(_rows(ops_health.get("jobs"))),
+                    "telemetry_event_count": _first_nonnegative_int(
+                        ops_telemetry.get("event_count")
+                    ),
+                    "call_plan_status": ops_call_plan_status,
+                    "max_external_call_count": _first_nonnegative_int(
+                        call_plan.get("max_external_call_count")
+                    ),
+                    "will_call_external_providers": bool(
+                        call_plan.get("will_call_external_providers")
+                    ),
+                    "openai_key_configured": bool(
+                        runtime_context.get("openai_key_configured")
+                    ),
+                    "schwab_credentials_configured": bool(
+                        runtime_context.get("schwab_credentials_configured")
+                    ),
+                    "external_calls_made": 0,
+                },
+                "provider_rows": ops_provider_rows,
+                "job_rows": ops_job_rows,
+                "call_plan_rows": ops_call_plan_rows,
+                "runtime": {
+                    "environment": runtime_context.get("environment"),
+                    "database": runtime_context.get("database"),
+                    "daily_market_provider": runtime_context.get(
+                        "daily_market_provider"
+                    ),
+                    "daily_event_provider": runtime_context.get(
+                        "daily_event_provider"
+                    ),
+                    "evidence": runtime_context.get("evidence"),
+                },
+                "next_action": (
+                    "Resolve stale provider or data-health blockers before agent expansion."
+                    if bool(ops_degraded.get("enabled"))
+                    else call_plan.get("next_action")
+                    or "Review runtime health before executing provider work."
+                ),
+                "source_keys": ["ops_health", "runtime_context", "call_plan"],
+            },
             "agent": {
                 "status": "preview_only",
                 "summary": "Agent cockpit remains preview and budget-gated.",
@@ -1745,6 +1820,56 @@ def _workbench_value_economics_row(row: Mapping[str, object]) -> dict[str, objec
         "broker_order_submitted": False,
         "order_submission_allowed": False,
         "next_action": "Compare value evidence against production cost.",
+    }
+
+
+def _workbench_ops_provider_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "provider": row.get("provider"),
+        "status": row.get("status"),
+        "checked_at": row.get("checked_at"),
+        "source": row.get("source"),
+        "reason": row.get("reason"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Resolve provider status before relying on fresh signals.",
+    }
+
+
+def _workbench_ops_job_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "job_type": row.get("job_type"),
+        "status": row.get("status"),
+        "started_at": row.get("started_at"),
+        "finished_at": row.get("finished_at"),
+        "requested_count": row.get("requested_count"),
+        "raw_count": row.get("raw_count"),
+        "normalized_count": row.get("normalized_count"),
+        "error_summary": row.get("error_summary"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Review failed or stale jobs before expanding automation.",
+    }
+
+
+def _workbench_call_plan_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "layer": row.get("layer"),
+        "status": row.get("status"),
+        "external_call_count_max": row.get("external_call_count_max"),
+        "approval_required": bool(row.get("approval_required")),
+        "guardrail": row.get("guardrail"),
+        "next_action": row.get("next_action")
+        or "Review call plan before executing provider work.",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
     }
 
 

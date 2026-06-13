@@ -588,6 +588,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Compare spend with attributed decision-support value.",
         },
         TradingPlatformModule {
+            key: "ops",
+            label: "Ops",
+            role: "Provider health, runtime context, and execution readiness.",
+            source: "ops health, runtime context, and call plan",
+            status: "route_ready",
+            page: "ops",
+            test_id: "platform-tool-ops",
+            next_action: "Resolve runtime blockers before expanding agent autonomy.",
+        },
+        TradingPlatformModule {
             key: "journal",
             label: "Journal",
             role: "Decision notes, feedback, value ledger, and outcome review.",

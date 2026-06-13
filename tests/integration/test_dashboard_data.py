@@ -493,6 +493,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "agent",
         "themes",
         "costs",
+        "ops",
     } <= set(modules)
 
     portfolio = modules["portfolio"]
@@ -687,6 +688,56 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "task_daily_caps": {},
     }
     assert "budget_ledger" in costs["source_keys"]
+
+    ops = modules["ops"]
+    assert ops["status"] == "blocked"
+    assert ops["metrics"]["database_status"] == "ok"
+    assert ops["metrics"]["candidate_state_count"] == 3
+    assert ops["metrics"]["provider_count"] == 2
+    assert ops["metrics"]["stale_provider_count"] == 1
+    assert ops["metrics"]["degraded_mode_enabled"] is True
+    assert ops["metrics"]["job_count"] == 1
+    assert ops["metrics"]["telemetry_event_count"] == 0
+    assert ops["metrics"]["call_plan_status"] == "local_or_dry_run_only"
+    assert ops["metrics"]["max_external_call_count"] == 0
+    assert ops["metrics"]["will_call_external_providers"] is False
+    assert ops["metrics"]["openai_key_configured"] is False
+    assert ops["metrics"]["schwab_credentials_configured"] is False
+    assert ops["metrics"]["external_calls_made"] == 0
+    assert [row["provider"] for row in ops["provider_rows"]] == ["news", "polygon"]
+    assert ops["provider_rows"][0] == {
+        "provider": "news",
+        "status": "stale",
+        "checked_at": AVAILABLE_AT.isoformat(),
+        "source": None,
+        "reason": "last record exceeded freshness window",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Resolve provider status before relying on fresh signals.",
+    }
+    assert ops["job_rows"][0]["id"] == "job-ingest"
+    assert ops["job_rows"][0]["job_type"] == "provider_ingest"
+    assert ops["job_rows"][0]["status"] == "success"
+    assert ops["job_rows"][0]["external_calls_made"] == 0
+    assert [row["layer"] for row in ops["call_plan_rows"]] == [
+        "Scan provider",
+        "Market data",
+        "News/events",
+        "LLM review",
+        "Alert delivery",
+        "Schwab",
+    ]
+    assert all(row["external_calls_made"] == 0 for row in ops["call_plan_rows"])
+    assert all(not row["broker_order_submitted"] for row in ops["call_plan_rows"])
+    assert ops["runtime"]["environment"] == "local"
+    assert ops["runtime"]["daily_market_provider"] == "csv"
+    assert ops["runtime"]["daily_event_provider"] == "news_fixture"
+    assert ops["next_action"] == (
+        "Resolve stale provider or data-health blockers before agent expansion."
+    )
+    assert "ops_health" in ops["source_keys"]
 
     trade_planner = modules["trade-planner"]
     assert trade_planner["metrics"]["decision_card_count"] == 1
