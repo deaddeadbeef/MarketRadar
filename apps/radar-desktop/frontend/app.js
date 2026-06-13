@@ -1013,6 +1013,7 @@ function renderWorkbenchModuleData(moduleData) {
         </div>
       </div>
       ${renderWorkbenchActivePlan(moduleData.active_plan)}
+      ${renderWorkbenchTradeLifecycle(moduleData.trade_lifecycle_rows)}
       ${renderWorkbenchTradeSetups(moduleData.trade_setup_rows)}
       ${renderWorkbenchSizingRows(moduleData.sizing_rows)}
       ${renderWorkbenchPaperIntents(moduleData.paper_intent_rows)}
@@ -1811,6 +1812,33 @@ function renderWorkbenchPaperTrades(trades) {
               <td data-label="Entry">${escapeHtml(compact(trade.entry_price, '-'))}</td>
               <td data-label="Max Loss">${escapeHtml(compact(trade.max_loss, '-'))}</td>
               <td data-label="Boundary">${escapeHtml(trade.no_execution ? 'no execution' : 'local review')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchTradeLifecycle(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap trade-lifecycle-preview" data-testid="workbench-trade-lifecycle">
+      <table aria-label="Trade lifecycle">
+        <thead><tr><th>Ticker</th><th>Stage</th><th>Decision Card</th><th>Paper Trade</th><th>Audit</th><th>Validation</th><th>Journal</th><th>Outcome</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-trade-lifecycle-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Stage">${escapeHtml(catalogLabel(row.current_stage || '-'))}</td>
+              <td data-label="Decision Card">${escapeHtml(compact(row.decision_card_id, '-'))}</td>
+              <td data-label="Paper Trade">${escapeHtml(compact(row.paper_trade_id, '-'))}</td>
+              <td data-label="Audit">${escapeHtml(compact(row.audit_event_id, '-'))}</td>
+              <td data-label="Validation">${escapeHtml(compact(row.validation_result_id, '-'))}</td>
+              <td data-label="Journal">${escapeHtml(compact(row.ledger_entry_id, '-'))}</td>
+              <td data-label="Outcome">${escapeHtml(compact(row.outcome_status || row.outcome_id, '-'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
           `).join('')}
         </tbody>

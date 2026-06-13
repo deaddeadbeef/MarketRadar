@@ -90,6 +90,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchModuleData",
         "function renderWorkbenchActivePlan",
         "function activePlanBlock",
+        "function renderWorkbenchTradeLifecycle",
         "function renderWorkbenchTradeSetups",
         "function renderWorkbenchSizingRows",
         "function renderWorkbenchPaperIntents",
@@ -166,6 +167,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-feature-inventory"',
         'data-testid="workbench-feature-row"',
         'data-testid="workbench-active-plan"',
+        'data-testid="workbench-trade-lifecycle"',
+        'data-testid="workbench-trade-lifecycle-row"',
         'data-testid="workbench-plan-controls"',
         'data-testid="workbench-paper-actions"',
         'data-testid="workbench-paper-preview"',
@@ -264,6 +267,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "paper_intent_rows",
         "order_intent_rows",
         "risk_approval_rows",
+        "trade_lifecycle_rows",
+        "Trade lifecycle",
         "Trade planner setup proposal",
         "Trade planner sizing proposal",
         "Trade planner paper intent",
@@ -369,6 +374,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".platform-tool-card" in styles
     assert ".platform-boundary" in styles
     assert ".module-page" in styles
+    assert ".trade-lifecycle-preview" in styles
     assert ".trade-setup-preview" in styles
     assert ".trade-sizing-preview" in styles
     assert ".paper-intent-preview" in styles
