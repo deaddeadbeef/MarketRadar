@@ -810,8 +810,19 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 920px;
 }
 
+.paper-trade-preview,
+.execution-audit-preview,
+.ticket-audit-preview {
+  margin-top: 12px;
+}
+
 .paper-trade-preview table {
   min-width: 720px;
+}
+
+.execution-audit-preview table,
+.ticket-audit-preview table {
+  min-width: 980px;
 }
 
 .journal-ledger-preview,

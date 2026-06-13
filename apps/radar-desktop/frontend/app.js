@@ -1039,6 +1039,8 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchTelemetryCoverage(moduleData.coverage_domains)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
+      ${renderWorkbenchExecutionAudit(moduleData.execution_audit_rows)}
+      ${renderWorkbenchTicketAudit(moduleData.ticket_audit_rows)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
       ${renderWorkbenchJournalOutcomes(moduleData.value_outcomes)}
       ${renderWorkbenchValidationResults(moduleData.validation_results)}
@@ -1833,6 +1835,56 @@ function renderWorkbenchOrderTickets(tickets) {
               <td data-label="Invalidation">${escapeHtml(compact(ticket.invalidation_price, '-'))}</td>
               <td data-label="Status">${escapeHtml(catalogLabel(ticket.status || 'blocked'))}</td>
               <td data-label="Hard Blocks">${escapeHtml(compact(ticket.hard_blocks, 'broker_submission_disabled'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchExecutionAudit(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap execution-audit-preview" data-testid="workbench-execution-audit">
+      <table aria-label="Paper execution audit">
+        <thead><tr><th>Event</th><th>Ticker</th><th>Decision</th><th>State</th><th>Paper Trade</th><th>Writes</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-execution-audit-row">
+              <td data-label="Event">${escapeHtml(catalogLabel(row.event_type || '-'))}</td>
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Decision">${escapeHtml(catalogLabel(row.decision || '-'))}</td>
+              <td data-label="State">${escapeHtml(catalogLabel(row.record_state || row.status || '-'))}</td>
+              <td data-label="Paper Trade">${escapeHtml(compact(row.paper_trade_id, '-'))}</td>
+              <td data-label="Writes">${escapeHtml(compact(row.db_writes_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchTicketAudit(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap ticket-audit-preview" data-testid="workbench-ticket-audit">
+      <table aria-label="Broker ticket audit">
+        <thead><tr><th>Event</th><th>Ticker</th><th>Side</th><th>Status</th><th>Ticket</th><th>Hard Blocks</th><th>Writes</th><th>Broker Order</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-ticket-audit-row">
+              <td data-label="Event">${escapeHtml(catalogLabel(row.event_type || '-'))}</td>
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Side">${escapeHtml(compact(row.decision, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.record_state || row.status || 'blocked'))}</td>
+              <td data-label="Ticket">${escapeHtml(compact(row.order_ticket_id, '-'))}</td>
+              <td data-label="Hard Blocks">${escapeHtml(compact(row.hard_blocks, 'broker_submission_disabled'))}</td>
+              <td data-label="Writes">${escapeHtml(compact(row.db_writes_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
             </tr>
           `).join('')}
         </tbody>

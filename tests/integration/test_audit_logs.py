@@ -256,6 +256,18 @@ def test_audit_repository_appends_repeated_events_for_same_artifact(tmp_path) ->
 
     events = repo.list_events(artifact_type="decision_card", artifact_id="decision-card-1")
     assert [event.id for event in events] == [first.id, second.id]
+    newest_events = repo.list_events(
+        artifact_type="decision_card",
+        artifact_id="decision-card-1",
+        newest_first=True,
+    )
+    assert [event.id for event in newest_events] == [second.id, first.id]
+    assert repo.list_events(
+        artifact_type="decision_card",
+        artifact_id="decision-card-1",
+        limit=1,
+        newest_first=True,
+    ) == [second]
     assert len({event.id for event in events}) == 2
     assert [event.metadata["ordinal"] for event in events] == [1, 2]
     assert [list(event.metadata) for event in events] == [
