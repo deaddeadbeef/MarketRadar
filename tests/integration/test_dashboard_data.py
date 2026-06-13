@@ -1175,6 +1175,32 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "source_keys"
     ]
 
+    lifecycle_rows = [
+        {
+            "id": "trade-lifecycle:card-msft-latest",
+            "ticker": "MSFT",
+            "decision_card_id": "card-msft-latest",
+            "plan_status": "blocked",
+            "recommended_paper_decision": "deferred",
+            "paper_trade_id": "paper-msft",
+            "paper_decision": "approved",
+            "paper_state": "open",
+            "audit_event_id": None,
+            "validation_result_id": "validation-result-msft",
+            "ledger_entry_id": "value-ledger-msft",
+            "outcome_id": "value-outcome-msft",
+            "outcome_status": "computed",
+            "return_20d": 0.08,
+            "spy_relative_return_20d": 0.05,
+            "current_stage": "outcome_computed",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "no_execution": True,
+            "next_action": "Compare realized outcome with the original paper decision.",
+        }
+    ]
     paper_trading = modules["paper-trading"]
     assert paper_trading["metrics"]["paper_trade_count"] == 1
     assert paper_trading["metrics"]["open_paper_trade_count"] == 1
@@ -1183,9 +1209,11 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert paper_trading["metrics"]["approved_for_live_submission"] is False
     assert paper_trading["metrics"]["execution_audit_event_count"] == 0
     assert paper_trading["metrics"]["latest_execution_audit_id"] is None
+    assert paper_trading["metrics"]["trade_lifecycle_count"] == 1
     assert paper_trading["next_action"] == (
         "Review local paper outcomes; broker submission remains disabled."
     )
+    assert paper_trading["trade_lifecycle_rows"] == lifecycle_rows
     assert paper_trading["paper_trades"] == [
         {
             "id": "paper-msft",
@@ -1210,6 +1238,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     ]
     assert paper_trading["execution_audit_rows"] == []
     assert "audit_events.paper_decision_recorded" in paper_trading["source_keys"]
+    assert "trading_workbench.trade_lifecycle_rows" in paper_trading["source_keys"]
 
     broker = modules["broker"]
     assert broker["status"] == "read_only"
@@ -1230,9 +1259,11 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     backtest = modules["backtest"]
     assert backtest["metrics"]["latest_validation_run"] == "validation-run-latest"
     assert backtest["metrics"]["validation_result_preview_count"] == 1
+    assert backtest["metrics"]["trade_lifecycle_count"] == 1
     assert backtest["next_action"] == (
         "Compare candidate logic against local validation evidence."
     )
+    assert backtest["trade_lifecycle_rows"] == lifecycle_rows
     assert backtest["validation_results"] == [
         {
             "id": "validation-result-msft",
@@ -1252,6 +1283,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert "validation-result-msft-future" not in {
         row["id"] for row in backtest["validation_results"]
     }
+    assert "trading_workbench.trade_lifecycle_rows" in backtest["source_keys"]
     validation = modules["validation"]
     assert validation["status"] == "ready"
     assert validation["metrics"]["latest_validation_run"] == "validation-run-latest"
@@ -1291,7 +1323,10 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert journal["metrics"]["journal_entry_preview_count"] == 1
     assert journal["metrics"]["journal_outcome_preview_count"] == 1
     assert journal["metrics"]["feedback_label_count"] == 1
+    assert journal["metrics"]["trade_lifecycle_count"] == 1
+    assert journal["metrics"]["linked_outcome_count"] == 1
     assert journal["next_action"] == "Review local value ledger and outcome evidence."
+    assert journal["trade_lifecycle_rows"] == lifecycle_rows
     assert journal["value_ledger_entries"] == [
         {
             "id": "value-ledger-msft",
@@ -1327,6 +1362,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "next_action": "Compare realized outcome with the original decision.",
         }
     ]
+    assert "trading_workbench.trade_lifecycle_rows" in journal["source_keys"]
     agent = modules["agent"]
     assert agent["metrics"]["external_calls_made"] == 0
     assert agent["status"] == "dry_run"
@@ -1512,6 +1548,12 @@ def test_dashboard_paper_decision_command_previews_and_records_locally(
     assert audit_row["broker_order_submitted"] is False
     assert audit_row["order_submission_allowed"] is False
     assert audit_row["no_execution"] is True
+    lifecycle_row = paper_module["trade_lifecycle_rows"][0]
+    assert lifecycle_row["decision_card_id"] == "card-msft-latest"
+    assert lifecycle_row["audit_event_id"] == events[0].id
+    assert lifecycle_row["db_writes_made"] == 2
+    assert lifecycle_row["broker_order_submitted"] is False
+    assert lifecycle_row["order_submission_allowed"] is False
 
 
 def test_dashboard_order_ticket_command_previews_and_records_locally(

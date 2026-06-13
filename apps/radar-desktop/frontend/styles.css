@@ -810,10 +810,15 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 920px;
 }
 
+.trade-lifecycle-preview,
 .paper-trade-preview,
 .execution-audit-preview,
 .ticket-audit-preview {
   margin-top: 12px;
+}
+
+.trade-lifecycle-preview table {
+  min-width: 1120px;
 }
 
 .paper-trade-preview table {

@@ -1001,17 +1001,19 @@ def _trading_workbench_snapshot_payload(
         available_at=available_at,
         limit=5,
     )
+    journal_ledger_rows = _rows(journal_ledger_payload.get("entries"))
+    journal_outcome_source_rows = _rows(journal_outcomes_payload.get("outcomes"))
     journal_entry_rows = [
         _workbench_value_ledger_entry_row(row)
-        for row in _rows(journal_ledger_payload.get("entries"))
+        for row in journal_ledger_rows
     ]
     cost_value_rows = [
         _workbench_value_economics_row(row)
-        for row in _rows(journal_ledger_payload.get("entries"))[:5]
+        for row in journal_ledger_rows[:5]
     ]
     journal_outcome_rows = [
         _workbench_value_outcome_row(row)
-        for row in _rows(journal_outcomes_payload.get("outcomes"))
+        for row in journal_outcome_source_rows
     ]
     validation_useful_label_rows = [
         _workbench_useful_label_row(row) for row in useful_labels[:5]
@@ -1055,6 +1057,14 @@ def _trading_workbench_snapshot_payload(
     broker_ticket_rows = [
         _workbench_order_ticket_row(row) for row in broker_tickets[:5]
     ]
+    trade_lifecycle_rows = _workbench_trade_lifecycle_rows(
+        active_plan=active_plan,
+        paper_trade_rows=paper_trade_rows,
+        paper_execution_audit_rows=paper_execution_audit_rows,
+        validation_result_rows=validation_result_rows,
+        value_ledger_rows=journal_ledger_rows,
+        value_outcome_rows=journal_outcome_source_rows,
+    )
     alert_module_rows = [_workbench_alert_row(row) for row in alert_rows[:5]]
     alert_trigger_rows = [
         _workbench_market_trigger_row(row) for row in broker_triggers[:5]
@@ -1575,8 +1585,10 @@ def _trading_workbench_snapshot_payload(
                         if paper_execution_audit_rows
                         else None
                     ),
+                    "trade_lifecycle_count": len(trade_lifecycle_rows),
                 },
                 "active_plan": active_plan,
+                "trade_lifecycle_rows": trade_lifecycle_rows,
                 "paper_trades": paper_trade_rows,
                 "execution_audit_rows": paper_execution_audit_rows,
                 "next_action": (
@@ -1587,6 +1599,7 @@ def _trading_workbench_snapshot_payload(
                 "source_keys": [
                     "validation.paper_trades",
                     f"audit_events.{PAPER_DECISION_RECORDED_EVENT}",
+                    "trading_workbench.trade_lifecycle_rows",
                 ],
             },
             "broker": {
@@ -1644,14 +1657,20 @@ def _trading_workbench_snapshot_payload(
                     ),
                     "paper_trade_count": len(paper_rows),
                     "validation_result_preview_count": len(validation_result_rows),
+                    "trade_lifecycle_count": len(trade_lifecycle_rows),
                 },
+                "trade_lifecycle_rows": trade_lifecycle_rows,
                 "validation_results": validation_result_rows,
                 "next_action": (
                     "Compare candidate logic against local validation evidence."
                     if validation_result_rows
                     else "Compare candidate logic against validation evidence."
                 ),
-                "source_keys": ["validation.latest_run", "validation.report"],
+                "source_keys": [
+                    "validation.latest_run",
+                    "validation.report",
+                    "trading_workbench.trade_lifecycle_rows",
+                ],
             },
             "validation": {
                 "status": "ready" if validation_report or latest_validation else "blocked",
@@ -1699,7 +1718,12 @@ def _trading_workbench_snapshot_payload(
                     "journal_outcome_preview_count": len(journal_outcome_rows),
                     "feedback_label_count": len(useful_labels),
                     "monthly_value_status": value_report.get("status"),
+                    "trade_lifecycle_count": len(trade_lifecycle_rows),
+                    "linked_outcome_count": sum(
+                        1 for row in trade_lifecycle_rows if row.get("outcome_id")
+                    ),
                 },
+                "trade_lifecycle_rows": trade_lifecycle_rows,
                 "value_ledger_entries": journal_entry_rows,
                 "value_outcomes": journal_outcome_rows,
                 "next_action": (
@@ -1707,7 +1731,12 @@ def _trading_workbench_snapshot_payload(
                     if journal_entry_rows or journal_outcome_rows
                     else "Record feedback and outcome evidence locally."
                 ),
-                "source_keys": ["value_ledger", "value_outcomes", "value_report"],
+                "source_keys": [
+                    "value_ledger",
+                    "value_outcomes",
+                    "value_report",
+                    "trading_workbench.trade_lifecycle_rows",
+                ],
             },
             "ops": {
                 "status": (
@@ -3129,6 +3158,223 @@ def _workbench_value_outcome_row(row: Mapping[str, object]) -> dict[str, object]
         "outcome_available_at": row.get("outcome_available_at"),
         "next_action": "Compare realized outcome with the original decision.",
     }
+
+
+def _workbench_trade_lifecycle_rows(
+    *,
+    active_plan: Mapping[str, object],
+    paper_trade_rows: Sequence[Mapping[str, object]],
+    paper_execution_audit_rows: Sequence[Mapping[str, object]],
+    validation_result_rows: Sequence[Mapping[str, object]],
+    value_ledger_rows: Sequence[Mapping[str, object]],
+    value_outcome_rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    rows: dict[str, dict[str, object]] = {}
+    paper_trade_to_card: dict[str, str] = {}
+
+    def ensure(
+        *,
+        decision_card_id: object = None,
+        ticker: object = None,
+        paper_trade_id: object = None,
+        ledger_entry_id: object = None,
+    ) -> dict[str, object]:
+        card_text = str(decision_card_id or "").strip()
+        trade_text = str(paper_trade_id or "").strip()
+        ledger_text = str(ledger_entry_id or "").strip()
+        ticker_text = str(ticker or "").strip().upper()
+        key = card_text or trade_text or ledger_text or ticker_text or "unlinked"
+        if key not in rows:
+            rows[key] = {
+                "id": f"trade-lifecycle:{key}",
+                "ticker": ticker_text or None,
+                "decision_card_id": card_text or None,
+                "plan_status": None,
+                "recommended_paper_decision": None,
+                "paper_trade_id": trade_text or None,
+                "paper_decision": None,
+                "paper_state": None,
+                "audit_event_id": None,
+                "validation_result_id": None,
+                "ledger_entry_id": ledger_text or None,
+                "outcome_id": None,
+                "outcome_status": None,
+                "return_20d": None,
+                "spy_relative_return_20d": None,
+                "current_stage": "unlinked",
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "broker_order_submitted": False,
+                "order_submission_allowed": False,
+                "no_execution": True,
+                "next_action": "Link this lifecycle row to local validation evidence.",
+            }
+        row = rows[key]
+        if ticker_text and not row.get("ticker"):
+            row["ticker"] = ticker_text
+        if card_text and not row.get("decision_card_id"):
+            row["decision_card_id"] = card_text
+        if trade_text and not row.get("paper_trade_id"):
+            row["paper_trade_id"] = trade_text
+        if ledger_text and not row.get("ledger_entry_id"):
+            row["ledger_entry_id"] = ledger_text
+        return row
+
+    if active_plan and active_plan.get("status") != "missing":
+        row = ensure(
+            decision_card_id=active_plan.get("decision_card_id"),
+            ticker=active_plan.get("ticker"),
+        )
+        row["plan_status"] = active_plan.get("status")
+        row["recommended_paper_decision"] = active_plan.get(
+            "recommended_paper_decision"
+        )
+
+    for trade in paper_trade_rows:
+        row = ensure(
+            decision_card_id=trade.get("decision_card_id"),
+            ticker=trade.get("ticker"),
+            paper_trade_id=trade.get("id"),
+        )
+        row["paper_trade_id"] = row.get("paper_trade_id") or trade.get("id")
+        row["paper_decision"] = row.get("paper_decision") or trade.get("decision")
+        row["paper_state"] = row.get("paper_state") or trade.get("state")
+        card_id = str(trade.get("decision_card_id") or "").strip()
+        trade_id = str(trade.get("id") or "").strip()
+        if card_id and trade_id:
+            paper_trade_to_card[trade_id] = card_id
+
+    for audit in paper_execution_audit_rows:
+        card_id = (
+            audit.get("artifact_id")
+            if audit.get("artifact_type") == "decision_card"
+            else None
+        )
+        paper_trade_id = str(audit.get("paper_trade_id") or "").strip()
+        row = ensure(
+            decision_card_id=card_id or paper_trade_to_card.get(paper_trade_id),
+            ticker=audit.get("ticker"),
+            paper_trade_id=paper_trade_id,
+        )
+        row["audit_event_id"] = audit.get("id")
+        row["db_writes_made"] = max(
+            int(_number_or_zero(row.get("db_writes_made"))),
+            int(_number_or_zero(audit.get("db_writes_made"))),
+        )
+
+    for result in validation_result_rows:
+        row = ensure(
+            decision_card_id=result.get("decision_card_id"),
+            ticker=result.get("ticker"),
+        )
+        row["validation_result_id"] = result.get("id")
+
+    outcomes_by_ledger_id = {
+        str(outcome.get("value_ledger_entry_id") or "").strip(): outcome
+        for outcome in value_outcome_rows
+        if str(outcome.get("value_ledger_entry_id") or "").strip()
+    }
+    consumed_outcome_ids: set[str] = set()
+    for entry in value_ledger_rows:
+        paper_trade_id = (
+            entry.get("artifact_id")
+            if entry.get("artifact_type") == "paper_trade"
+            else None
+        )
+        row = ensure(
+            decision_card_id=entry.get("decision_card_id")
+            or paper_trade_to_card.get(str(paper_trade_id or "").strip()),
+            ticker=entry.get("ticker"),
+            paper_trade_id=paper_trade_id,
+            ledger_entry_id=entry.get("id"),
+        )
+        row["ledger_entry_id"] = entry.get("id")
+        row["paper_decision"] = row.get("paper_decision") or entry.get(
+            "user_decision"
+        )
+        ledger_id = str(entry.get("id") or "").strip()
+        outcome = outcomes_by_ledger_id.get(ledger_id)
+        if outcome:
+            _workbench_apply_lifecycle_outcome(row, outcome)
+            consumed_outcome_ids.add(str(outcome.get("id") or ""))
+
+    for outcome in value_outcome_rows:
+        outcome_id = str(outcome.get("id") or "")
+        if outcome_id in consumed_outcome_ids:
+            continue
+        row = ensure(
+            ticker=outcome.get("ticker"),
+            ledger_entry_id=outcome.get("value_ledger_entry_id"),
+        )
+        _workbench_apply_lifecycle_outcome(row, outcome)
+
+    for row in rows.values():
+        row["current_stage"] = _workbench_lifecycle_stage(row)
+        row["next_action"] = _workbench_lifecycle_next_action(row)
+
+    return sorted(
+        rows.values(),
+        key=lambda row: (
+            str(row.get("ticker") or ""),
+            str(row.get("decision_card_id") or ""),
+            str(row.get("paper_trade_id") or ""),
+            str(row.get("ledger_entry_id") or ""),
+        ),
+    )[:5]
+
+
+def _workbench_apply_lifecycle_outcome(
+    row: dict[str, object],
+    outcome: Mapping[str, object],
+) -> None:
+    row["outcome_id"] = outcome.get("id")
+    row["outcome_status"] = outcome.get("status")
+    row["return_20d"] = outcome.get("return_20d")
+    row["spy_relative_return_20d"] = outcome.get("spy_relative_return_20d")
+
+
+def _workbench_lifecycle_stage(row: Mapping[str, object]) -> str:
+    if row.get("outcome_id"):
+        return (
+            "outcome_computed"
+            if str(row.get("outcome_status") or "").lower() == "computed"
+            else "outcome_pending"
+        )
+    if row.get("ledger_entry_id"):
+        return "journaled"
+    if row.get("validation_result_id") and row.get("paper_trade_id"):
+        return "validated_paper_trade"
+    if row.get("validation_result_id"):
+        return "validated"
+    if row.get("audit_event_id"):
+        return "paper_decision_recorded"
+    if row.get("paper_trade_id"):
+        state = str(row.get("paper_state") or "recorded").strip().lower()
+        return f"paper_trade_{state or 'recorded'}"
+    if row.get("plan_status"):
+        return "planned"
+    return "unlinked"
+
+
+def _workbench_lifecycle_next_action(row: Mapping[str, object]) -> str:
+    stage = str(row.get("current_stage") or "")
+    if stage == "outcome_computed":
+        return "Compare realized outcome with the original paper decision."
+    if stage == "outcome_pending":
+        return "Review pending outcome before changing strategy logic."
+    if stage == "journaled":
+        return "Compute or review the linked value outcome."
+    if stage == "validated_paper_trade":
+        return "Record journal evidence or compute the trade outcome."
+    if stage == "validated":
+        return "Link validation evidence to a local paper decision."
+    if stage == "paper_decision_recorded":
+        return "Link the paper decision to value journal evidence."
+    if stage.startswith("paper_trade_"):
+        return "Track the local paper trade and record outcome evidence."
+    if stage == "planned":
+        return "Record a local paper decision only after approval gates."
+    return "Link this lifecycle row to local validation evidence."
 
 
 def _workbench_useful_label_row(row: Mapping[str, object]) -> dict[str, object]:
