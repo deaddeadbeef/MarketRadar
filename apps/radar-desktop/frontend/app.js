@@ -293,6 +293,7 @@ const fallbackPlatformModules = [
   ['alerts', 'Alerts', 'alerts', 'Research notifications, watch triggers, and operator routing.', 'active'],
   ['ipo-s1', 'IPO/S-1', 'ipo', 'Primary-source IPO registration evidence and risk flags.', 'route_ready'],
   ['themes', 'Themes', 'themes', 'Clustered catalyst patterns and repeated theme context.', 'route_ready'],
+  ['costs', 'Costs', 'costs', 'Budget ledger, provider spend, and decision-support value.', 'route_ready'],
   ['journal', 'Journal', 'journal', 'Decision notes, feedback, value ledger, and outcome review.', 'route_ready'],
   ['agent-cockpit', 'Agent Cockpit', 'agent', 'Agent brief, proposed tool use, budget gates, and execution review.', 'preview_only'],
 ];
@@ -842,7 +843,7 @@ function renderContent(snapshot) {
     agent: () => renderPlatformModulePage('agent', snapshot),
     themes: () => renderPlatformModulePage('themes', snapshot),
     validation: () => renderStructuredPage('Validation', pagePaths.validation),
-    costs: renderCosts,
+    costs: () => renderPlatformModulePage('costs', snapshot),
     features: renderFeatures,
     journal: () => renderPlatformModulePage('journal', snapshot),
     help: renderHelp,
@@ -1011,6 +1012,8 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchOpportunityActions(moduleData.opportunity_actions)}
       ${renderWorkbenchIpoRows(moduleData.ipo_s1_rows)}
       ${renderWorkbenchThemeRows(moduleData.theme_rows)}
+      ${renderWorkbenchBudgetRows(moduleData.budget_rows)}
+      ${renderWorkbenchValueEconomicsRows(moduleData.value_economics_rows)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
@@ -1331,6 +1334,57 @@ function renderWorkbenchThemeRows(rows) {
               <td data-label="States">${escapeHtml(compactMapping(row.states, 'none'))}</td>
               <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
               <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchBudgetRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap budget-ledger-preview" data-testid="workbench-budget-ledger">
+      <table aria-label="Workbench budget ledger">
+        <thead><tr><th>Ticker</th><th>Task</th><th>Status</th><th>Model</th><th>Input</th><th>Output</th><th>Actual Cost</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-budget-ledger-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Task">${escapeHtml(catalogLabel(row.task || '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || row.skip_reason || '-'))}</td>
+              <td data-label="Model">${escapeHtml(compact(row.model || row.provider, '-'))}</td>
+              <td data-label="Input">${escapeHtml(compact(row.input_tokens, '0'))}</td>
+              <td data-label="Output">${escapeHtml(compact(row.output_tokens, '0'))}</td>
+              <td data-label="Actual Cost">${escapeHtml(compact(row.actual_cost_usd, '0'))}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchValueEconomicsRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap value-economics-preview" data-testid="workbench-value-economics">
+      <table aria-label="Workbench value economics">
+        <thead><tr><th>Ticker</th><th>Label</th><th>Artifact</th><th>Value</th><th>Weighted</th><th>Cost</th><th>Net</th><th>Calls</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-value-economics-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Label">${escapeHtml(catalogLabel(row.label || '-'))}</td>
+              <td data-label="Artifact">${escapeHtml(catalogLabel(row.artifact_type || '-'))}</td>
+              <td data-label="Value">${escapeHtml(compact(row.estimated_value_usd, '0'))}</td>
+              <td data-label="Weighted">${escapeHtml(compact(row.confidence_weighted_value_usd, '0'))}</td>
+              <td data-label="Cost">${escapeHtml(compact(row.cost_to_produce_usd, '0'))}</td>
+              <td data-label="Net">${escapeHtml(compact(row.net_confidence_weighted_value_usd, '0'))}</td>
+              <td data-label="Calls">${escapeHtml(`${compact(row.provider_call_count, '0')} / ${compact(row.llm_call_count, '0')}`)}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
           `).join('')}

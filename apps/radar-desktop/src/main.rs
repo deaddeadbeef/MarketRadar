@@ -578,6 +578,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Compare theme concentration before selecting a ticker.",
         },
         TradingPlatformModule {
+            key: "costs",
+            label: "Costs",
+            role: "Budget ledger, provider spend, and decision-support value.",
+            source: "budget ledger and local value report",
+            status: "route_ready",
+            page: "costs",
+            test_id: "platform-tool-costs",
+            next_action: "Compare spend with attributed decision-support value.",
+        },
+        TradingPlatformModule {
             key: "journal",
             label: "Journal",
             role: "Decision notes, feedback, value ledger, and outcome review.",

@@ -333,6 +333,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
 ) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
+    _insert_budget_ledger_fixture(engine, available_at=AVAILABLE_AT)
     _insert_alert_fixture(engine, available_at=AVAILABLE_AT - timedelta(minutes=30))
     with engine.begin() as conn:
         conn.execute(
@@ -491,6 +492,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "journal",
         "agent",
         "themes",
+        "costs",
     } <= set(modules)
 
     portfolio = modules["portfolio"]
@@ -612,6 +614,79 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "Compare theme concentration before selecting a ticker."
     )
     assert "themes.rows" in themes["source_keys"]
+
+    costs = modules["costs"]
+    assert costs["status"] == "ready"
+    assert costs["metrics"]["total_actual_cost_usd"] == 0.19
+    assert costs["metrics"]["total_estimated_cost_usd"] == 0.22
+    assert costs["metrics"]["validation_total_cost_usd"] == 0.0
+    assert costs["metrics"]["budget_attempt_count"] == 1
+    assert costs["metrics"]["useful_alert_count"] == 1
+    assert costs["metrics"]["cost_per_useful_alert"] == 0.19
+    assert costs["metrics"]["value_ledger_entry_count"] == 1
+    assert costs["metrics"]["confidence_weighted_value_usd"] == 10.0
+    assert costs["metrics"]["net_confidence_weighted_value_usd"] == 8.75
+    assert costs["metrics"]["monthly_value_status"] == "insufficient_evidence"
+    assert costs["metrics"]["external_calls_made"] == 0
+    assert costs["budget_rows"] == [
+        {
+            "id": budget_ledger_id(
+                task=LLMTaskName.MID_REVIEW.value,
+                ticker="msft",
+                candidate_packet_id="candidate-packet-MSFT",
+                status=LLMCallStatus.COMPLETED.value,
+                available_at=AVAILABLE_AT,
+                prompt_version="evidence_review_v1",
+            ),
+            "available_at": AVAILABLE_AT.isoformat(),
+            "ticker": "MSFT",
+            "task": "mid_review",
+            "model": "model-review",
+            "provider": "openai",
+            "status": "completed",
+            "skip_reason": None,
+            "input_tokens": 1000,
+            "cached_input_tokens": 100,
+            "output_tokens": 250,
+            "estimated_cost_usd": 0.22,
+            "actual_cost_usd": 0.19,
+            "currency": "USD",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Review budget evidence before expanding real agent calls.",
+        }
+    ]
+    assert costs["value_economics_rows"] == [
+        {
+            "id": "value-ledger-msft",
+            "entry_date": AVAILABLE_AT.date().isoformat(),
+            "ticker": "MSFT",
+            "label": "useful",
+            "artifact_type": "paper_trade",
+            "estimated_value_usd": 12.5,
+            "confidence": 0.8,
+            "confidence_weighted_value_usd": 10.0,
+            "cost_to_produce_usd": 1.25,
+            "net_confidence_weighted_value_usd": 8.75,
+            "provider_call_count": 0,
+            "llm_call_count": 0,
+            "outcome_status": "computed",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Compare value evidence against production cost.",
+        }
+    ]
+    assert costs["caps"] == {
+        "premium_llm_enabled": False,
+        "daily_budget_usd": 0.0,
+        "monthly_budget_usd": 0.0,
+        "task_daily_caps": {},
+    }
+    assert "budget_ledger" in costs["source_keys"]
 
     trade_planner = modules["trade-planner"]
     assert trade_planner["metrics"]["decision_card_count"] == 1
