@@ -498,6 +498,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Open the top evidence row or fill missing sources.",
         },
         TradingPlatformModule {
+            key: "candidate-review",
+            label: "Candidate Review",
+            role: "Single-name evidence queue and candidate packet review.",
+            source: "priced-in queue, candidate rows, and decision cards",
+            status: "route_ready",
+            page: "candidates",
+            test_id: "platform-tool-candidate-review",
+            next_action: "Open a candidate row and review evidence before planning.",
+        },
+        TradingPlatformModule {
             key: "evidence-gaps",
             label: "Evidence Gaps",
             role: "Readiness blockers, source gaps, and reliance gates.",

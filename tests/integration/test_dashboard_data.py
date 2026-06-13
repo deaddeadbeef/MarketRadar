@@ -483,6 +483,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert {
         "portfolio",
         "market-radar",
+        "candidates",
         "readiness",
         "run",
         "alerts",
@@ -535,6 +536,40 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert market_radar["rows"][0]["ticker"] == "MSFT"
     assert market_radar["rows"][0]["decision_card_id"] == "card-msft-latest"
     assert market_radar["rows"][0]["usefulness_status"] == "monitor_only"
+
+    candidates_module = modules["candidates"]
+    assert candidates_module["status"] == "ready"
+    assert candidates_module["summary"] == "Candidate evidence queue for single-name review."
+    assert candidates_module["metrics"]["candidate_count"] == 2
+    assert candidates_module["metrics"]["queue_count"] == 2
+    assert candidates_module["metrics"]["decision_card_count"] == 1
+    assert candidates_module["metrics"]["candidate_packet_count"] == 1
+    assert candidates_module["metrics"]["decision_ready_count"] == 0
+    assert candidates_module["metrics"]["monitor_only_count"] == 2
+    assert candidates_module["metrics"]["external_calls_made"] == 0
+    assert candidates_module["rows"][0] == {
+        "ticker": "MSFT",
+        "state": "Warning",
+        "subject": "MSFT guidance raised",
+        "usefulness_status": "monitor_only",
+        "decision_ready": False,
+        "decision_card_id": "card-msft-latest",
+        "score": 88.0,
+        "setup": "breakout",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Keep this in monitoring until the priced-in signal changes.",
+    }
+    assert candidates_module["rows"][1]["ticker"] == "AAPL"
+    assert candidates_module["rows"][1]["decision_card_id"] is None
+    assert all(row["external_calls_made"] == 0 for row in candidates_module["rows"])
+    assert all(not row["broker_order_submitted"] for row in candidates_module["rows"])
+    assert candidates_module["next_action"] == (
+        "Open a candidate row and review evidence before planning."
+    )
+    assert "candidate_packets" in candidates_module["source_keys"]
 
     readiness = modules["readiness"]
     assert readiness["status"] == "research_only"
