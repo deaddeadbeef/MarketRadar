@@ -294,6 +294,7 @@ const fallbackPlatformModules = [
   ['ipo-s1', 'IPO/S-1', 'ipo', 'Primary-source IPO registration evidence and risk flags.', 'route_ready'],
   ['themes', 'Themes', 'themes', 'Clustered catalyst patterns and repeated theme context.', 'route_ready'],
   ['costs', 'Costs', 'costs', 'Budget ledger, provider spend, and decision-support value.', 'route_ready'],
+  ['ops', 'Ops', 'ops', 'Provider health, runtime context, and execution readiness.', 'route_ready'],
   ['journal', 'Journal', 'journal', 'Decision notes, feedback, value ledger, and outcome review.', 'route_ready'],
   ['agent-cockpit', 'Agent Cockpit', 'agent', 'Agent brief, proposed tool use, budget gates, and execution review.', 'preview_only'],
 ];
@@ -838,7 +839,7 @@ function renderContent(snapshot) {
     alerts: () => renderPlatformModulePage('alerts', snapshot),
     ipo: () => renderPlatformModulePage('ipo', snapshot),
     broker: () => renderPlatformModulePage('broker', snapshot),
-    ops: () => renderStructuredPage('Ops', pagePaths.ops),
+    ops: () => renderPlatformModulePage('ops', snapshot),
     telemetry: renderTelemetry,
     agent: () => renderPlatformModulePage('agent', snapshot),
     themes: () => renderPlatformModulePage('themes', snapshot),
@@ -1014,6 +1015,9 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchThemeRows(moduleData.theme_rows)}
       ${renderWorkbenchBudgetRows(moduleData.budget_rows)}
       ${renderWorkbenchValueEconomicsRows(moduleData.value_economics_rows)}
+      ${renderWorkbenchOpsProviders(moduleData.provider_rows)}
+      ${renderWorkbenchOpsJobs(moduleData.job_rows)}
+      ${renderWorkbenchCallPlanRows(moduleData.call_plan_rows)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
@@ -1385,6 +1389,81 @@ function renderWorkbenchValueEconomicsRows(rows) {
               <td data-label="Cost">${escapeHtml(compact(row.cost_to_produce_usd, '0'))}</td>
               <td data-label="Net">${escapeHtml(compact(row.net_confidence_weighted_value_usd, '0'))}</td>
               <td data-label="Calls">${escapeHtml(`${compact(row.provider_call_count, '0')} / ${compact(row.llm_call_count, '0')}`)}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchOpsProviders(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap ops-provider-preview" data-testid="workbench-ops-providers">
+      <table aria-label="Ops provider health">
+        <thead><tr><th>Provider</th><th>Status</th><th>Checked</th><th>Source</th><th>Reason</th><th>Provider Calls</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-ops-provider-row">
+              <td data-label="Provider">${escapeHtml(catalogLabel(row.provider || '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+              <td data-label="Checked">${escapeHtml(compact(row.checked_at, '-'))}</td>
+              <td data-label="Source">${escapeHtml(compact(row.source, '-'))}</td>
+              <td data-label="Reason">${escapeHtml(compact(row.reason, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchOpsJobs(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap ops-job-preview" data-testid="workbench-ops-jobs">
+      <table aria-label="Ops recent jobs">
+        <thead><tr><th>Job</th><th>Status</th><th>Started</th><th>Finished</th><th>Requested</th><th>Raw</th><th>Normalized</th><th>Error</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-ops-job-row">
+              <td data-label="Job">${escapeHtml(catalogLabel(row.job_type || '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+              <td data-label="Started">${escapeHtml(compact(row.started_at, '-'))}</td>
+              <td data-label="Finished">${escapeHtml(compact(row.finished_at, '-'))}</td>
+              <td data-label="Requested">${escapeHtml(compact(row.requested_count, '0'))}</td>
+              <td data-label="Raw">${escapeHtml(compact(row.raw_count, '0'))}</td>
+              <td data-label="Normalized">${escapeHtml(compact(row.normalized_count, '0'))}</td>
+              <td data-label="Error">${escapeHtml(compact(row.error_summary, 'clear'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchCallPlanRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap call-plan-preview" data-testid="workbench-call-plan">
+      <table aria-label="Ops call plan">
+        <thead><tr><th>Layer</th><th>Status</th><th>Max Calls</th><th>Approval</th><th>Guardrail</th><th>Provider Calls</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-call-plan-row">
+              <td data-label="Layer">${escapeHtml(compact(row.layer, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+              <td data-label="Max Calls">${escapeHtml(compact(row.external_call_count_max, '0'))}</td>
+              <td data-label="Approval">${escapeHtml(row.approval_required ? 'required' : 'not required')}</td>
+              <td data-label="Guardrail">${escapeHtml(compact(row.guardrail, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
           `).join('')}

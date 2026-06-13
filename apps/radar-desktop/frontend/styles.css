@@ -756,7 +756,10 @@ tr[data-testid="queue-row"]:focus-visible td {
 .ipo-s1-preview,
 .theme-preview,
 .budget-ledger-preview,
-.value-economics-preview {
+.value-economics-preview,
+.ops-provider-preview,
+.ops-job-preview,
+.call-plan-preview {
   margin-top: 12px;
 }
 
@@ -766,7 +769,10 @@ tr[data-testid="queue-row"]:focus-visible td {
 .ipo-s1-preview table,
 .theme-preview table,
 .budget-ledger-preview table,
-.value-economics-preview table {
+.value-economics-preview table,
+.ops-provider-preview table,
+.ops-job-preview table,
+.call-plan-preview table {
   min-width: 920px;
 }
 

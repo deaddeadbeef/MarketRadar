@@ -100,6 +100,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchThemeRows",
         "function renderWorkbenchBudgetRows",
         "function renderWorkbenchValueEconomicsRows",
+        "function renderWorkbenchOpsProviders",
+        "function renderWorkbenchOpsJobs",
+        "function renderWorkbenchCallPlanRows",
         "function workbenchModuleRows",
         "function renderWorkbenchModuleRows",
         "function renderWorkbenchPaperTrades",
@@ -153,6 +156,12 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-budget-ledger-row"',
         'data-testid="workbench-value-economics"',
         'data-testid="workbench-value-economics-row"',
+        'data-testid="workbench-ops-providers"',
+        'data-testid="workbench-ops-provider-row"',
+        'data-testid="workbench-ops-jobs"',
+        'data-testid="workbench-ops-job-row"',
+        'data-testid="workbench-call-plan"',
+        'data-testid="workbench-call-plan-row"',
         "strategy_proposal",
         "risk_approval",
         "order_intent",
@@ -171,6 +180,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Workbench theme clusters",
         "Workbench budget ledger",
         "Workbench value economics",
+        "Ops provider health",
+        "Ops recent jobs",
+        "Ops call plan",
         "recommended_paper_decision",
         "paper_decision",
         "order_ticket",
@@ -201,6 +213,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "ipo: () => renderPlatformModulePage('ipo', snapshot)",
         "themes: () => renderPlatformModulePage('themes', snapshot)",
         "costs: () => renderPlatformModulePage('costs', snapshot)",
+        "ops: () => renderPlatformModulePage('ops', snapshot)",
         "ipo-s1",
         'data-testid="live-trading-disabled"',
         "function bindPlatformToolCards",
@@ -221,6 +234,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "['journal', 'journal']",
         "['agent-cockpit', 'agent']",
         "['costs', 'costs']",
+        "['8', 'ops']",
+        "['ops', 'Ops', 'ops'",
     ):
         assert alias in source
 
@@ -233,6 +248,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "platform-tool-ipo-s1",
         "platform-tool-themes",
         "platform-tool-costs",
+        "platform-tool-ops",
     ):
         assert tool in rust_source
 
@@ -256,6 +272,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".theme-preview" in styles
     assert ".budget-ledger-preview" in styles
     assert ".value-economics-preview" in styles
+    assert ".ops-provider-preview" in styles
+    assert ".ops-job-preview" in styles
+    assert ".call-plan-preview" in styles
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:
@@ -470,6 +489,7 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     assert "['v', 'costs']" in source
     assert "themes: () => renderPlatformModulePage('themes', snapshot)" in source
     assert "costs: () => renderPlatformModulePage('costs', snapshot)" in source
+    assert "ops: () => renderPlatformModulePage('ops', snapshot)" in source
     assert "renderStructuredPage('Validation'" in source
     assert "renderCosts" in source
     assert "const powershellCommandPrefixes = new Set" in source
