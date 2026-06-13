@@ -228,6 +228,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Provider Calls",
         "Broker Order",
         "manual_review_required",
+        "readiness: () => renderPlatformModulePage('readiness', snapshot)",
         "alerts: () => renderPlatformModulePage('alerts', snapshot)",
         "agent: () => renderPlatformModulePage('agent', snapshot)",
         "ipo: () => renderPlatformModulePage('ipo', snapshot)",
@@ -249,6 +250,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     for alias in (
         "['portfolio', 'portfolio']",
         "['market-radar', 'market-radar']",
+        "['evidence-gaps', 'readiness']",
+        "['evidence-gaps', 'Evidence Gaps', 'readiness'",
         "['safe-run', 'Safe Run', 'run'",
         "['trade-planner', 'trade-planner']",
         "['risk-desk', 'risk-desk']",
@@ -270,6 +273,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
 
     for tool in (
         "platform-tool-market-radar",
+        "platform-tool-evidence-gaps",
         "platform-tool-safe-run",
         "platform-tool-trade-planner",
         "platform-tool-risk-desk",

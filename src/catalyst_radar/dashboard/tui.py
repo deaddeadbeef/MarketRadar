@@ -742,6 +742,7 @@ def dashboard_snapshot_payload(
         telemetry=telemetry,
         telemetry_coverage=telemetry_coverage,
         call_plan=call_plan,
+        readiness_payload=readiness_payload,
         trial_readiness=trial_readiness,
         shadow_readiness=shadow_readiness,
         runtime_context=runtime_context,
@@ -852,6 +853,7 @@ def _trading_workbench_snapshot_payload(
     telemetry: Mapping[str, object],
     telemetry_coverage: Mapping[str, object],
     call_plan: Mapping[str, object],
+    readiness_payload: Mapping[str, object],
     trial_readiness: Mapping[str, object],
     shadow_readiness: Mapping[str, object],
     runtime_context: Mapping[str, object],
@@ -916,6 +918,10 @@ def _trading_workbench_snapshot_payload(
     ]
     ops_call_plan_rows = [
         _workbench_call_plan_row(row) for row in _rows(call_plan.get("rows"))[:8]
+    ]
+    radar_readiness_check_rows = [
+        _workbench_readiness_check_row(row, source="radar_readiness")
+        for row in _rows(readiness_payload.get("readiness_checklist"))[:12]
     ]
     telemetry_event_rows = [
         _workbench_telemetry_event_row(row) for row in _rows(telemetry.get("events"))[:8]
@@ -1086,6 +1092,43 @@ def _trading_workbench_snapshot_payload(
                 ],
                 "next_action": "Open the top queue row before planning a trade.",
                 "source_keys": ["priced_in_queue", "candidates", "alerts"],
+            },
+            "readiness": {
+                "status": readiness_payload.get("status") or "blocked",
+                "summary": readiness_payload.get("headline")
+                or "Readiness blockers and evidence gaps.",
+                "metrics": {
+                    "readiness_status": readiness_payload.get("status"),
+                    "decision_mode": readiness_payload.get("decision_mode"),
+                    "safe_to_make_investment_decision": bool(
+                        readiness_payload.get("safe_to_make_investment_decision")
+                    ),
+                    "readiness_check_count": len(radar_readiness_check_rows),
+                    "blocked_readiness_check_count": sum(
+                        1
+                        for row in radar_readiness_check_rows
+                        if str(row.get("status") or "").lower() == "blocked"
+                    ),
+                    "attention_readiness_check_count": sum(
+                        1
+                        for row in radar_readiness_check_rows
+                        if str(row.get("status") or "").lower() == "attention"
+                    ),
+                    "optional_readiness_check_count": sum(
+                        1
+                        for row in radar_readiness_check_rows
+                        if str(row.get("status") or "").lower() == "optional"
+                    ),
+                    "external_calls_made": 0,
+                },
+                "readiness_checks": radar_readiness_check_rows,
+                "next_action": readiness_payload.get("next_action")
+                or "Clear readiness gaps before relying on output.",
+                "source_keys": [
+                    "readiness.readiness_checklist",
+                    "readiness.investment_readiness",
+                    "readiness.operator_next_step",
+                ],
             },
             "run": {
                 "status": "blocked" if ops_call_plan_status == "blocked" else "ready",
