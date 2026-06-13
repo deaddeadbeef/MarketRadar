@@ -130,6 +130,7 @@ const pagePaths = {
   backtest: [['validation'], ['validation', 'latest_run'], ['validation', 'report'], ['telemetry']],
   ipo: [['ipo_s1'], ['events']],
   themes: [['themes'], ['priced_in_queue']],
+  features: [['feature_inventory'], ['trading_workbench', 'modules', 'features']],
   readiness: [['readiness'], ['real_results'], ['full_market_trust_gate']],
   run: [['call_plan'], ['radar_run'], ['operator_next_step']],
   broker: [['broker'], ['runtime_context']],
@@ -294,6 +295,7 @@ const fallbackPlatformModules = [
   ['alerts', 'Alerts', 'alerts', 'Research notifications, watch triggers, and operator routing.', 'active'],
   ['ipo-s1', 'IPO/S-1', 'ipo', 'Primary-source IPO registration evidence and risk flags.', 'route_ready'],
   ['themes', 'Themes', 'themes', 'Clustered catalyst patterns and repeated theme context.', 'route_ready'],
+  ['features', 'Features', 'features', 'Feature inventory, evidence routing, and platform surface coverage.', 'route_ready'],
   ['costs', 'Costs', 'costs', 'Budget ledger, provider spend, and decision-support value.', 'route_ready'],
   ['ops', 'Ops', 'ops', 'Provider health, runtime context, and execution readiness.', 'route_ready'],
   ['journal', 'Journal', 'journal', 'Decision notes, feedback, value ledger, and outcome review.', 'route_ready'],
@@ -462,11 +464,6 @@ function alertRows(snapshot) {
 
 function ipoRows(snapshot) {
   const rows = at(snapshot, ['ipo_s1', 'rows'], []);
-  return Array.isArray(rows) ? rows : [];
-}
-
-function featureRows(snapshot) {
-  const rows = snapshot?.feature_inventory || at(snapshot, ['features', 'rows'], []);
   return Array.isArray(rows) ? rows : [];
 }
 
@@ -846,7 +843,7 @@ function renderContent(snapshot) {
     themes: () => renderPlatformModulePage('themes', snapshot),
     validation: () => renderPlatformModulePage('validation', snapshot),
     costs: () => renderPlatformModulePage('costs', snapshot),
-    features: renderFeatures,
+    features: () => renderPlatformModulePage('features', snapshot),
     journal: () => renderPlatformModulePage('journal', snapshot),
     help: renderHelp,
   };
@@ -1026,6 +1023,7 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchValidationResults(moduleData.validation_results)}
       ${renderWorkbenchUsefulLabels(moduleData.useful_label_rows)}
       ${renderWorkbenchPortfolioPositions(moduleData.positions)}
+      ${renderWorkbenchFeatureRows(moduleData.feature_rows)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
   `;
@@ -1672,6 +1670,30 @@ function renderWorkbenchPortfolioPositions(positions) {
   `;
 }
 
+function renderWorkbenchFeatureRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap feature-inventory-preview" data-testid="workbench-feature-inventory">
+      <table aria-label="Workbench feature inventory">
+        <thead><tr><th>Area</th><th>Feature</th><th>Page</th><th>Use</th><th>Provider Calls</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 20).map((row) => `
+            <tr data-testid="workbench-feature-row">
+              <td data-label="Area">${escapeHtml(compact(row.area, '-'))}</td>
+              <td data-label="Feature">${escapeHtml(compact(row.feature, '-'))}</td>
+              <td data-label="Page">${escapeHtml(compact(row.page, '-'))}</td>
+              <td data-label="Use">${escapeHtml(compact(row.use, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function workbenchRowState(row) {
   return catalogLabel(row.usefulness_status || row.state || row.status || '-');
 }
@@ -1991,16 +2013,6 @@ function alertDetailPairs(row, alertId) {
     ['Next safe action', row.next_action || row.command || 'Review alert evidence before action.'],
     ['Boundary', 'Feedback writes require an explicit command; browsing made no provider calls.'],
   ];
-}
-
-function renderFeatures(snapshot) {
-  const rows = featureRows(snapshot);
-  return queuePanel('Features', rows, [
-    { label: 'Area', className: 'ticker', value: (row) => compact(row.area) },
-    { label: 'Feature', value: (row) => compact(row.feature) },
-    { label: 'Page', className: 'state', value: (row) => compact(row.page) },
-    { label: 'Use', value: (row) => compact(row.use) },
-  ]);
 }
 
 function renderHelp() {

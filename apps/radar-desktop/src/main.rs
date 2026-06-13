@@ -588,6 +588,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Compare theme concentration before selecting a ticker.",
         },
         TradingPlatformModule {
+            key: "features",
+            label: "Features",
+            role: "Feature inventory, evidence routing, and platform surface coverage.",
+            source: "local feature inventory",
+            status: "route_ready",
+            page: "features",
+            test_id: "platform-tool-features",
+            next_action: "Use the inventory to route work to the right local module.",
+        },
+        TradingPlatformModule {
             key: "costs",
             label: "Costs",
             role: "Budget ledger, provider spend, and decision-support value.",

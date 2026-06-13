@@ -112,8 +112,10 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchValidationResults",
         "function renderWorkbenchUsefulLabels",
         "function renderWorkbenchPortfolioPositions",
+        "function renderWorkbenchFeatureRows",
         "broker: () => renderPlatformModulePage('broker', snapshot)",
         "validation: () => renderPlatformModulePage('validation', snapshot)",
+        "features: () => renderPlatformModulePage('features', snapshot)",
         'data-testid="platform-module-page"',
         'data-testid="platform-module-data"',
         'data-testid="platform-module-metrics"',
@@ -133,6 +135,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-useful-label-row"',
         'data-testid="workbench-portfolio-positions"',
         'data-testid="workbench-portfolio-position-row"',
+        'data-testid="workbench-feature-inventory"',
+        'data-testid="workbench-feature-row"',
         'data-testid="workbench-active-plan"',
         'data-testid="workbench-plan-controls"',
         'data-testid="workbench-paper-actions"',
@@ -209,6 +213,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Backtest validation results",
         "Validation useful labels",
         "Portfolio positions",
+        "Workbench feature inventory",
         "Hard Blocks",
         "Provider Calls",
         "Broker Order",
@@ -218,6 +223,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "ipo: () => renderPlatformModulePage('ipo', snapshot)",
         "themes: () => renderPlatformModulePage('themes', snapshot)",
         "validation: () => renderPlatformModulePage('validation', snapshot)",
+        "features: () => renderPlatformModulePage('features', snapshot)",
         "costs: () => renderPlatformModulePage('costs', snapshot)",
         "ops: () => renderPlatformModulePage('ops', snapshot)",
         "ipo-s1",
@@ -240,6 +246,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "['validation', 'validation']",
         "['journal', 'journal']",
         "['agent-cockpit', 'agent']",
+        "['features', 'Features', 'features'",
         "['costs', 'costs']",
         "['8', 'ops']",
         "['ops', 'Ops', 'ops'",
@@ -255,6 +262,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "platform-tool-ipo-s1",
         "platform-tool-themes",
         "platform-tool-validation",
+        "platform-tool-features",
         "platform-tool-costs",
         "platform-tool-ops",
     ):
@@ -270,6 +278,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".journal-outcome-preview" in styles
     assert ".validation-result-preview" in styles
     assert ".useful-label-preview" in styles
+    assert ".feature-inventory-preview" in styles
     assert ".portfolio-position-preview" in styles
     assert ".agent-capability-preview" in styles
     assert ".risk-block-preview" in styles

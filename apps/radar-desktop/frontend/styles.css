@@ -794,7 +794,8 @@ tr[data-testid="queue-row"]:focus-visible td {
 }
 
 .validation-result-preview,
-.useful-label-preview {
+.useful-label-preview,
+.feature-inventory-preview {
   margin-top: 12px;
 }
 
@@ -803,6 +804,10 @@ tr[data-testid="queue-row"]:focus-visible td {
 }
 
 .useful-label-preview table {
+  min-width: 920px;
+}
+
+.feature-inventory-preview table {
   min-width: 920px;
 }
 
