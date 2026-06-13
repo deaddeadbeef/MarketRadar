@@ -497,6 +497,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "features",
         "costs",
         "ops",
+        "telemetry",
     } <= set(modules)
 
     portfolio = modules["portfolio"]
@@ -764,6 +765,33 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "Resolve stale provider or data-health blockers before agent expansion."
     )
     assert "ops_health" in ops["source_keys"]
+
+    telemetry = modules["telemetry"]
+    assert telemetry["status"] == "missing"
+    assert telemetry["summary"] == "Telemetry has not recorded any events yet."
+    assert telemetry["metrics"]["event_count"] == 0
+    assert telemetry["metrics"]["rendered_event_count"] == 0
+    assert telemetry["metrics"]["attention_count"] == 0
+    assert telemetry["metrics"]["guarded_count"] == 0
+    assert telemetry["metrics"]["total_coverage_event_count"] == 0
+    assert telemetry["metrics"]["missing_required_count"] == 3
+    assert telemetry["metrics"]["ready_required_domain_count"] == 0
+    assert telemetry["metrics"]["required_domain_count"] == 3
+    assert telemetry["metrics"]["external_calls_made"] == 0
+    assert telemetry["telemetry_events"] == []
+    assert telemetry["coverage_domains"][0]["domain"] == "Audit event store"
+    assert telemetry["coverage_domains"][0]["status"] == "missing"
+    assert telemetry["coverage_domains"][0]["required"] is True
+    assert telemetry["coverage_domains"][0]["event_count"] == 0
+    assert telemetry["coverage_domains"][0]["external_calls_made"] == 0
+    assert telemetry["coverage_domains"][0]["broker_order_submitted"] is False
+    assert telemetry["coverage_domains"][0]["next_action"] == (
+        "Run a radar cycle to create the first telemetry event."
+    )
+    assert telemetry["next_action"] == (
+        "Run one capped radar cycle before relying on operational status."
+    )
+    assert "telemetry_coverage.domains" in telemetry["source_keys"]
 
     trade_planner = modules["trade-planner"]
     assert trade_planner["metrics"]["decision_card_count"] == 1

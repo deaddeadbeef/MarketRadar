@@ -759,7 +759,9 @@ tr[data-testid="queue-row"]:focus-visible td {
 .value-economics-preview,
 .ops-provider-preview,
 .ops-job-preview,
-.call-plan-preview {
+.call-plan-preview,
+.telemetry-event-preview,
+.telemetry-coverage-preview {
   margin-top: 12px;
 }
 
@@ -772,7 +774,9 @@ tr[data-testid="queue-row"]:focus-visible td {
 .value-economics-preview table,
 .ops-provider-preview table,
 .ops-job-preview table,
-.call-plan-preview table {
+.call-plan-preview table,
+.telemetry-event-preview table,
+.telemetry-coverage-preview table {
   min-width: 920px;
 }
 

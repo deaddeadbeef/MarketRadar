@@ -679,6 +679,7 @@ def dashboard_snapshot_payload(
         ops_health,
         limit=filters.telemetry_limit,
     )
+    telemetry_coverage = dashboard_data.telemetry_coverage_payload(engine)
     call_plan = dashboard_data.radar_run_call_plan_payload(engine, config)
     shadow_readiness = dashboard_data.shadow_readiness_payload(
         engine,
@@ -738,6 +739,8 @@ def dashboard_snapshot_payload(
         value_outcomes=value_outcomes,
         value_report=value_report,
         ops_health=ops_health,
+        telemetry=telemetry,
+        telemetry_coverage=telemetry_coverage,
         call_plan=call_plan,
         trial_readiness=trial_readiness,
         shadow_readiness=shadow_readiness,
@@ -821,7 +824,7 @@ def dashboard_snapshot_payload(
         "trading_workbench": trading_workbench,
         "ops_health": ops_health,
         "telemetry": telemetry,
-        "telemetry_coverage": dashboard_data.telemetry_coverage_payload(engine),
+        "telemetry_coverage": telemetry_coverage,
         "external_calls_made": 0,
     }
     payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
@@ -846,6 +849,8 @@ def _trading_workbench_snapshot_payload(
     value_outcomes: Mapping[str, object],
     value_report: Mapping[str, object],
     ops_health: Mapping[str, object],
+    telemetry: Mapping[str, object],
+    telemetry_coverage: Mapping[str, object],
     call_plan: Mapping[str, object],
     trial_readiness: Mapping[str, object],
     shadow_readiness: Mapping[str, object],
@@ -911,6 +916,13 @@ def _trading_workbench_snapshot_payload(
     ]
     ops_call_plan_rows = [
         _workbench_call_plan_row(row) for row in _rows(call_plan.get("rows"))[:8]
+    ]
+    telemetry_event_rows = [
+        _workbench_telemetry_event_row(row) for row in _rows(telemetry.get("events"))[:8]
+    ]
+    telemetry_coverage_rows = [
+        _workbench_telemetry_coverage_row(row)
+        for row in _rows(telemetry_coverage.get("domains"))[:8]
     ]
     ops_call_plan_status = str(call_plan.get("status") or "unknown")
     portfolio_equity = _first_value(
@@ -1483,6 +1495,53 @@ def _trading_workbench_snapshot_payload(
                 ),
                 "source_keys": ["ops_health", "runtime_context", "call_plan"],
             },
+            "telemetry": {
+                "status": telemetry_coverage.get("status")
+                or telemetry.get("status")
+                or "missing",
+                "summary": (
+                    telemetry_coverage.get("headline")
+                    or telemetry.get("headline")
+                    or "Telemetry audit status."
+                ),
+                "metrics": {
+                    "event_count": _first_nonnegative_int(
+                        telemetry.get("event_count")
+                    ),
+                    "rendered_event_count": len(telemetry_event_rows),
+                    "attention_count": _first_nonnegative_int(
+                        telemetry.get("attention_count")
+                    ),
+                    "guarded_count": _first_nonnegative_int(
+                        telemetry.get("guarded_count")
+                    ),
+                    "total_coverage_event_count": _first_nonnegative_int(
+                        telemetry_coverage.get("total_event_count")
+                    ),
+                    "missing_required_count": _first_nonnegative_int(
+                        telemetry_coverage.get("missing_required_count")
+                    ),
+                    "ready_required_domain_count": _first_nonnegative_int(
+                        telemetry_coverage.get("ready_required_domain_count")
+                    ),
+                    "required_domain_count": _first_nonnegative_int(
+                        telemetry_coverage.get("required_domain_count")
+                    ),
+                    "external_calls_made": 0,
+                },
+                "telemetry_events": telemetry_event_rows,
+                "coverage_domains": telemetry_coverage_rows,
+                "next_action": (
+                    telemetry_coverage.get("next_action")
+                    or telemetry.get("next_action")
+                    or "Review telemetry before relying on automation."
+                ),
+                "source_keys": [
+                    "telemetry.events",
+                    "telemetry_coverage.domains",
+                    "audit_events",
+                ],
+            },
             "agent": {
                 "status": "preview_only",
                 "summary": "Agent cockpit remains preview and budget-gated.",
@@ -1946,6 +2005,40 @@ def _workbench_call_plan_row(row: Mapping[str, object]) -> dict[str, object]:
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,
+    }
+
+
+def _workbench_telemetry_event_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "occurred_at": row.get("occurred_at"),
+        "event": row.get("event"),
+        "status": row.get("status"),
+        "reason": row.get("reason"),
+        "artifact": row.get("artifact"),
+        "summary": row.get("summary"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Use as audit evidence; no trading action is implied.",
+    }
+
+
+def _workbench_telemetry_coverage_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "domain": row.get("domain"),
+        "status": row.get("status"),
+        "required": bool(row.get("required")),
+        "event_count": row.get("event_count"),
+        "last_seen_at": row.get("last_seen_at"),
+        "missing_events": _texts(row.get("missing_events")),
+        "operator_action": row.get("operator_action"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": row.get("operator_action")
+        or "Review telemetry coverage before relying on automation.",
     }
 
 

@@ -618,6 +618,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Resolve runtime blockers before expanding agent autonomy.",
         },
         TradingPlatformModule {
+            key: "telemetry",
+            label: "Telemetry",
+            role: "Audit tape, coverage gaps, and agent action traceability.",
+            source: "local audit events and telemetry coverage",
+            status: "route_ready",
+            page: "telemetry",
+            test_id: "platform-tool-telemetry",
+            next_action: "Review telemetry before relying on automation.",
+        },
+        TradingPlatformModule {
             key: "journal",
             label: "Journal",
             role: "Decision notes, feedback, value ledger, and outcome review.",

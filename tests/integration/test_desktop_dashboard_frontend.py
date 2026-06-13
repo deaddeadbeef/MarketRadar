@@ -103,6 +103,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchOpsProviders",
         "function renderWorkbenchOpsJobs",
         "function renderWorkbenchCallPlanRows",
+        "function renderWorkbenchTelemetryEvents",
+        "function renderWorkbenchTelemetryCoverage",
         "function workbenchModuleRows",
         "function renderWorkbenchModuleRows",
         "function renderWorkbenchPaperTrades",
@@ -116,6 +118,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "broker: () => renderPlatformModulePage('broker', snapshot)",
         "validation: () => renderPlatformModulePage('validation', snapshot)",
         "features: () => renderPlatformModulePage('features', snapshot)",
+        "telemetry: () => renderPlatformModulePage('telemetry', snapshot)",
         'data-testid="platform-module-page"',
         'data-testid="platform-module-data"',
         'data-testid="platform-module-metrics"',
@@ -170,6 +173,10 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-ops-job-row"',
         'data-testid="workbench-call-plan"',
         'data-testid="workbench-call-plan-row"',
+        'data-testid="workbench-telemetry-events"',
+        'data-testid="workbench-telemetry-event-row"',
+        'data-testid="workbench-telemetry-coverage"',
+        'data-testid="workbench-telemetry-coverage-row"',
         "strategy_proposal",
         "risk_approval",
         "order_intent",
@@ -191,6 +198,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Ops provider health",
         "Ops recent jobs",
         "Ops call plan",
+        "Telemetry audit events",
+        "Telemetry coverage domains",
         "recommended_paper_decision",
         "paper_decision",
         "order_ticket",
@@ -226,6 +235,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "features: () => renderPlatformModulePage('features', snapshot)",
         "costs: () => renderPlatformModulePage('costs', snapshot)",
         "ops: () => renderPlatformModulePage('ops', snapshot)",
+        "telemetry: () => renderPlatformModulePage('telemetry', snapshot)",
         "ipo-s1",
         'data-testid="live-trading-disabled"',
         "function bindPlatformToolCards",
@@ -248,6 +258,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "['agent-cockpit', 'agent']",
         "['features', 'Features', 'features'",
         "['costs', 'costs']",
+        "['9', 'telemetry']",
+        "['t', 'telemetry']",
+        "['telemetry', 'Telemetry', 'telemetry'",
         "['8', 'ops']",
         "['ops', 'Ops', 'ops'",
     ):
@@ -265,6 +278,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "platform-tool-features",
         "platform-tool-costs",
         "platform-tool-ops",
+        "platform-tool-telemetry",
     ):
         assert tool in rust_source
 
@@ -293,6 +307,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".ops-provider-preview" in styles
     assert ".ops-job-preview" in styles
     assert ".call-plan-preview" in styles
+    assert ".telemetry-event-preview" in styles
+    assert ".telemetry-coverage-preview" in styles
 
 
 def test_tauri_dashboard_loading_state_is_not_blank() -> None:
@@ -509,6 +525,7 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     assert "validation: () => renderPlatformModulePage('validation', snapshot)" in source
     assert "costs: () => renderPlatformModulePage('costs', snapshot)" in source
     assert "ops: () => renderPlatformModulePage('ops', snapshot)" in source
+    assert "telemetry: () => renderPlatformModulePage('telemetry', snapshot)" in source
     assert "renderCosts" in source
     assert "const powershellCommandPrefixes = new Set" in source
     assert "'market-bars'" in source
