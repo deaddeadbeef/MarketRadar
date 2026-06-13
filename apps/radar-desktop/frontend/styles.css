@@ -754,7 +754,9 @@ tr[data-testid="queue-row"]:focus-visible td {
 .market-trigger-preview,
 .opportunity-action-preview,
 .ipo-s1-preview,
-.theme-preview {
+.theme-preview,
+.budget-ledger-preview,
+.value-economics-preview {
   margin-top: 12px;
 }
 
@@ -762,7 +764,9 @@ tr[data-testid="queue-row"]:focus-visible td {
 .market-trigger-preview table,
 .opportunity-action-preview table,
 .ipo-s1-preview table,
-.theme-preview table {
+.theme-preview table,
+.budget-ledger-preview table,
+.value-economics-preview table {
   min-width: 920px;
 }
 

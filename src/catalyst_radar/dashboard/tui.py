@@ -733,6 +733,7 @@ def dashboard_snapshot_payload(
         theme_rows=theme_rows,
         broker_summary=broker_summary,
         validation_summary=validation_summary,
+        cost_summary=cost_summary,
         value_ledger=value_ledger,
         value_outcomes=value_outcomes,
         value_report=value_report,
@@ -838,6 +839,7 @@ def _trading_workbench_snapshot_payload(
     theme_rows: Sequence[Mapping[str, object]],
     broker_summary: Mapping[str, object],
     validation_summary: Mapping[str, object],
+    cost_summary: Mapping[str, object],
     value_ledger: Mapping[str, object],
     value_outcomes: Mapping[str, object],
     value_report: Mapping[str, object],
@@ -950,6 +952,10 @@ def _trading_workbench_snapshot_payload(
         _workbench_value_ledger_entry_row(row)
         for row in _rows(journal_ledger_payload.get("entries"))
     ]
+    cost_value_rows = [
+        _workbench_value_economics_row(row)
+        for row in _rows(journal_ledger_payload.get("entries"))[:5]
+    ]
     journal_outcome_rows = [
         _workbench_value_outcome_row(row)
         for row in _rows(journal_outcomes_payload.get("outcomes"))
@@ -979,6 +985,9 @@ def _trading_workbench_snapshot_payload(
     ]
     ipo_module_rows = [_workbench_ipo_s1_row(row) for row in ipo_rows[:5]]
     theme_module_rows = [_workbench_theme_row(row) for row in theme_rows[:5]]
+    cost_budget_rows = [
+        _workbench_budget_ledger_row(row) for row in _rows(cost_summary.get("rows"))[:5]
+    ]
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1130,6 +1139,52 @@ def _trading_workbench_snapshot_payload(
                     else "Continue with Market Radar until theme clusters are available."
                 ),
                 "source_keys": ["themes.rows", "signal_features.payload.candidate.metadata"],
+            },
+            "costs": {
+                "status": "ready",
+                "summary": "Operating cost, budget ledger, and decision-support value.",
+                "metrics": {
+                    "total_actual_cost_usd": _first_value(
+                        cost_summary.get("total_actual_cost_usd"),
+                        0.0,
+                    ),
+                    "total_estimated_cost_usd": _first_value(
+                        cost_summary.get("total_estimated_cost_usd"),
+                        0.0,
+                    ),
+                    "validation_total_cost_usd": _first_value(
+                        cost_summary.get("validation_total_cost_usd"),
+                        0.0,
+                    ),
+                    "budget_attempt_count": _first_nonnegative_int(
+                        cost_summary.get("attempt_count")
+                    ),
+                    "useful_alert_count": _first_nonnegative_int(
+                        cost_summary.get("useful_alert_count")
+                    ),
+                    "cost_per_useful_alert": cost_summary.get(
+                        "cost_per_useful_alert"
+                    ),
+                    "value_ledger_entry_count": ledger_entries,
+                    "confidence_weighted_value_usd": value_ledger.get(
+                        "confidence_weighted_value_usd"
+                    ),
+                    "net_confidence_weighted_value_usd": value_ledger.get(
+                        "net_confidence_weighted_value_usd"
+                    ),
+                    "monthly_value_status": (
+                        value_report.get("status") or value_report.get("verdict")
+                    ),
+                    "external_calls_made": 0,
+                },
+                "budget_rows": cost_budget_rows,
+                "value_economics_rows": cost_value_rows,
+                "caps": _mapping(cost_summary.get("caps")),
+                "next_action": (
+                    value_report.get("canonical_next_action")
+                    or "Compare budget spend with decision-support value."
+                ),
+                "source_keys": ["costs", "budget_ledger", "value_ledger", "value_report"],
             },
             "trade-planner": {
                 "status": (
@@ -1638,6 +1693,58 @@ def _workbench_theme_row(row: Mapping[str, object]) -> dict[str, object]:
         "broker_order_submitted": False,
         "order_submission_allowed": False,
         "next_action": "Open candidate rows before using the theme in a thesis.",
+    }
+
+
+def _workbench_budget_ledger_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "available_at": row.get("available_at"),
+        "ticker": row.get("ticker"),
+        "task": row.get("task"),
+        "model": row.get("model"),
+        "provider": row.get("provider"),
+        "status": row.get("status"),
+        "skip_reason": row.get("skip_reason"),
+        "input_tokens": row.get("input_tokens"),
+        "cached_input_tokens": row.get("cached_input_tokens"),
+        "output_tokens": row.get("output_tokens"),
+        "estimated_cost_usd": row.get("estimated_cost_usd"),
+        "actual_cost_usd": row.get("actual_cost_usd"),
+        "currency": row.get("currency"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Review budget evidence before expanding real agent calls.",
+    }
+
+
+def _workbench_value_economics_row(row: Mapping[str, object]) -> dict[str, object]:
+    weighted_value = _number_or_zero(row.get("confidence_weighted_value_usd"))
+    production_cost = _number_or_zero(row.get("cost_to_produce_usd"))
+    return {
+        "id": row.get("id"),
+        "entry_date": row.get("entry_date"),
+        "ticker": row.get("ticker"),
+        "label": row.get("label"),
+        "artifact_type": row.get("artifact_type"),
+        "estimated_value_usd": row.get("estimated_value_usd"),
+        "confidence": row.get("confidence"),
+        "confidence_weighted_value_usd": row.get("confidence_weighted_value_usd"),
+        "cost_to_produce_usd": row.get("cost_to_produce_usd"),
+        "net_confidence_weighted_value_usd": round(
+            weighted_value - production_cost,
+            4,
+        ),
+        "provider_call_count": row.get("provider_call_count"),
+        "llm_call_count": row.get("llm_call_count"),
+        "outcome_status": row.get("outcome_status"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Compare value evidence against production cost.",
     }
 
 
