@@ -490,6 +490,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "backtest",
         "journal",
         "agent",
+        "themes",
     } <= set(modules)
 
     portfolio = modules["portfolio"]
@@ -585,6 +586,32 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     ]
     assert ipo["next_action"] == "Open S-1 terms and risk flags as research evidence."
     assert "ipo_s1.rows" in ipo["source_keys"]
+
+    themes = modules["themes"]
+    assert themes["status"] == "ready"
+    assert themes["metrics"]["theme_count"] == 1
+    assert themes["metrics"]["themed_candidate_count"] == 2
+    assert themes["metrics"]["top_theme"] == "ai_infrastructure"
+    assert themes["metrics"]["external_calls_made"] == 0
+    assert themes["theme_rows"] == [
+        {
+            "theme": "ai_infrastructure",
+            "candidate_count": 2,
+            "avg_score": 82.0,
+            "top_tickers": ["MSFT", "AAPL"],
+            "states": {"Warning": 2},
+            "latest_as_of": AS_OF,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Open candidate rows before using the theme in a thesis.",
+        }
+    ]
+    assert themes["next_action"] == (
+        "Compare theme concentration before selecting a ticker."
+    )
+    assert "themes.rows" in themes["source_keys"]
 
     trade_planner = modules["trade-planner"]
     assert trade_planner["metrics"]["decision_card_count"] == 1

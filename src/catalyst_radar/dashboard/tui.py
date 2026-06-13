@@ -730,6 +730,7 @@ def dashboard_snapshot_payload(
         candidate_rows=candidate_rows,
         alert_rows=alert_rows,
         ipo_rows=ipo_rows,
+        theme_rows=theme_rows,
         broker_summary=broker_summary,
         validation_summary=validation_summary,
         value_ledger=value_ledger,
@@ -834,6 +835,7 @@ def _trading_workbench_snapshot_payload(
     candidate_rows: Sequence[Mapping[str, object]],
     alert_rows: Sequence[Mapping[str, object]],
     ipo_rows: Sequence[Mapping[str, object]],
+    theme_rows: Sequence[Mapping[str, object]],
     broker_summary: Mapping[str, object],
     validation_summary: Mapping[str, object],
     value_ledger: Mapping[str, object],
@@ -976,6 +978,7 @@ def _trading_workbench_snapshot_payload(
         for row in broker_opportunity_actions[:5]
     ]
     ipo_module_rows = [_workbench_ipo_s1_row(row) for row in ipo_rows[:5]]
+    theme_module_rows = [_workbench_theme_row(row) for row in theme_rows[:5]]
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1105,6 +1108,28 @@ def _trading_workbench_snapshot_payload(
                     else "Continue with Market Radar until IPO/S-1 rows are available."
                 ),
                 "source_keys": ["ipo_s1.rows", "events.payload.ipo_analysis"],
+            },
+            "themes": {
+                "status": "ready" if theme_module_rows else "blocked",
+                "summary": "Clustered catalyst themes across candidate rows.",
+                "metrics": {
+                    "theme_count": len(theme_rows),
+                    "themed_candidate_count": sum(
+                        _first_nonnegative_int(row.get("candidate_count"))
+                        for row in theme_rows
+                    ),
+                    "top_theme": (
+                        theme_module_rows[0].get("theme") if theme_module_rows else None
+                    ),
+                    "external_calls_made": 0,
+                },
+                "theme_rows": theme_module_rows,
+                "next_action": (
+                    "Compare theme concentration before selecting a ticker."
+                    if theme_module_rows
+                    else "Continue with Market Radar until theme clusters are available."
+                ),
+                "source_keys": ["themes.rows", "signal_features.payload.candidate.metadata"],
             },
             "trade-planner": {
                 "status": (
@@ -1597,6 +1622,22 @@ def _workbench_ipo_s1_row(row: Mapping[str, object]) -> dict[str, object]:
         "broker_order_submitted": False,
         "order_submission_allowed": False,
         "next_action": "Review the filing as research evidence; no trade is approved.",
+    }
+
+
+def _workbench_theme_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "theme": row.get("theme"),
+        "candidate_count": row.get("candidate_count"),
+        "avg_score": row.get("avg_score"),
+        "top_tickers": _texts(row.get("top_tickers")),
+        "states": _mapping(row.get("states")),
+        "latest_as_of": row.get("latest_as_of"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Open candidate rows before using the theme in a thesis.",
     }
 
 

@@ -568,6 +568,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Review S-1 terms before adding IPO evidence to a thesis.",
         },
         TradingPlatformModule {
+            key: "themes",
+            label: "Themes",
+            role: "Clustered catalyst patterns and repeated theme context.",
+            source: "local candidate feature metadata",
+            status: "route_ready",
+            page: "themes",
+            test_id: "platform-tool-themes",
+            next_action: "Compare theme concentration before selecting a ticker.",
+        },
+        TradingPlatformModule {
             key: "journal",
             label: "Journal",
             role: "Decision notes, feedback, value ledger, and outcome review.",
