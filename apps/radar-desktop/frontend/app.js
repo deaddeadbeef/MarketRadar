@@ -290,6 +290,7 @@ const fallbackPlatformModules = [
   ['paper-trading', 'Paper Trading', 'paper-trading', 'Paper-only tickets, fills, outcomes, and shadow validation.', 'preview_only'],
   ['broker-desk', 'Broker Desk', 'broker', 'Read-only broker connection, order-ticket previews, and sync boundaries.', 'read_only'],
   ['backtest', 'Backtest / Replay', 'backtest', 'Historical replay, shadow-mode validation, and strategy evidence.', 'route_ready'],
+  ['validation', 'Validation', 'validation', 'Shadow, paper, and useful-alert validation evidence.', 'route_ready'],
   ['alerts', 'Alerts', 'alerts', 'Research notifications, watch triggers, and operator routing.', 'active'],
   ['ipo-s1', 'IPO/S-1', 'ipo', 'Primary-source IPO registration evidence and risk flags.', 'route_ready'],
   ['themes', 'Themes', 'themes', 'Clustered catalyst patterns and repeated theme context.', 'route_ready'],
@@ -843,7 +844,7 @@ function renderContent(snapshot) {
     telemetry: renderTelemetry,
     agent: () => renderPlatformModulePage('agent', snapshot),
     themes: () => renderPlatformModulePage('themes', snapshot),
-    validation: () => renderStructuredPage('Validation', pagePaths.validation),
+    validation: () => renderPlatformModulePage('validation', snapshot),
     costs: () => renderPlatformModulePage('costs', snapshot),
     features: renderFeatures,
     journal: () => renderPlatformModulePage('journal', snapshot),
@@ -1023,6 +1024,7 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
       ${renderWorkbenchJournalOutcomes(moduleData.value_outcomes)}
       ${renderWorkbenchValidationResults(moduleData.validation_results)}
+      ${renderWorkbenchUsefulLabels(moduleData.useful_label_rows)}
       ${renderWorkbenchPortfolioPositions(moduleData.positions)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
@@ -1613,6 +1615,31 @@ function renderWorkbenchValidationResults(results) {
               <td data-label="Labels">${escapeHtml(compact(result.positive_labels, 'none'))}</td>
               <td data-label="Leakage">${escapeHtml(compact(result.leakage_flags, 'clear'))}</td>
               <td data-label="Decision Card">${escapeHtml(compact(result.decision_card_id, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchUsefulLabels(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap useful-label-preview" data-testid="workbench-useful-labels">
+      <table aria-label="Validation useful labels">
+        <thead><tr><th>Ticker</th><th>Label</th><th>Artifact</th><th>Notes</th><th>Created</th><th>Provider Calls</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-useful-label-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Label">${escapeHtml(catalogLabel(row.label || '-'))}</td>
+              <td data-label="Artifact">${escapeHtml(catalogLabel(row.artifact_type || '-'))} ${escapeHtml(compact(row.artifact_id, ''))}</td>
+              <td data-label="Notes">${escapeHtml(compact(row.notes, '-'))}</td>
+              <td data-label="Created">${escapeHtml(compact(row.created_at, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
           `).join('')}
         </tbody>

@@ -489,6 +489,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "paper-trading",
         "broker",
         "backtest",
+        "validation",
         "journal",
         "agent",
         "themes",
@@ -861,6 +862,39 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert "validation-result-msft-future" not in {
         row["id"] for row in backtest["validation_results"]
     }
+    validation = modules["validation"]
+    assert validation["status"] == "ready"
+    assert validation["metrics"]["latest_validation_run"] == "validation-run-latest"
+    assert validation["metrics"]["latest_validation_status"] == "success"
+    assert validation["metrics"]["candidate_count"] == 1
+    assert validation["metrics"]["false_positive_count"] == 0
+    assert validation["metrics"]["useful_alert_rate"] == 1.0
+    assert validation["metrics"]["useful_label_count"] == 1
+    assert validation["metrics"]["leakage_failure_count"] == 0
+    assert validation["metrics"]["paper_trade_count"] == 1
+    assert validation["metrics"]["validation_result_preview_count"] == 1
+    assert validation["metrics"]["external_calls_made"] == 0
+    assert validation["validation_results"] == backtest["validation_results"]
+    assert validation["useful_label_rows"] == [
+        {
+            "id": "label-useful-msft",
+            "artifact_type": "decision_card",
+            "artifact_id": "card-msft-latest",
+            "ticker": "MSFT",
+            "label": "useful",
+            "notes": "worth review",
+            "created_at": AVAILABLE_AT,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "next_action": "Use as validation evidence, not as trade approval.",
+        }
+    ]
+    assert validation["next_action"] == (
+        "Review false positives, useful labels, and leakage flags."
+    )
+    assert "validation.useful_labels" in validation["source_keys"]
     journal = modules["journal"]
     assert journal["metrics"]["value_ledger_entry_count"] == 1
     assert journal["metrics"]["outcome_count"] == 1
