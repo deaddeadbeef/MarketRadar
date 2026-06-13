@@ -483,6 +483,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert {
         "portfolio",
         "market-radar",
+        "run",
         "alerts",
         "ipo",
         "trade-planner",
@@ -533,6 +534,28 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert market_radar["rows"][0]["ticker"] == "MSFT"
     assert market_radar["rows"][0]["decision_card_id"] == "card-msft-latest"
     assert market_radar["rows"][0]["usefulness_status"] == "monitor_only"
+
+    safe_run = modules["run"]
+    assert safe_run["status"] == "ready"
+    assert safe_run["summary"] == "Radar run has no planned external provider calls."
+    assert safe_run["metrics"]["call_plan_status"] == "local_or_dry_run_only"
+    assert safe_run["metrics"]["call_plan_layer_count"] == 6
+    assert safe_run["metrics"]["blocked_call_plan_layer_count"] == 0
+    assert safe_run["metrics"]["max_external_call_count"] == 0
+    assert safe_run["metrics"]["will_call_external_providers"] is False
+    assert safe_run["metrics"]["external_calls_made"] == 0
+    assert [row["layer"] for row in safe_run["call_plan_rows"]] == [
+        "Scan provider",
+        "Market data",
+        "News/events",
+        "LLM review",
+        "Alert delivery",
+        "Schwab",
+    ]
+    assert all(row["external_calls_made"] == 0 for row in safe_run["call_plan_rows"])
+    assert all(not row["broker_order_submitted"] for row in safe_run["call_plan_rows"])
+    assert safe_run["next_action"] == "Safe to use for local fixture/dry-run validation."
+    assert "call_plan" in safe_run["source_keys"]
 
     alerts_module = modules["alerts"]
     assert alerts_module["status"] == "ready"

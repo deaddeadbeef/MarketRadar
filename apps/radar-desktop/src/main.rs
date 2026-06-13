@@ -498,6 +498,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Open the top evidence row or fill missing sources.",
         },
         TradingPlatformModule {
+            key: "safe-run",
+            label: "Safe Run",
+            role: "Provider-call budget, run guardrails, and execution gates.",
+            source: "call plan and run guardrails",
+            status: "route_ready",
+            page: "run",
+            test_id: "platform-tool-safe-run",
+            next_action: "Review the call plan before any run execute command.",
+        },
+        TradingPlatformModule {
             key: "trade-planner",
             label: "Trade Planner",
             role: "Candidate sizing, thesis, reward/risk, and decision-card assembly.",

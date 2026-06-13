@@ -116,6 +116,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchPortfolioPositions",
         "function renderWorkbenchFeatureRows",
         "broker: () => renderPlatformModulePage('broker', snapshot)",
+        "run: () => renderPlatformModulePage('run', snapshot)",
         "validation: () => renderPlatformModulePage('validation', snapshot)",
         "features: () => renderPlatformModulePage('features', snapshot)",
         "telemetry: () => renderPlatformModulePage('telemetry', snapshot)",
@@ -248,6 +249,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     for alias in (
         "['portfolio', 'portfolio']",
         "['market-radar', 'market-radar']",
+        "['safe-run', 'Safe Run', 'run'",
         "['trade-planner', 'trade-planner']",
         "['risk-desk', 'risk-desk']",
         "['paper-trading', 'paper-trading']",
@@ -268,6 +270,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
 
     for tool in (
         "platform-tool-market-radar",
+        "platform-tool-safe-run",
         "platform-tool-trade-planner",
         "platform-tool-risk-desk",
         "platform-tool-paper-trading",
@@ -521,6 +524,7 @@ def test_tauri_dashboard_exposes_cli_command_reference_families() -> None:
     assert "['themes', 'themes']" in source
     assert "['validation', 'validation']" in source
     assert "['v', 'costs']" in source
+    assert "run: () => renderPlatformModulePage('run', snapshot)" in source
     assert "themes: () => renderPlatformModulePage('themes', snapshot)" in source
     assert "validation: () => renderPlatformModulePage('validation', snapshot)" in source
     assert "costs: () => renderPlatformModulePage('costs', snapshot)" in source
