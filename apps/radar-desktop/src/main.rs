@@ -548,6 +548,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Compare candidate logic against replay evidence.",
         },
         TradingPlatformModule {
+            key: "validation",
+            label: "Validation",
+            role: "Shadow, paper, and useful-alert validation evidence.",
+            source: "validation runs, reports, and useful labels",
+            status: "route_ready",
+            page: "validation",
+            test_id: "platform-tool-validation",
+            next_action: "Review validation evidence before trusting strategy changes.",
+        },
+        TradingPlatformModule {
             key: "alerts",
             label: "Alerts",
             role: "Research notifications, watch triggers, and operator routing.",

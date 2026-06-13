@@ -793,12 +793,17 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 780px;
 }
 
-.validation-result-preview {
+.validation-result-preview,
+.useful-label-preview {
   margin-top: 12px;
 }
 
 .validation-result-preview table {
   min-width: 820px;
+}
+
+.useful-label-preview table {
+  min-width: 920px;
 }
 
 .portfolio-position-preview {

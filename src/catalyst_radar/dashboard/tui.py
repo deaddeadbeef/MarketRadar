@@ -978,6 +978,9 @@ def _trading_workbench_snapshot_payload(
         _workbench_value_outcome_row(row)
         for row in _rows(journal_outcomes_payload.get("outcomes"))
     ]
+    validation_useful_label_rows = [
+        _workbench_useful_label_row(row) for row in useful_labels[:5]
+    ]
     validation_result_rows = _workbench_validation_result_rows(
         engine=engine,
         latest_validation=latest_validation,
@@ -1341,6 +1344,40 @@ def _trading_workbench_snapshot_payload(
                     else "Compare candidate logic against validation evidence."
                 ),
                 "source_keys": ["validation.latest_run", "validation.report"],
+            },
+            "validation": {
+                "status": "ready" if validation_report or latest_validation else "blocked",
+                "summary": "Validation quality gates and useful-alert evidence.",
+                "metrics": {
+                    "latest_validation_run": latest_validation.get("id"),
+                    "latest_validation_status": latest_validation.get("status"),
+                    "candidate_count": _first_nonnegative_int(
+                        validation_report.get("candidate_count")
+                    ),
+                    "false_positive_count": _first_nonnegative_int(
+                        validation_report.get("false_positive_count")
+                    ),
+                    "useful_alert_rate": validation_report.get("useful_alert_rate"),
+                    "useful_label_count": len(useful_labels),
+                    "leakage_failure_count": _first_nonnegative_int(
+                        validation_report.get("leakage_failure_count")
+                    ),
+                    "paper_trade_count": len(paper_rows),
+                    "validation_result_preview_count": len(validation_result_rows),
+                    "external_calls_made": 0,
+                },
+                "validation_results": validation_result_rows,
+                "useful_label_rows": validation_useful_label_rows,
+                "next_action": (
+                    "Review false positives, useful labels, and leakage flags."
+                    if validation_report or validation_result_rows
+                    else "Run validation before trusting strategy changes."
+                ),
+                "source_keys": [
+                    "validation.latest_run",
+                    "validation.report",
+                    "validation.useful_labels",
+                ],
             },
             "journal": {
                 "status": (
@@ -2111,6 +2148,23 @@ def _workbench_value_outcome_row(row: Mapping[str, object]) -> dict[str, object]
         "invalidation_touched": bool(row.get("invalidation_touched")),
         "outcome_available_at": row.get("outcome_available_at"),
         "next_action": "Compare realized outcome with the original decision.",
+    }
+
+
+def _workbench_useful_label_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row.get("id"),
+        "artifact_type": row.get("artifact_type"),
+        "artifact_id": row.get("artifact_id"),
+        "ticker": row.get("ticker"),
+        "label": row.get("label"),
+        "notes": row.get("notes"),
+        "created_at": row.get("created_at"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Use as validation evidence, not as trade approval.",
     }
 
 
