@@ -298,6 +298,7 @@ const fallbackPlatformModules = [
   ['features', 'Features', 'features', 'Feature inventory, evidence routing, and platform surface coverage.', 'route_ready'],
   ['costs', 'Costs', 'costs', 'Budget ledger, provider spend, and decision-support value.', 'route_ready'],
   ['ops', 'Ops', 'ops', 'Provider health, runtime context, and execution readiness.', 'route_ready'],
+  ['telemetry', 'Telemetry', 'telemetry', 'Audit tape, coverage gaps, and agent action traceability.', 'route_ready'],
   ['journal', 'Journal', 'journal', 'Decision notes, feedback, value ledger, and outcome review.', 'route_ready'],
   ['agent-cockpit', 'Agent Cockpit', 'agent', 'Agent brief, proposed tool use, budget gates, and execution review.', 'preview_only'],
 ];
@@ -838,7 +839,7 @@ function renderContent(snapshot) {
     ipo: () => renderPlatformModulePage('ipo', snapshot),
     broker: () => renderPlatformModulePage('broker', snapshot),
     ops: () => renderPlatformModulePage('ops', snapshot),
-    telemetry: renderTelemetry,
+    telemetry: () => renderPlatformModulePage('telemetry', snapshot),
     agent: () => renderPlatformModulePage('agent', snapshot),
     themes: () => renderPlatformModulePage('themes', snapshot),
     validation: () => renderPlatformModulePage('validation', snapshot),
@@ -1016,6 +1017,8 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchOpsProviders(moduleData.provider_rows)}
       ${renderWorkbenchOpsJobs(moduleData.job_rows)}
       ${renderWorkbenchCallPlanRows(moduleData.call_plan_rows)}
+      ${renderWorkbenchTelemetryEvents(moduleData.telemetry_events)}
+      ${renderWorkbenchTelemetryCoverage(moduleData.coverage_domains)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
@@ -1473,6 +1476,56 @@ function renderWorkbenchCallPlanRows(rows) {
   `;
 }
 
+function renderWorkbenchTelemetryEvents(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap telemetry-event-preview" data-testid="workbench-telemetry-events">
+      <table aria-label="Telemetry audit events">
+        <thead><tr><th>Occurred</th><th>Event</th><th>Status</th><th>Reason</th><th>Artifact</th><th>Summary</th><th>Provider Calls</th><th>Broker Order</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-telemetry-event-row">
+              <td data-label="Occurred">${escapeHtml(compact(row.occurred_at, '-'))}</td>
+              <td data-label="Event">${escapeHtml(catalogLabel(row.event || '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+              <td data-label="Reason">${escapeHtml(compact(row.reason, '-'))}</td>
+              <td data-label="Artifact">${escapeHtml(compact(row.artifact, '-'))}</td>
+              <td data-label="Summary">${escapeHtml(compact(row.summary, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchTelemetryCoverage(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap telemetry-coverage-preview" data-testid="workbench-telemetry-coverage">
+      <table aria-label="Telemetry coverage domains">
+        <thead><tr><th>Domain</th><th>Status</th><th>Required</th><th>Events</th><th>Missing</th><th>Last Seen</th><th>Provider Calls</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-telemetry-coverage-row">
+              <td data-label="Domain">${escapeHtml(compact(row.domain, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+              <td data-label="Required">${escapeHtml(row.required ? 'required' : 'optional')}</td>
+              <td data-label="Events">${escapeHtml(compact(row.event_count, '0'))}</td>
+              <td data-label="Missing">${escapeHtml(compact(row.missing_events, 'none'))}</td>
+              <td data-label="Last Seen">${escapeHtml(compact(row.last_seen_at, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function workbenchModuleRows(moduleData) {
   if (Array.isArray(moduleData?.rows)) return moduleData.rows;
   if (moduleData?.focus && typeof moduleData.focus === 'object') return [moduleData.focus];
@@ -1889,19 +1942,6 @@ const themeColumns = [
   { label: 'Avg Score', value: (row) => compact(row.avg_score || row.average_score || row.score) },
   { label: 'Tickers', value: (row) => compact(row.top_tickers || row.tickers || row.sample_tickers) },
   { label: 'States', value: (row) => compact(row.states || row.state_counts || row.statuses) },
-];
-
-function renderTelemetry(snapshot) {
-  const events = at(snapshot, ['telemetry', 'events'], []);
-  const rows = Array.isArray(events) ? events : [];
-  return `${queuePanel('Telemetry', rows, telemetryColumns)}${objectPanel('telemetry coverage', at(snapshot, ['telemetry_coverage'], null))}`;
-}
-
-const telemetryColumns = [
-  { label: 'Type', className: 'ticker', value: (row) => compact(row.event_type || row.type) },
-  { label: 'Status', className: 'state', value: (row) => compact(row.status) },
-  { label: 'Artifact', value: (row) => compact(row.artifact_type || row.artifact_id) },
-  { label: 'Reason', value: (row) => compact(row.reason || row.occurred_at || row.created_at) },
 ];
 
 function renderCosts(snapshot) {
