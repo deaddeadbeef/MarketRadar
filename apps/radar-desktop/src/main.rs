@@ -498,6 +498,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Open the top evidence row or fill missing sources.",
         },
         TradingPlatformModule {
+            key: "evidence-gaps",
+            label: "Evidence Gaps",
+            role: "Readiness blockers, source gaps, and reliance gates.",
+            source: "radar readiness and evidence-gate payloads",
+            status: "route_ready",
+            page: "readiness",
+            test_id: "platform-tool-evidence-gaps",
+            next_action: "Clear readiness blockers before relying on platform output.",
+        },
+        TradingPlatformModule {
             key: "safe-run",
             label: "Safe Run",
             role: "Provider-call budget, run guardrails, and execution gates.",

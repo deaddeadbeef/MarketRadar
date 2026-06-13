@@ -483,6 +483,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert {
         "portfolio",
         "market-radar",
+        "readiness",
         "run",
         "alerts",
         "ipo",
@@ -534,6 +535,49 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert market_radar["rows"][0]["ticker"] == "MSFT"
     assert market_radar["rows"][0]["decision_card_id"] == "card-msft-latest"
     assert market_radar["rows"][0]["usefulness_status"] == "monitor_only"
+
+    readiness = modules["readiness"]
+    assert readiness["status"] == "research_only"
+    assert readiness["summary"] == (
+        "Current candidates are research-only, not investment-decision ready."
+    )
+    assert readiness["metrics"]["readiness_status"] == "research_only"
+    assert readiness["metrics"]["decision_mode"] == "research_only"
+    assert readiness["metrics"]["safe_to_make_investment_decision"] is False
+    assert readiness["metrics"]["readiness_check_count"] == 10
+    assert readiness["metrics"]["blocked_readiness_check_count"] == 4
+    assert readiness["metrics"]["attention_readiness_check_count"] == 3
+    assert readiness["metrics"]["optional_readiness_check_count"] == 2
+    assert readiness["metrics"]["external_calls_made"] == 0
+    assert readiness["readiness_checks"][0] == {
+        "source": "radar_readiness",
+        "code": None,
+        "area": "Scan universe",
+        "status": "blocked",
+        "finding": "No active scan universe is loaded.",
+        "evidence": "active=0; with_daily_bars=0; target=500; latest_daily_bar=n/a",
+        "next_action": (
+            "Seed or refresh the universe with `catalyst-radar ingest-csv "
+            "--securities data/sample/securities.csv --daily-bars "
+            "data/sample/daily_bars.csv --holdings data/sample/holdings.csv` "
+            "before relying on broad discovery."
+        ),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+    }
+    assert [row["status"] for row in readiness["readiness_checks"][:5]] == [
+        "blocked",
+        "blocked",
+        "blocked",
+        "attention",
+        "blocked",
+    ]
+    assert all(row["external_calls_made"] == 0 for row in readiness["readiness_checks"])
+    assert all(not row["broker_order_submitted"] for row in readiness["readiness_checks"])
+    assert readiness["next_action"].startswith("Clear 3 setup blockers:")
+    assert "readiness.readiness_checklist" in readiness["source_keys"]
 
     safe_run = modules["run"]
     assert safe_run["status"] == "ready"
