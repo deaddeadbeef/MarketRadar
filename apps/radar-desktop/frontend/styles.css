@@ -737,6 +737,20 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 880px;
 }
 
+.agent-contribution-preview,
+.agent-action-preview,
+.agent-insight-preview,
+.agent-security-preview {
+  margin-top: 12px;
+}
+
+.agent-contribution-preview table,
+.agent-action-preview table,
+.agent-insight-preview table,
+.agent-security-preview table {
+  min-width: 920px;
+}
+
 .risk-block-preview,
 .risk-readiness-preview {
   margin-top: 12px;
