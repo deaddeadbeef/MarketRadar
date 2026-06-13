@@ -1087,6 +1087,35 @@ def _trading_workbench_snapshot_payload(
                 "next_action": "Open the top queue row before planning a trade.",
                 "source_keys": ["priced_in_queue", "candidates", "alerts"],
             },
+            "run": {
+                "status": "blocked" if ops_call_plan_status == "blocked" else "ready",
+                "summary": call_plan.get("headline")
+                or "Safe provider-call plan and execution gates.",
+                "metrics": {
+                    "call_plan_status": ops_call_plan_status,
+                    "call_plan_layer_count": len(ops_call_plan_rows),
+                    "blocked_call_plan_layer_count": sum(
+                        1
+                        for row in ops_call_plan_rows
+                        if str(row.get("status") or "").lower() == "blocked"
+                    ),
+                    "max_external_call_count": _first_nonnegative_int(
+                        call_plan.get("max_external_call_count")
+                    ),
+                    "will_call_external_providers": bool(
+                        call_plan.get("will_call_external_providers")
+                    ),
+                    "external_calls_made": 0,
+                },
+                "call_plan_rows": ops_call_plan_rows,
+                "next_action": call_plan.get("next_action")
+                or "Review call plan before executing provider work.",
+                "source_keys": [
+                    "call_plan",
+                    "radar_run.guardrails",
+                    "operator_next_step",
+                ],
+            },
             "alerts": {
                 "status": (
                     "ready"
