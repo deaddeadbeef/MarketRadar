@@ -1018,6 +1018,10 @@ def _trading_workbench_snapshot_payload(
     alert_trigger_rows = [
         _workbench_market_trigger_row(row) for row in broker_triggers[:5]
     ]
+    candidate_module_rows = [
+        _workbench_queue_row(row, candidate_by_ticker=candidate_by_ticker)
+        for row in queue_rows[:5]
+    ]
     opportunity_action_rows = [
         _workbench_opportunity_action_row(row)
         for row in broker_opportunity_actions[:5]
@@ -1092,6 +1096,38 @@ def _trading_workbench_snapshot_payload(
                 ],
                 "next_action": "Open the top queue row before planning a trade.",
                 "source_keys": ["priced_in_queue", "candidates", "alerts"],
+            },
+            "candidates": {
+                "status": "ready" if candidate_module_rows else "blocked",
+                "summary": "Candidate evidence queue for single-name review.",
+                "metrics": {
+                    "candidate_count": len(candidate_rows),
+                    "queue_count": len(queue_rows),
+                    "decision_card_count": decision_card_count,
+                    "candidate_packet_count": sum(
+                        1 for row in candidate_rows if row.get("candidate_packet_id")
+                    ),
+                    "decision_ready_count": len(decision_ready_rows),
+                    "monitor_only_count": sum(
+                        1
+                        for row in candidate_module_rows
+                        if str(row.get("usefulness_status") or "").lower()
+                        == "monitor_only"
+                    ),
+                    "external_calls_made": 0,
+                },
+                "rows": candidate_module_rows,
+                "next_action": (
+                    "Open a candidate row and review evidence before planning."
+                    if candidate_module_rows
+                    else "Run Market Radar before reviewing candidates."
+                ),
+                "source_keys": [
+                    "priced_in_queue.rows",
+                    "candidates.rows",
+                    "decision_cards",
+                    "candidate_packets",
+                ],
             },
             "readiness": {
                 "status": readiness_payload.get("status") or "blocked",
@@ -1865,6 +1901,12 @@ def _workbench_queue_row(
             or candidate.get("decision_card_id")
             or candidate.get("card")
         ),
+        "score": _first_value(row.get("score"), row.get("final_score")),
+        "setup": row.get("setup") or row.get("setup_type"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
         "next_action": (
             row.get("next_action")
             or usefulness.get("next_action")
