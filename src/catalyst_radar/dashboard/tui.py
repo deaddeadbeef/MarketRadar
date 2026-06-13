@@ -830,6 +830,7 @@ def dashboard_snapshot_payload(
         "external_calls_made": 0,
     }
     payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
+    _attach_agent_brief_to_workbench(payload)
     redacted = redact_restricted_external_payload(payload)
     return redacted if isinstance(redacted, dict) else payload
 
@@ -1741,6 +1742,139 @@ def _trading_workbench_snapshot_payload(
     }
 
 
+def _attach_agent_brief_to_workbench(payload: dict[str, object]) -> None:
+    workbench = payload.get("trading_workbench")
+    if not isinstance(workbench, dict):
+        return
+    modules = workbench.get("modules")
+    if not isinstance(modules, dict):
+        return
+    modules["agent"] = _workbench_agent_brief_module(
+        existing=_mapping(modules.get("agent")),
+        agent_brief=_mapping(payload.get("agent_brief")),
+        runtime_context=_mapping(payload.get("runtime_context")),
+    )
+
+
+def _workbench_agent_brief_module(
+    *,
+    existing: Mapping[str, object],
+    agent_brief: Mapping[str, object],
+    runtime_context: Mapping[str, object],
+) -> dict[str, object]:
+    capability_rows = _rows(existing.get("capability_map"))
+    runtime = _mapping(agent_brief.get("runtime"))
+    runtime_agent = _mapping(runtime_context.get("agent"))
+    credit_gate = _mapping(agent_brief.get("credit_gate"))
+    real_results = _mapping(agent_brief.get("real_results"))
+    planned_calls = _mapping(agent_brief.get("external_calls_planned"))
+    made_calls = _mapping(agent_brief.get("external_calls_made"))
+    security_check_rows = [
+        _workbench_agent_security_check_row(row)
+        for row in _rows(agent_brief.get("security_checks"))[:8]
+    ]
+    contribution_rows = [
+        _workbench_agent_contribution_row(row)
+        for row in _rows(agent_brief.get("agents"))[:6]
+    ]
+    action_rows = [
+        _workbench_agent_action_row(action, index=index)
+        for index, action in enumerate(_texts(agent_brief.get("next_actions"))[:8], start=1)
+    ]
+    insight_rows = [
+        _workbench_agent_insight_row(insight, index=index)
+        for index, insight in enumerate(_texts(agent_brief.get("insights"))[:8], start=1)
+    ]
+    blocked_security_checks = sum(
+        1
+        for row in security_check_rows
+        if str(row.get("status") or "").lower() == "blocked"
+    )
+    total_external_calls_made = sum(
+        _first_nonnegative_int(value) for value in made_calls.values()
+    )
+    return {
+        "status": agent_brief.get("status") or existing.get("status") or "preview_only",
+        "summary": (
+            f"Agent cockpit {agent_brief.get('mode') or 'preview'} brief; "
+            f"{agent_brief.get('decision_boundary') or 'execution gated'}."
+        ),
+        "metrics": {
+            "agent_brief_status": agent_brief.get("status"),
+            "agent_mode": agent_brief.get("mode"),
+            "agent_sdk_enabled": bool(runtime_agent.get("agent_sdk_enabled")),
+            "capability_count": len(capability_rows),
+            "ready_capability_count": sum(
+                1
+                for row in capability_rows
+                if str(row.get("status") or "").lower() in {"available", "ready"}
+            ),
+            "blocked_capability_count": sum(
+                1
+                for row in capability_rows
+                if str(row.get("status") or "").lower() not in {"available", "ready"}
+            ),
+            "agent_contribution_count": len(contribution_rows),
+            "insight_count": len(insight_rows),
+            "next_action_count": len(action_rows),
+            "security_check_count": len(security_check_rows),
+            "blocked_security_check_count": blocked_security_checks,
+            "credit_gate_status": credit_gate.get("status"),
+            "real_results_status": real_results.get("status"),
+            "real_results_gate_status": runtime.get("real_results_gate_status"),
+            "external_openai_calls_planned": _first_nonnegative_int(
+                planned_calls.get("openai")
+            ),
+            "external_openai_calls_made": _first_nonnegative_int(
+                made_calls.get("openai")
+            ),
+            "external_market_calls_planned": _first_nonnegative_int(
+                planned_calls.get("market_data")
+            ),
+            "external_market_calls_made": _first_nonnegative_int(
+                made_calls.get("market_data")
+            ),
+            "external_calls_made": total_external_calls_made,
+        },
+        "runtime": {
+            "orchestrator": runtime.get("orchestrator"),
+            "provider": runtime.get("provider"),
+            "tool_surface": runtime.get("tool_surface"),
+            "real_mode_gate_status": runtime.get("real_mode_gate_status"),
+            "real_results_gate_status": runtime.get("real_results_gate_status"),
+            "credit_gate_status": runtime.get("credit_gate_status"),
+            "max_turns": runtime.get("max_turns"),
+        },
+        "credit_gate": {
+            "status": credit_gate.get("status"),
+            "estimated_cost_usd": credit_gate.get("estimated_cost_usd"),
+            "max_openai_calls": credit_gate.get("max_openai_calls"),
+            "missing": _texts(credit_gate.get("missing")),
+            "next_action": credit_gate.get("next_action"),
+        },
+        "decision_boundary": agent_brief.get("decision_boundary"),
+        "capability_map": capability_rows,
+        "agent_contributions": contribution_rows,
+        "agent_actions": action_rows,
+        "agent_insights": insight_rows,
+        "security_checks": security_check_rows,
+        "next_action": (
+            action_rows[0].get("action")
+            if action_rows
+            else credit_gate.get("next_action")
+            or existing.get("next_action")
+            or "Preview agent reasoning; execute remains gated."
+        ),
+        "source_keys": [
+            "agent_brief",
+            "agent_brief.agents",
+            "agent_brief.next_actions",
+            "agent_brief.security_checks",
+            "trading_workbench.active_plan.capability_map",
+        ],
+    }
+
+
 def _workbench_active_plan_payload(
     *,
     engine: Engine,
@@ -2232,6 +2366,59 @@ def _workbench_agent_capability_row(row: Mapping[str, object]) -> dict[str, obje
         "order_submission_allowed": False,
         "boundary": boundary,
         "next_action": "Review manually; no autonomous execution is enabled.",
+    }
+
+
+def _workbench_agent_contribution_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "agent": row.get("agent"),
+        "role": row.get("role"),
+        "summary": row.get("summary"),
+        "confidence": row.get("confidence"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Review this agent contribution as decision support only.",
+    }
+
+
+def _workbench_agent_action_row(action: str, *, index: int) -> dict[str, object]:
+    return {
+        "rank": index,
+        "action": action,
+        "status": "manual_review",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": action,
+    }
+
+
+def _workbench_agent_insight_row(insight: str, *, index: int) -> dict[str, object]:
+    return {
+        "rank": index,
+        "insight": insight,
+        "status": "decision_support",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Use as context; it is not trade approval.",
+    }
+
+
+def _workbench_agent_security_check_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "name": row.get("name"),
+        "status": row.get("status") or "unknown",
+        "detail": row.get("detail"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Resolve blocked checks before real agent execution.",
     }
 
 

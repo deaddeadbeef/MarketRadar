@@ -91,6 +91,10 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchActivePlan",
         "function activePlanBlock",
         "function renderWorkbenchAgentCapabilities",
+        "function renderWorkbenchAgentContributions",
+        "function renderWorkbenchAgentActions",
+        "function renderWorkbenchAgentInsights",
+        "function renderWorkbenchAgentSecurityChecks",
         "function renderWorkbenchRiskBlocks",
         "function renderWorkbenchReadinessChecks",
         "function renderWorkbenchAlerts",
@@ -150,6 +154,14 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-ticket-record"',
         'data-testid="workbench-agent-capabilities"',
         'data-testid="workbench-agent-capability-row"',
+        'data-testid="workbench-agent-contributions"',
+        'data-testid="workbench-agent-contribution-row"',
+        'data-testid="workbench-agent-actions"',
+        'data-testid="workbench-agent-action-row"',
+        'data-testid="workbench-agent-insights"',
+        'data-testid="workbench-agent-insight-row"',
+        'data-testid="workbench-agent-security-checks"',
+        'data-testid="workbench-agent-security-check-row"',
         'data-testid="workbench-risk-blocks"',
         'data-testid="workbench-risk-block-row"',
         'data-testid="workbench-readiness-checks"',
@@ -183,10 +195,18 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "order_intent",
         "execution_controls",
         "capability_map",
+        "agent_contributions",
+        "agent_actions",
+        "agent_insights",
+        "security_checks",
         "risk_blocks",
         "readiness_checks",
         "opportunity_actions",
         "Agent capability map",
+        "Agent contribution brief",
+        "Agent proposed human actions",
+        "Agent insight brief",
+        "Agent security checks",
         "Risk desk active plan blocks",
         "Risk readiness checks",
         "Workbench alerts",
@@ -310,6 +330,10 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".feature-inventory-preview" in styles
     assert ".portfolio-position-preview" in styles
     assert ".agent-capability-preview" in styles
+    assert ".agent-contribution-preview" in styles
+    assert ".agent-action-preview" in styles
+    assert ".agent-insight-preview" in styles
+    assert ".agent-security-preview" in styles
     assert ".risk-block-preview" in styles
     assert ".risk-readiness-preview" in styles
     assert ".alert-preview" in styles

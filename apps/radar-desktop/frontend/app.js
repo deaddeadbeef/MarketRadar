@@ -1014,6 +1014,10 @@ function renderWorkbenchModuleData(moduleData) {
       </div>
       ${renderWorkbenchActivePlan(moduleData.active_plan)}
       ${renderWorkbenchAgentCapabilities(moduleData.capability_map)}
+      ${renderWorkbenchAgentContributions(moduleData.agent_contributions)}
+      ${renderWorkbenchAgentActions(moduleData.agent_actions)}
+      ${renderWorkbenchAgentInsights(moduleData.agent_insights)}
+      ${renderWorkbenchAgentSecurityChecks(moduleData.security_checks)}
       ${renderWorkbenchRiskBlocks(moduleData.risk_blocks)}
       ${renderWorkbenchReadinessChecks(moduleData.readiness_checks)}
       ${renderWorkbenchAlerts(moduleData.alerts)}
@@ -1176,6 +1180,99 @@ function renderWorkbenchAgentCapabilities(capabilities) {
               <td data-label="DB Writes">${escapeHtml(compact(capability.db_writes_made, '0'))}</td>
               <td data-label="Broker Order">${escapeHtml(capability.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(capability.description || capability.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchAgentContributions(contributions) {
+  if (!Array.isArray(contributions) || !contributions.length) return '';
+  return `
+    <div class="table-wrap agent-contribution-preview" data-testid="workbench-agent-contributions">
+      <table aria-label="Agent contribution brief">
+        <thead><tr><th>Agent</th><th>Role</th><th>Confidence</th><th>Summary</th><th>Provider Calls</th><th>Broker Order</th></tr></thead>
+        <tbody>
+          ${contributions.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-agent-contribution-row">
+              <td data-label="Agent">${escapeHtml(compact(row.agent, '-'))}</td>
+              <td data-label="Role">${escapeHtml(compact(row.role, '-'))}</td>
+              <td data-label="Confidence">${escapeHtml(catalogLabel(row.confidence || '-'))}</td>
+              <td data-label="Summary">${escapeHtml(compact(row.summary, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchAgentActions(actions) {
+  if (!Array.isArray(actions) || !actions.length) return '';
+  return `
+    <div class="table-wrap agent-action-preview" data-testid="workbench-agent-actions">
+      <table aria-label="Agent proposed human actions">
+        <thead><tr><th>Rank</th><th>Status</th><th>Action</th><th>Provider Calls</th><th>DB Writes</th><th>Broker Order</th></tr></thead>
+        <tbody>
+          ${actions.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-agent-action-row">
+              <td data-label="Rank">${escapeHtml(compact(row.rank, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || 'manual_review'))}</td>
+              <td data-label="Action">${escapeHtml(compact(row.action || row.next_action, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="DB Writes">${escapeHtml(compact(row.db_writes_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchAgentInsights(insights) {
+  if (!Array.isArray(insights) || !insights.length) return '';
+  return `
+    <div class="table-wrap agent-insight-preview" data-testid="workbench-agent-insights">
+      <table aria-label="Agent insight brief">
+        <thead><tr><th>Rank</th><th>Status</th><th>Insight</th><th>Provider Calls</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${insights.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-agent-insight-row">
+              <td data-label="Rank">${escapeHtml(compact(row.rank, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || 'decision_support'))}</td>
+              <td data-label="Insight">${escapeHtml(compact(row.insight, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchAgentSecurityChecks(checks) {
+  if (!Array.isArray(checks) || !checks.length) return '';
+  return `
+    <div class="table-wrap agent-security-preview" data-testid="workbench-agent-security-checks">
+      <table aria-label="Agent security checks">
+        <thead><tr><th>Check</th><th>Status</th><th>Detail</th><th>Provider Calls</th><th>DB Writes</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${checks.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-agent-security-check-row">
+              <td data-label="Check">${escapeHtml(compact(row.name, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || 'unknown'))}</td>
+              <td data-label="Detail">${escapeHtml(compact(row.detail, '-'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="DB Writes">${escapeHtml(compact(row.db_writes_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
           `).join('')}
         </tbody>

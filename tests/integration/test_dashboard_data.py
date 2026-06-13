@@ -1120,11 +1120,69 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     ]
     agent = modules["agent"]
     assert agent["metrics"]["external_calls_made"] == 0
+    assert agent["status"] == "dry_run"
+    assert agent["summary"] == (
+        "Agent cockpit dry_run brief; setup_blocked; research/manual triage only."
+    )
+    assert agent["metrics"]["agent_brief_status"] == "dry_run"
+    assert agent["metrics"]["agent_mode"] == "dry_run"
     assert agent["metrics"]["capability_count"] == 6
     assert agent["metrics"]["ready_capability_count"] == 1
     assert agent["metrics"]["blocked_capability_count"] == 5
+    assert agent["metrics"]["agent_contribution_count"] == 4
+    assert agent["metrics"]["insight_count"] == 8
+    assert agent["metrics"]["next_action_count"] == 6
+    assert agent["metrics"]["security_check_count"] == 8
+    assert agent["metrics"]["blocked_security_check_count"] == 1
+    assert agent["metrics"]["credit_gate_status"] == "blocked"
+    assert agent["metrics"]["real_results_status"] == "missing"
+    assert agent["metrics"]["real_results_gate_status"] == "blocked"
+    assert agent["metrics"]["external_openai_calls_planned"] == 0
+    assert agent["metrics"]["external_openai_calls_made"] == 0
+    assert agent["runtime"]["orchestrator"] == "openai_agents_sdk"
+    assert agent["runtime"]["tool_surface"] == "read_only_snapshot_tools"
+    assert agent["credit_gate"]["status"] == "blocked"
+    assert agent["credit_gate"]["max_openai_calls"] == 3
+    assert "CATALYST_LLM_DAILY_BUDGET_USD>0" in agent["credit_gate"]["missing"]
+    assert agent["decision_boundary"] == "setup_blocked; research/manual triage only"
+    assert "agent_brief.next_actions" in agent["source_keys"]
     assert "trading_workbench.active_plan.capability_map" in agent["source_keys"]
-    assert agent["next_action"] == "Review agent capabilities; execution remains gated."
+    assert agent["next_action"] == (
+        "Seed the ticker universe before calling this a full-market scan."
+    )
+    assert agent["agent_contributions"][0] == {
+        "agent": "Data Sentinel",
+        "role": "Data freshness and provider-call boundary",
+        "summary": (
+            "Readiness is research_only; the viewed call plan allows up to 0 "
+            "provider call(s), but this agent brief made none."
+        ),
+        "confidence": "high",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Review this agent contribution as decision support only.",
+    }
+    assert agent["agent_actions"][0] == {
+        "rank": 1,
+        "action": "Seed the ticker universe before calling this a full-market scan.",
+        "status": "manual_review",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Seed the ticker universe before calling this a full-market scan.",
+    }
+    assert agent["agent_insights"][0]["status"] == "decision_support"
+    assert agent["agent_insights"][0]["broker_order_submitted"] is False
+    assert agent["security_checks"][5]["name"] == "Real results gate"
+    assert agent["security_checks"][5]["status"] == "blocked"
+    assert agent["security_checks"][5]["external_calls_made"] == 0
+    assert all(row["external_calls_made"] == 0 for row in agent["agent_actions"])
+    assert all(not row["broker_order_submitted"] for row in agent["agent_actions"])
+    assert all(row["external_calls_made"] == 0 for row in agent["security_checks"])
+    assert all(not row["broker_order_submitted"] for row in agent["security_checks"])
     assert agent["capability_map"][0] == {
         "level": "L0",
         "name": "market_scout",
