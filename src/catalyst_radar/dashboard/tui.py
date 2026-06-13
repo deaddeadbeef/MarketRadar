@@ -732,6 +732,7 @@ def dashboard_snapshot_payload(
         alert_rows=alert_rows,
         ipo_rows=ipo_rows,
         theme_rows=theme_rows,
+        priced_in_answer=priced_in_answer,
         broker_summary=broker_summary,
         validation_summary=validation_summary,
         cost_summary=cost_summary,
@@ -843,6 +844,7 @@ def _trading_workbench_snapshot_payload(
     alert_rows: Sequence[Mapping[str, object]],
     ipo_rows: Sequence[Mapping[str, object]],
     theme_rows: Sequence[Mapping[str, object]],
+    priced_in_answer: Mapping[str, object],
     broker_summary: Mapping[str, object],
     validation_summary: Mapping[str, object],
     cost_summary: Mapping[str, object],
@@ -872,6 +874,10 @@ def _trading_workbench_snapshot_payload(
     broker_opportunity_actions = _rows(broker_summary.get("opportunity_actions"))
     validation_report = _mapping(validation_summary.get("report"))
     latest_validation = _mapping(validation_summary.get("latest_run"))
+    priced_in_answer_counts = _mapping(priced_in_answer.get("counts"))
+    priced_in_decision_readiness = _mapping(
+        priced_in_answer.get("decision_readiness")
+    )
     paper_rows = _rows(validation_summary.get("paper_trades"))
     useful_labels = _rows(validation_summary.get("useful_labels"))
     ledger_entries = _first_nonnegative_int(
@@ -1127,6 +1133,53 @@ def _trading_workbench_snapshot_payload(
                     "candidates.rows",
                     "decision_cards",
                     "candidate_packets",
+                ],
+            },
+            "review": {
+                "status": priced_in_answer.get("status") or "blocked",
+                "summary": priced_in_answer.get("headline")
+                or priced_in_answer.get("answer")
+                or "Priced-in answer and decision-readiness review.",
+                "metrics": {
+                    "priced_in_answer_ready": bool(
+                        priced_in_answer.get("priced_in_answer_ready")
+                    ),
+                    "can_make_investment_decision": bool(
+                        priced_in_answer.get("can_make_investment_decision")
+                    ),
+                    "manual_investment_decision_ready": bool(
+                        priced_in_answer.get("manual_investment_decision_ready")
+                    ),
+                    "visible_rows": _first_nonnegative_int(
+                        priced_in_answer_counts.get("visible_rows"),
+                        len(queue_rows),
+                    ),
+                    "total_rows": _first_nonnegative_int(
+                        priced_in_answer_counts.get("total_rows"),
+                        len(queue_rows),
+                    ),
+                    "decision_ready_rows": _first_nonnegative_int(
+                        priced_in_answer_counts.get("decision_ready_rows")
+                    ),
+                    "actionable_mismatch_rows": _first_nonnegative_int(
+                        priced_in_answer_counts.get("actionable_mismatch_rows")
+                    ),
+                    "trust_blocker_count": len(
+                        _rows(priced_in_answer.get("trust_blockers"))
+                    ),
+                    "decision_readiness_status": priced_in_decision_readiness.get(
+                        "status"
+                    ),
+                    "external_calls_made": 0,
+                },
+                "rows": candidate_module_rows,
+                "next_action": priced_in_answer.get("next_action")
+                or "Resolve decision-readiness blockers before acting.",
+                "source_keys": [
+                    "priced_in_answer",
+                    "priced_in_answer.decision_readiness",
+                    "priced_in_queue.rows",
+                    "priced_in_answer.trust_blockers",
                 ],
             },
             "readiness": {

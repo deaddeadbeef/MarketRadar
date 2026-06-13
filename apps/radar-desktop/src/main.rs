@@ -508,6 +508,16 @@ fn trading_platform_modules() -> Vec<TradingPlatformModule> {
             next_action: "Open a candidate row and review evidence before planning.",
         },
         TradingPlatformModule {
+            key: "decision-review",
+            label: "Decision Review",
+            role: "Priced-in answer status and decision-readiness gates.",
+            source: "priced-in answer, trust blockers, and queue rows",
+            status: "route_ready",
+            page: "review",
+            test_id: "platform-tool-decision-review",
+            next_action: "Resolve decision-readiness blockers before acting.",
+        },
+        TradingPlatformModule {
             key: "evidence-gaps",
             label: "Evidence Gaps",
             role: "Readiness blockers, source gaps, and reliance gates.",
