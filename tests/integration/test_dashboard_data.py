@@ -1181,6 +1181,8 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert paper_trading["metrics"]["latest_trade_id"] == "paper-msft"
     assert paper_trading["metrics"]["approved_for_paper_trade"] is False
     assert paper_trading["metrics"]["approved_for_live_submission"] is False
+    assert paper_trading["metrics"]["execution_audit_event_count"] == 0
+    assert paper_trading["metrics"]["latest_execution_audit_id"] is None
     assert paper_trading["next_action"] == (
         "Review local paper outcomes; broker submission remains disabled."
     )
@@ -1199,9 +1201,15 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "max_loss": 200.0,
             "available_at": AVAILABLE_AT,
             "no_execution": True,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
             "next_action": "Track outcome locally; no broker order was submitted.",
         }
     ]
+    assert paper_trading["execution_audit_rows"] == []
+    assert "audit_events.paper_decision_recorded" in paper_trading["source_keys"]
 
     broker = modules["broker"]
     assert broker["status"] == "read_only"
@@ -1210,7 +1218,14 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert broker["metrics"]["latest_ticket_id"] is None
     assert broker["metrics"]["order_submission_allowed"] is False
     assert broker["metrics"]["broker_order_submitted"] is False
+    assert broker["metrics"]["ticket_audit_event_count"] == 0
+    assert broker["metrics"]["latest_ticket_audit_id"] is None
     assert broker["order_tickets"] == []
+    assert broker["ticket_audit_rows"] == []
+    assert (
+        "audit_events.telemetry.operator.order_ticket.preview_saved"
+        in broker["source_keys"]
+    )
 
     backtest = modules["backtest"]
     assert backtest["metrics"]["latest_validation_run"] == "validation-run-latest"
@@ -1475,6 +1490,28 @@ def test_dashboard_paper_decision_command_previews_and_records_locally(
     assert events[0].actor_source == "dashboard_tui"
     assert events[0].decision == "deferred"
     assert events[0].metadata["no_execution"] is True
+    after_payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=False,
+        filters=filters,
+    )
+    paper_module = after_payload["trading_workbench"]["modules"]["paper-trading"]
+    assert paper_module["metrics"]["execution_audit_event_count"] == 1
+    assert paper_module["metrics"]["latest_execution_audit_id"] == events[0].id
+    audit_row = paper_module["execution_audit_rows"][0]
+    assert audit_row["id"] == events[0].id
+    assert audit_row["event_type"] == "paper_decision_recorded"
+    assert audit_row["ticker"] == "MSFT"
+    assert audit_row["decision"] == "deferred"
+    assert audit_row["record_state"] == "deferred"
+    assert audit_row["status"] == "success"
+    assert audit_row["paper_trade_id"] == "paper-trade-v1:card-msft-latest:deferred"
+    assert audit_row["external_calls_made"] == 0
+    assert audit_row["db_writes_made"] == 2
+    assert audit_row["broker_order_submitted"] is False
+    assert audit_row["order_submission_allowed"] is False
+    assert audit_row["no_execution"] is True
 
 
 def test_dashboard_order_ticket_command_previews_and_records_locally(
@@ -1544,6 +1581,15 @@ def test_dashboard_order_ticket_command_previews_and_records_locally(
     assert ticket.limit_price == 100.0
     assert ticket.invalidation_price == 94.0
     assert "broker_submission_disabled" in ticket.preview_payload["hard_blocks"]
+    ticket_events = AuditLogRepository(engine).list_events(
+        artifact_type="order_ticket",
+        artifact_id=ticket.id,
+        event_type="telemetry.operator.order_ticket.preview_saved",
+    )
+    assert len(ticket_events) == 1
+    assert ticket_events[0].actor_source == "dashboard_tui"
+    assert ticket_events[0].decision == "BUY"
+    assert ticket_events[0].metadata["submission_allowed"] is False
     after_payload = dashboard_snapshot_payload(
         engine=engine,
         config=config,
@@ -1554,6 +1600,8 @@ def test_dashboard_order_ticket_command_previews_and_records_locally(
     assert broker_module["metrics"]["order_ticket_count"] == 1
     assert broker_module["metrics"]["blocked_order_ticket_count"] == 1
     assert broker_module["metrics"]["latest_ticket_id"] == ticket.id
+    assert broker_module["metrics"]["ticket_audit_event_count"] == 1
+    assert broker_module["metrics"]["latest_ticket_audit_id"] == ticket_events[0].id
     ticket_row = broker_module["order_tickets"][0]
     assert ticket_row["id"] == ticket.id
     assert ticket_row["ticker"] == "MSFT"
@@ -1564,6 +1612,20 @@ def test_dashboard_order_ticket_command_previews_and_records_locally(
     assert ticket_row["status"] == "blocked"
     assert ticket_row["submission_allowed"] is False
     assert "broker_submission_disabled" in ticket_row["hard_blocks"]
+    audit_row = broker_module["ticket_audit_rows"][0]
+    assert audit_row["id"] == ticket_events[0].id
+    assert audit_row["event_type"] == "telemetry.operator.order_ticket.preview_saved"
+    assert audit_row["ticker"] == "MSFT"
+    assert audit_row["decision"] == "BUY"
+    assert audit_row["record_state"] == "blocked"
+    assert audit_row["status"] == "success"
+    assert audit_row["order_ticket_id"] == ticket.id
+    assert "broker_submission_disabled" in audit_row["hard_blocks"]
+    assert audit_row["external_calls_made"] == 0
+    assert audit_row["db_writes_made"] == 1
+    assert audit_row["broker_order_submitted"] is False
+    assert audit_row["order_submission_allowed"] is False
+    assert audit_row["no_execution"] is True
 
 
 def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> None:

@@ -170,7 +170,21 @@ class AuditLogRepository:
         ticker: str | None = None,
         event_type: str | None = None,
         limit: int = 200,
+        newest_first: bool = False,
     ) -> list[AuditEvent]:
+        order_by = (
+            (
+                audit_events.c.occurred_at.desc(),
+                audit_events.c.created_at.desc(),
+                audit_events.c.id.desc(),
+            )
+            if newest_first
+            else (
+                audit_events.c.occurred_at,
+                audit_events.c.created_at,
+                audit_events.c.id,
+            )
+        )
         stmt = (
             select(audit_events)
             .where(
@@ -181,11 +195,7 @@ class AuditLogRepository:
                     event_type=event_type,
                 )
             )
-            .order_by(
-                audit_events.c.occurred_at,
-                audit_events.c.created_at,
-                audit_events.c.id,
-            )
+            .order_by(*order_by)
             .limit(_positive_limit(limit))
         )
         with self.engine.connect() as conn:

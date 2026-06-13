@@ -118,6 +118,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchModuleRows",
         "function renderWorkbenchPaperTrades",
         "function renderWorkbenchOrderTickets",
+        "function renderWorkbenchExecutionAudit",
+        "function renderWorkbenchTicketAudit",
         "function renderWorkbenchJournalLedger",
         "function renderWorkbenchJournalOutcomes",
         "function renderWorkbenchValidationResults",
@@ -141,6 +143,10 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-paper-trade-row"',
         'data-testid="workbench-order-tickets"',
         'data-testid="workbench-order-ticket-row"',
+        'data-testid="workbench-execution-audit"',
+        'data-testid="workbench-execution-audit-row"',
+        'data-testid="workbench-ticket-audit"',
+        'data-testid="workbench-ticket-audit-row"',
         'data-testid="workbench-journal-ledger"',
         'data-testid="workbench-journal-ledger-row"',
         'data-testid="workbench-journal-outcomes"',
@@ -275,6 +281,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "Paper trade ledger",
         "no execution",
         "Blocked workbench order tickets",
+        "Paper execution audit",
+        "Broker ticket audit",
         "Journal value ledger entries",
         "Journal value outcomes",
         "Backtest validation results",
@@ -368,6 +376,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".risk-approval-preview" in styles
     assert ".paper-trade-preview" in styles
     assert ".order-ticket-preview" in styles
+    assert ".execution-audit-preview" in styles
+    assert ".ticket-audit-preview" in styles
     assert ".journal-ledger-preview" in styles
     assert ".journal-outcome-preview" in styles
     assert ".validation-result-preview" in styles

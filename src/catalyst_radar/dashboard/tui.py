@@ -75,6 +75,7 @@ from catalyst_radar.market.status import (
     market_bars_import_verification_payload,
     market_bars_post_capture_verification_payload,
 )
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
@@ -112,6 +113,8 @@ from catalyst_radar.validation.value_outcomes import (
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 DASHBOARD_CANDIDATE_ROW_LIMIT = 200
+PAPER_DECISION_RECORDED_EVENT = "paper_decision_recorded"
+ORDER_TICKET_PREVIEW_SAVED_EVENT = "telemetry.operator.order_ticket.preview_saved"
 
 
 @dataclass(frozen=True)
@@ -1018,6 +1021,23 @@ def _trading_workbench_snapshot_payload(
         latest_validation=latest_validation,
         available_at=available_at,
     )
+    audit_repo = AuditLogRepository(engine)
+    paper_execution_audit_rows = [
+        _workbench_execution_audit_row(event)
+        for event in audit_repo.list_events(
+            event_type=PAPER_DECISION_RECORDED_EVENT,
+            limit=5,
+            newest_first=True,
+        )
+    ]
+    ticket_execution_audit_rows = [
+        _workbench_execution_audit_row(event)
+        for event in audit_repo.list_events(
+            event_type=ORDER_TICKET_PREVIEW_SAVED_EVENT,
+            limit=5,
+            newest_first=True,
+        )
+    ]
     paper_trade_rows = [
         _workbench_paper_trade_row(row) for row in paper_rows[:5]
     ]
@@ -1549,15 +1569,25 @@ def _trading_workbench_snapshot_payload(
                         active_risk.get("approved_for_paper_trade")
                     ),
                     "approved_for_live_submission": False,
+                    "execution_audit_event_count": len(paper_execution_audit_rows),
+                    "latest_execution_audit_id": (
+                        paper_execution_audit_rows[0].get("id")
+                        if paper_execution_audit_rows
+                        else None
+                    ),
                 },
                 "active_plan": active_plan,
                 "paper_trades": paper_trade_rows,
+                "execution_audit_rows": paper_execution_audit_rows,
                 "next_action": (
                     "Review local paper outcomes; broker submission remains disabled."
                     if paper_trade_rows
                     else "Use paper execution only after risk approval."
                 ),
-                "source_keys": ["validation.paper_trades"],
+                "source_keys": [
+                    "validation.paper_trades",
+                    f"audit_events.{PAPER_DECISION_RECORDED_EVENT}",
+                ],
             },
             "broker": {
                 "status": "read_only",
@@ -1584,14 +1614,25 @@ def _trading_workbench_snapshot_payload(
                     "broker_order_submitted": bool(
                         active_order.get("broker_order_submitted")
                     ),
+                    "ticket_audit_event_count": len(ticket_execution_audit_rows),
+                    "latest_ticket_audit_id": (
+                        ticket_execution_audit_rows[0].get("id")
+                        if ticket_execution_audit_rows
+                        else None
+                    ),
                 },
                 "order_tickets": broker_ticket_rows,
+                "ticket_audit_rows": ticket_execution_audit_rows,
                 "next_action": (
                     "Review blocked local tickets; broker submission remains disabled."
                     if broker_ticket_rows
                     else "Authenticate only when portfolio context is needed."
                 ),
-                "source_keys": ["broker", "broker.order_tickets"],
+                "source_keys": [
+                    "broker",
+                    "broker.order_tickets",
+                    f"audit_events.{ORDER_TICKET_PREVIEW_SAVED_EVENT}",
+                ],
             },
             "backtest": {
                 "status": "ready" if validation_report or latest_validation else "blocked",
@@ -2810,8 +2851,79 @@ def _workbench_order_ticket_row(row: Mapping[str, object]) -> dict[str, object]:
         "submission_allowed": bool(row.get("submission_allowed")),
         "created_at": row.get("created_at"),
         "hard_blocks": _texts(preview.get("hard_blocks")),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": bool(row.get("submission_allowed")),
         "next_action": "Review manually; broker submission is disabled.",
     }
+
+
+def _workbench_execution_audit_row(event: object) -> dict[str, object]:
+    metadata = _mapping(getattr(event, "metadata", {}))
+    after_payload = _mapping(getattr(event, "after_payload", {}))
+    event_type = str(getattr(event, "event_type", "") or "")
+    artifact_type = getattr(event, "artifact_type", None)
+    artifact_id = getattr(event, "artifact_id", None)
+    hard_blocks = _texts(getattr(event, "hard_blocks", [])) or _texts(
+        metadata.get("hard_blocks")
+    )
+    decision = getattr(event, "decision", None)
+    db_writes_made = _workbench_execution_audit_db_writes(
+        event_type=event_type,
+        decision=decision,
+        hard_blocks=hard_blocks,
+    )
+    submission_allowed = bool(metadata.get("submission_allowed", False))
+    broker_order_submitted = False
+    return {
+        "id": getattr(event, "id", None),
+        "event_type": event_type,
+        "actor_source": getattr(event, "actor_source", None),
+        "actor_role": getattr(event, "actor_role", None),
+        "artifact_type": artifact_type,
+        "artifact_id": artifact_id,
+        "ticker": getattr(event, "ticker", None),
+        "decision": decision,
+        "record_state": metadata.get("state") or metadata.get("status"),
+        "status": getattr(event, "status", None),
+        "reason": getattr(event, "reason", None),
+        "hard_blocks": hard_blocks,
+        "paper_trade_id": getattr(event, "paper_trade_id", None)
+        or after_payload.get("paper_trade_id"),
+        "order_ticket_id": (
+            artifact_id if artifact_type == "order_ticket" else after_payload.get("id")
+        ),
+        "occurred_at": getattr(event, "occurred_at", None),
+        "available_at": getattr(event, "available_at", None),
+        "external_calls_made": 0,
+        "db_writes_made": db_writes_made,
+        "broker_order_submitted": broker_order_submitted,
+        "order_submission_allowed": submission_allowed,
+        "no_execution": not broker_order_submitted and not submission_allowed,
+        "next_action": (
+            "Review the local paper audit before any new decision."
+            if event_type == PAPER_DECISION_RECORDED_EVENT
+            else "Review the blocked local ticket; broker submission remains disabled."
+        ),
+    }
+
+
+def _workbench_execution_audit_db_writes(
+    *,
+    event_type: str,
+    decision: object,
+    hard_blocks: Sequence[str],
+) -> int:
+    if event_type == PAPER_DECISION_RECORDED_EVENT:
+        return (
+            3
+            if str(decision or "").lower() == "approved" and hard_blocks
+            else 2
+        )
+    if event_type == ORDER_TICKET_PREVIEW_SAVED_EVENT:
+        return 1
+    return 0
 
 
 def _workbench_portfolio_position_row(
@@ -2972,6 +3084,10 @@ def _workbench_paper_trade_row(row: Mapping[str, object]) -> dict[str, object]:
         "max_loss": row.get("max_loss"),
         "available_at": row.get("available_at"),
         "no_execution": bool(payload.get("no_execution", True)),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
         "next_action": "Track outcome locally; no broker order was submitted.",
     }
 
