@@ -1039,6 +1039,9 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchValidationResults(moduleData.validation_results)}
       ${renderWorkbenchUsefulLabels(moduleData.useful_label_rows)}
       ${renderWorkbenchPortfolioPositions(moduleData.positions)}
+      ${renderWorkbenchPortfolioBalances(moduleData.balances)}
+      ${renderWorkbenchPortfolioExposure(moduleData.exposure_rows)}
+      ${renderWorkbenchPortfolioOpenOrders(moduleData.open_order_checks)}
       ${renderWorkbenchFeatureRows(moduleData.feature_rows)}
       ${renderWorkbenchModuleRows(rows)}
     </section>
@@ -1821,6 +1824,81 @@ function renderWorkbenchPortfolioPositions(positions) {
               <td data-label="Unrealized P/L">${escapeHtml(compact(position.unrealized_pnl, '-'))}</td>
               <td data-label="Exposure">${escapeHtml(compact(position.exposure_pct, '-'))}</td>
               <td data-label="Theme">${escapeHtml(catalogLabel(position.theme || 'broker_synced'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchPortfolioBalances(balances) {
+  if (!Array.isArray(balances) || !balances.length) return '';
+  return `
+    <div class="table-wrap portfolio-balance-preview" data-testid="workbench-portfolio-balances">
+      <table aria-label="Portfolio account balances">
+        <thead><tr><th>Account</th><th>As Of</th><th>Cash</th><th>Buying Power</th><th>Equity</th><th>Liquidation</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${balances.slice(0, 8).map((balance) => `
+            <tr data-testid="workbench-portfolio-balance-row">
+              <td data-label="Account">${escapeHtml(compact(balance.display_name || balance.account_id, '-'))}</td>
+              <td data-label="As Of">${escapeHtml(compact(balance.as_of, '-'))}</td>
+              <td data-label="Cash">${escapeHtml(compact(balance.cash, '0'))}</td>
+              <td data-label="Buying Power">${escapeHtml(compact(balance.buying_power, '0'))}</td>
+              <td data-label="Equity">${escapeHtml(compact(balance.equity, '0'))}</td>
+              <td data-label="Liquidation">${escapeHtml(compact(balance.liquidation_value, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(balance.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(balance.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchPortfolioExposure(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap portfolio-exposure-preview" data-testid="workbench-portfolio-exposure">
+      <table aria-label="Portfolio exposure summary">
+        <thead><tr><th>Scope</th><th>Metric</th><th>Value</th><th>Status</th><th>Snapshot</th><th>Stale</th><th>Provider Calls</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 10).map((row) => `
+            <tr data-testid="workbench-portfolio-exposure-row">
+              <td data-label="Scope">${escapeHtml(catalogLabel(row.scope || '-'))}</td>
+              <td data-label="Metric">${escapeHtml(compact(row.metric, '-'))}</td>
+              <td data-label="Value">${escapeHtml(compact(row.value, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || 'unknown'))}</td>
+              <td data-label="Snapshot">${escapeHtml(compact(row.snapshot_as_of, '-'))}</td>
+              <td data-label="Stale">${escapeHtml(row.broker_data_stale ? 'yes' : 'no')}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchPortfolioOpenOrders(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap portfolio-open-order-preview" data-testid="workbench-portfolio-open-orders">
+      <table aria-label="Portfolio open order boundary">
+        <thead><tr><th>Ticker</th><th>Side</th><th>Type</th><th>Qty</th><th>Limit</th><th>Status</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-portfolio-open-order-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Side">${escapeHtml(compact(row.side, '-'))}</td>
+              <td data-label="Type">${escapeHtml(compact(row.order_type, '-'))}</td>
+              <td data-label="Qty">${escapeHtml(compact(row.quantity, '0'))}</td>
+              <td data-label="Limit">${escapeHtml(compact(row.limit_price, '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || 'none'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
           `).join('')}
         </tbody>
