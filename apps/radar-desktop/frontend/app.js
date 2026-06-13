@@ -129,6 +129,7 @@ const pagePaths = {
   'paper-trading': [['validation'], ['paper_trading'], ['paper_trades'], ['value_outcomes']],
   backtest: [['validation'], ['validation', 'latest_run'], ['validation', 'report'], ['telemetry']],
   ipo: [['ipo_s1'], ['events']],
+  themes: [['themes'], ['priced_in_queue']],
   readiness: [['readiness'], ['real_results'], ['full_market_trust_gate']],
   run: [['call_plan'], ['radar_run'], ['operator_next_step']],
   broker: [['broker'], ['runtime_context']],
@@ -291,6 +292,7 @@ const fallbackPlatformModules = [
   ['backtest', 'Backtest / Replay', 'backtest', 'Historical replay, shadow-mode validation, and strategy evidence.', 'route_ready'],
   ['alerts', 'Alerts', 'alerts', 'Research notifications, watch triggers, and operator routing.', 'active'],
   ['ipo-s1', 'IPO/S-1', 'ipo', 'Primary-source IPO registration evidence and risk flags.', 'route_ready'],
+  ['themes', 'Themes', 'themes', 'Clustered catalyst patterns and repeated theme context.', 'route_ready'],
   ['journal', 'Journal', 'journal', 'Decision notes, feedback, value ledger, and outcome review.', 'route_ready'],
   ['agent-cockpit', 'Agent Cockpit', 'agent', 'Agent brief, proposed tool use, budget gates, and execution review.', 'preview_only'],
 ];
@@ -429,6 +431,16 @@ function arrayAt(object, path) {
 function compact(value, fallback = '-') {
   const normalized = text(value, '').trim();
   return normalized || fallback;
+}
+
+function compactMapping(value, fallback = '-') {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return compact(value, fallback);
+  }
+  const rows = Object.entries(value).map(([key, item]) => (
+    `${catalogLabel(key)}: ${compact(item, '0')}`
+  ));
+  return rows.length ? rows.join(', ') : fallback;
 }
 
 function rowsFromSnapshot(snapshot) {
@@ -828,7 +840,7 @@ function renderContent(snapshot) {
     ops: () => renderStructuredPage('Ops', pagePaths.ops),
     telemetry: renderTelemetry,
     agent: () => renderPlatformModulePage('agent', snapshot),
-    themes: () => renderQueuePage('Themes', themeRows(snapshot), themeColumns),
+    themes: () => renderPlatformModulePage('themes', snapshot),
     validation: () => renderStructuredPage('Validation', pagePaths.validation),
     costs: renderCosts,
     features: renderFeatures,
@@ -998,6 +1010,7 @@ function renderWorkbenchModuleData(moduleData) {
       ${renderWorkbenchMarketTriggers(moduleData.triggers)}
       ${renderWorkbenchOpportunityActions(moduleData.opportunity_actions)}
       ${renderWorkbenchIpoRows(moduleData.ipo_s1_rows)}
+      ${renderWorkbenchThemeRows(moduleData.theme_rows)}
       ${renderWorkbenchPaperTrades(moduleData.paper_trades)}
       ${renderWorkbenchOrderTickets(moduleData.order_tickets)}
       ${renderWorkbenchJournalLedger(moduleData.value_ledger_entries)}
@@ -1293,6 +1306,31 @@ function renderWorkbenchIpoRows(rows) {
               <td data-label="Gross Proceeds">${escapeHtml(compact(row.estimated_gross_proceeds, '-'))}</td>
               <td data-label="Risk Flags">${escapeHtml(compact(row.risk_flags, 'none'))}</td>
               <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchThemeRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap theme-preview" data-testid="workbench-themes">
+      <table aria-label="Workbench theme clusters">
+        <thead><tr><th>Theme</th><th>Candidates</th><th>Avg Score</th><th>Top Tickers</th><th>States</th><th>Provider Calls</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-theme-row">
+              <td data-label="Theme">${escapeHtml(catalogLabel(row.theme || '-'))}</td>
+              <td data-label="Candidates">${escapeHtml(compact(row.candidate_count, '0'))}</td>
+              <td data-label="Avg Score">${escapeHtml(compact(row.avg_score, '-'))}</td>
+              <td data-label="Top Tickers">${escapeHtml(compact(row.top_tickers, 'none'))}</td>
+              <td data-label="States">${escapeHtml(compactMapping(row.states, 'none'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
           `).join('')}
