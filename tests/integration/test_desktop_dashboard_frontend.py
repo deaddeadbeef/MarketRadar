@@ -90,6 +90,11 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchModuleData",
         "function renderWorkbenchActivePlan",
         "function activePlanBlock",
+        "function renderWorkbenchTradeSetups",
+        "function renderWorkbenchSizingRows",
+        "function renderWorkbenchPaperIntents",
+        "function renderWorkbenchOrderIntents",
+        "function renderWorkbenchRiskApprovals",
         "function renderWorkbenchAgentCapabilities",
         "function renderWorkbenchAgentContributions",
         "function renderWorkbenchAgentActions",
@@ -161,6 +166,16 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-paper-record"',
         'data-testid="workbench-ticket-preview"',
         'data-testid="workbench-ticket-record"',
+        'data-testid="workbench-trade-setups"',
+        'data-testid="workbench-trade-setup-row"',
+        'data-testid="workbench-trade-sizing"',
+        'data-testid="workbench-trade-sizing-row"',
+        'data-testid="workbench-paper-intents"',
+        'data-testid="workbench-paper-intent-row"',
+        'data-testid="workbench-order-intents"',
+        'data-testid="workbench-order-intent-row"',
+        'data-testid="workbench-risk-approvals"',
+        'data-testid="workbench-risk-approval-row"',
         'data-testid="workbench-agent-capabilities"',
         'data-testid="workbench-agent-capability-row"',
         'data-testid="workbench-agent-contributions"',
@@ -238,6 +253,16 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "order_ticket",
         "paper_decision_preview_command",
         "paper_decision_execute_command",
+        "trade_setup_rows",
+        "sizing_rows",
+        "paper_intent_rows",
+        "order_intent_rows",
+        "risk_approval_rows",
+        "Trade planner setup proposal",
+        "Trade planner sizing proposal",
+        "Trade planner paper intent",
+        "Trade planner order intent",
+        "Risk desk approval gates",
         "function bindWorkbenchPaperControls",
         "function runWorkbenchPaperDecision",
         "`paper-decision ${resolvedMode}`",
@@ -336,6 +361,11 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".platform-tool-card" in styles
     assert ".platform-boundary" in styles
     assert ".module-page" in styles
+    assert ".trade-setup-preview" in styles
+    assert ".trade-sizing-preview" in styles
+    assert ".paper-intent-preview" in styles
+    assert ".order-intent-preview" in styles
+    assert ".risk-approval-preview" in styles
     assert ".paper-trade-preview" in styles
     assert ".order-ticket-preview" in styles
     assert ".journal-ledger-preview" in styles

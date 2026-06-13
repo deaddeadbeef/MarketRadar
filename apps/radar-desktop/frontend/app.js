@@ -1013,6 +1013,11 @@ function renderWorkbenchModuleData(moduleData) {
         </div>
       </div>
       ${renderWorkbenchActivePlan(moduleData.active_plan)}
+      ${renderWorkbenchTradeSetups(moduleData.trade_setup_rows)}
+      ${renderWorkbenchSizingRows(moduleData.sizing_rows)}
+      ${renderWorkbenchPaperIntents(moduleData.paper_intent_rows)}
+      ${renderWorkbenchOrderIntents(moduleData.order_intent_rows)}
+      ${renderWorkbenchRiskApprovals(moduleData.risk_approval_rows)}
       ${renderWorkbenchAgentCapabilities(moduleData.capability_map)}
       ${renderWorkbenchAgentContributions(moduleData.agent_contributions)}
       ${renderWorkbenchAgentActions(moduleData.agent_actions)}
@@ -1162,6 +1167,131 @@ function activePlanBlock(title, rows) {
           <div class="kv"><span>${escapeHtml(key)}</span><b>${escapeHtml(text(value))}</b></div>
         `).join('')}
       </div>
+    </div>
+  `;
+}
+
+function renderWorkbenchTradeSetups(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap trade-setup-preview" data-testid="workbench-trade-setups">
+      <table aria-label="Trade planner setup proposal">
+        <thead><tr><th>Ticker</th><th>Setup</th><th>State</th><th>Entry Zone</th><th>Entry</th><th>Stop</th><th>Reward/Risk</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-trade-setup-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Setup">${escapeHtml(catalogLabel(row.setup_type || '-'))}</td>
+              <td data-label="State">${escapeHtml(catalogLabel(row.action_state || '-'))}</td>
+              <td data-label="Entry Zone">${escapeHtml(compact(row.entry_zone, '-'))}</td>
+              <td data-label="Entry">${escapeHtml(compact(row.entry_price, '-'))}</td>
+              <td data-label="Stop">${escapeHtml(compact(row.invalidation_price, '-'))}</td>
+              <td data-label="Reward/Risk">${escapeHtml(compact(row.reward_risk, '-'))}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchSizingRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap trade-sizing-preview" data-testid="workbench-trade-sizing">
+      <table aria-label="Trade planner sizing proposal">
+        <thead><tr><th>Ticker</th><th>Side</th><th>Qty</th><th>Notional</th><th>Max Loss</th><th>Risk %</th><th>Paper</th><th>Broker Order</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-trade-sizing-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Side">${escapeHtml(compact(row.side, '-'))}</td>
+              <td data-label="Qty">${escapeHtml(compact(row.quantity, '0'))}</td>
+              <td data-label="Notional">${escapeHtml(compact(row.estimated_notional, '0'))}</td>
+              <td data-label="Max Loss">${escapeHtml(compact(row.estimated_max_loss, '-'))}</td>
+              <td data-label="Risk %">${escapeHtml(compact(row.risk_per_trade_pct, '-'))}</td>
+              <td data-label="Paper">${escapeHtml(row.paper_approved ? 'approved' : 'blocked')}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchPaperIntents(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap paper-intent-preview" data-testid="workbench-paper-intents">
+      <table aria-label="Trade planner paper intent">
+        <thead><tr><th>Decision Card</th><th>Decision</th><th>Entry</th><th>Blocks</th><th>Provider Calls</th><th>DB Writes</th><th>No Execution</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-paper-intent-row">
+              <td data-label="Decision Card">${escapeHtml(compact(row.decision_card_id, '-'))}</td>
+              <td data-label="Decision">${escapeHtml(catalogLabel(row.decision || '-'))}</td>
+              <td data-label="Entry">${escapeHtml(compact(row.entry_price, '-'))}</td>
+              <td data-label="Blocks">${escapeHtml(compact(row.hard_block_count, '0'))}</td>
+              <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
+              <td data-label="DB Writes">${escapeHtml(compact(row.db_writes_made, '0'))}</td>
+              <td data-label="No Execution">${escapeHtml(row.no_execution ? 'yes' : 'no')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchOrderIntents(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap order-intent-preview" data-testid="workbench-order-intents">
+      <table aria-label="Trade planner order intent">
+        <thead><tr><th>Ticker</th><th>Route</th><th>Side</th><th>Qty</th><th>Limit</th><th>Stop</th><th>Submission</th><th>DB Writes</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-order-intent-row">
+              <td data-label="Ticker">${escapeHtml(compact(row.ticker, '-'))}</td>
+              <td data-label="Route">${escapeHtml(catalogLabel(row.route || '-'))}</td>
+              <td data-label="Side">${escapeHtml(compact(row.side, '-'))}</td>
+              <td data-label="Qty">${escapeHtml(compact(row.quantity, '0'))}</td>
+              <td data-label="Limit">${escapeHtml(compact(row.limit_price, '-'))}</td>
+              <td data-label="Stop">${escapeHtml(compact(row.stop_price, '-'))}</td>
+              <td data-label="Submission">${escapeHtml(row.submission_allowed ? 'allowed' : 'disabled')}</td>
+              <td data-label="DB Writes">${escapeHtml(compact(row.db_writes_made, '0'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchRiskApprovals(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <div class="table-wrap risk-approval-preview" data-testid="workbench-risk-approvals">
+      <table aria-label="Risk desk approval gates">
+        <thead><tr><th>Gate</th><th>Status</th><th>Approved</th><th>Blocks</th><th>Max Loss</th><th>Manual</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 8).map((row) => `
+            <tr data-testid="workbench-risk-approval-row">
+              <td data-label="Gate">${escapeHtml(catalogLabel(row.gate || '-'))}</td>
+              <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+              <td data-label="Approved">${escapeHtml(row.approved ? 'yes' : 'no')}</td>
+              <td data-label="Blocks">${escapeHtml(compact(row.block_count, '0'))}</td>
+              <td data-label="Max Loss">${escapeHtml(compact(row.estimated_max_loss, '-'))}</td>
+              <td data-label="Manual">${escapeHtml(row.requires_manual_approval ? 'required' : 'not required')}</td>
+              <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
+              <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
     </div>
   `;
 }

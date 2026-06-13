@@ -721,6 +721,22 @@ tr[data-testid="queue-row"]:focus-visible td {
   table-layout: fixed;
 }
 
+.trade-setup-preview,
+.trade-sizing-preview,
+.paper-intent-preview,
+.order-intent-preview,
+.risk-approval-preview {
+  margin-top: 12px;
+}
+
+.trade-setup-preview table,
+.trade-sizing-preview table,
+.paper-intent-preview table,
+.order-intent-preview table,
+.risk-approval-preview table {
+  min-width: 920px;
+}
+
 .order-ticket-preview {
   margin-top: 12px;
 }
