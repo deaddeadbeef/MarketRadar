@@ -1006,6 +1006,9 @@ def _trading_workbench_snapshot_payload(
     ]
     ipo_module_rows = [_workbench_ipo_s1_row(row) for row in ipo_rows[:5]]
     theme_module_rows = [_workbench_theme_row(row) for row in theme_rows[:5]]
+    feature_inventory_rows = [
+        _workbench_feature_inventory_row(row) for row in DASHBOARD_FEATURES
+    ]
     cost_budget_rows = [
         _workbench_budget_ledger_row(row) for row in _rows(cost_summary.get("rows"))[:5]
     ]
@@ -1160,6 +1163,28 @@ def _trading_workbench_snapshot_payload(
                     else "Continue with Market Radar until theme clusters are available."
                 ),
                 "source_keys": ["themes.rows", "signal_features.payload.candidate.metadata"],
+            },
+            "features": {
+                "status": "ready",
+                "summary": "Feature inventory and local platform routing.",
+                "metrics": {
+                    "feature_count": len(feature_inventory_rows),
+                    "feature_area_count": len(
+                        {
+                            str(row.get("area") or "")
+                            for row in feature_inventory_rows
+                            if row.get("area")
+                        }
+                    ),
+                    "external_calls_made": 0,
+                },
+                "feature_rows": feature_inventory_rows,
+                "next_action": "Use the inventory to route work to the right local module.",
+                "source_keys": [
+                    "feature_inventory",
+                    "dashboard.page_aliases",
+                    "desktop.platform_manifest",
+                ],
             },
             "costs": {
                 "status": "ready",
@@ -1805,6 +1830,20 @@ def _workbench_theme_row(row: Mapping[str, object]) -> dict[str, object]:
         "broker_order_submitted": False,
         "order_submission_allowed": False,
         "next_action": "Open candidate rows before using the theme in a thesis.",
+    }
+
+
+def _workbench_feature_inventory_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "area": row.get("area"),
+        "feature": row.get("feature"),
+        "page": row.get("page"),
+        "use": row.get("use"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Open the listed local page; no trading action is implied.",
     }
 
 

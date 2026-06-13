@@ -103,6 +103,7 @@ from catalyst_radar.dashboard.data import (
     worker_status_payload,
 )
 from catalyst_radar.dashboard.tui import (
+    DASHBOARD_FEATURES,
     DashboardFilters,
     apply_dashboard_command,
     dashboard_snapshot_payload,
@@ -493,6 +494,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "journal",
         "agent",
         "themes",
+        "features",
         "costs",
         "ops",
     } <= set(modules)
@@ -616,6 +618,29 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "Compare theme concentration before selecting a ticker."
     )
     assert "themes.rows" in themes["source_keys"]
+
+    features = modules["features"]
+    assert features["status"] == "ready"
+    assert features["metrics"]["feature_count"] == len(DASHBOARD_FEATURES)
+    assert features["metrics"]["feature_area_count"] == len(
+        {row["area"] for row in DASHBOARD_FEATURES}
+    )
+    assert features["metrics"]["external_calls_made"] == 0
+    assert features["feature_rows"][0] == {
+        "area": "Readiness",
+        "feature": "Readiness, value, next step",
+        "page": "1 Inbox, 2 Gaps",
+        "use": "Show research-only vs decision use.",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "next_action": "Open the listed local page; no trading action is implied.",
+    }
+    assert features["next_action"] == (
+        "Use the inventory to route work to the right local module."
+    )
+    assert "feature_inventory" in features["source_keys"]
 
     costs = modules["costs"]
     assert costs["status"] == "ready"
