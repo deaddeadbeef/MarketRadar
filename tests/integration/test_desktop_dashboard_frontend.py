@@ -80,10 +80,23 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "fallbackPlatformModules",
         "function renderTradingWorkbenchOverview",
         "function tradingWorkbenchSnapshot",
+        "function workbenchActionBus",
+        "function workbenchActionsForPage",
         "function tradingWorkbenchModule",
         "trading_workbench",
         "function compactMapping",
         'data-testid="trading-workbench-overview"',
+        "function renderWorkbenchActionBus",
+        "function actionBusSummary",
+        "function renderWorkbenchActionControl",
+        'data-testid="workbench-action-bus"',
+        'data-testid="workbench-action-row"',
+        'data-testid="workbench-action-command"',
+        'data-testid="workbench-action-page"',
+        "data-workbench-action-kind",
+        "data-workbench-action-command",
+        "data-workbench-action-page",
+        "data-workbench-local-write",
         'data-testid="platform-tool-card"',
         'data-tool="${escapeHtml(module.key)}"',
         "function renderPlatformModulePage",
@@ -311,6 +324,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function bindWorkbenchReviewControls",
         "function runWorkbenchReviewPage",
         "function runWorkbenchRiskCommand",
+        "function bindWorkbenchActionBusControls",
+        "function dispatchWorkbenchAction",
+        "function commandHasExecuteToken",
         "data-review-page",
         "data-risk-command",
         "portfolio_review_command",
@@ -357,6 +373,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "platform: {",
         "primary_tool: platformManifest().primary_tool",
         "live_trading_enabled: Boolean(platformBoundary().live_trading_enabled)",
+        "action_count: Number(workbenchActionBus(snapshot)?.metrics?.action_count || 0)",
     ):
         assert text in source
 
@@ -410,6 +427,10 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
 
     assert ".platform-tools" in styles
     assert ".platform-tool-card" in styles
+    assert ".workbench-action-bus" in styles
+    assert ".action-bus-preview" in styles
+    assert ".workbench-action-button" in styles
+    assert ".workbench-boundary-code" in styles
     assert ".platform-boundary" in styles
     assert ".module-page" in styles
     assert ".trade-lifecycle-preview" in styles

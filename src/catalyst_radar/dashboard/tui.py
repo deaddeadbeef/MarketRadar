@@ -1085,6 +1085,19 @@ def _trading_workbench_snapshot_payload(
     cost_budget_rows = [
         _workbench_budget_ledger_row(row) for row in _rows(cost_summary.get("rows"))[:5]
     ]
+    action_bus = _workbench_action_bus_payload(
+        active_plan=active_plan,
+        trade_lifecycle_rows=trade_lifecycle_rows,
+        portfolio_position_rows=portfolio_position_rows,
+        portfolio_balance_rows=portfolio_balance_rows,
+        portfolio_exposure_rows=portfolio_exposure_rows,
+        portfolio_open_order_rows=portfolio_open_order_rows,
+        risk_approval_rows=risk_approval_rows,
+        agent_action_rows=[
+            _workbench_agent_action_row(action, index=index)
+            for index, action in enumerate(_rows(_mapping(active_plan).get("next_actions")))
+        ],
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1097,6 +1110,7 @@ def _trading_workbench_snapshot_payload(
             "paper_trading": "preview_only",
             "provider_calls_for_browsing": 0,
         },
+        "action_bus": action_bus,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -2407,6 +2421,264 @@ def _workbench_risk_approval_rows(
             ),
         },
     ]
+
+
+def _workbench_action_bus_payload(
+    *,
+    active_plan: Mapping[str, object],
+    trade_lifecycle_rows: Sequence[Mapping[str, object]],
+    portfolio_position_rows: Sequence[Mapping[str, object]],
+    portfolio_balance_rows: Sequence[Mapping[str, object]],
+    portfolio_exposure_rows: Sequence[Mapping[str, object]],
+    portfolio_open_order_rows: Sequence[Mapping[str, object]],
+    risk_approval_rows: Sequence[Mapping[str, object]],
+    agent_action_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    actions: list[dict[str, object]] = []
+
+    def add_action(
+        action_id: str,
+        *,
+        module: str,
+        label: str,
+        action_kind: str,
+        command: object = None,
+        target_page: object = None,
+        status: str = "enabled",
+        local_write_allowed: bool = False,
+        db_writes_required: object = 0,
+        next_action: object = None,
+        source: str = "trading_workbench",
+    ) -> None:
+        command_text = str(command or "").strip()
+        target_text = str(target_page or module).strip()
+        if not command_text and not target_text:
+            return
+        safety = (
+            "external_boundary"
+            if action_kind == "boundary"
+            else "local_db_write"
+            if local_write_allowed
+            else "zero_call_navigation"
+            if action_kind == "page"
+            else "local_backend_preview"
+        )
+        actions.append(
+            {
+                "id": action_id,
+                "module": module,
+                "label": label,
+                "action_kind": action_kind,
+                "command": command_text or None,
+                "target_page": target_text,
+                "status": status,
+                "safety": safety,
+                "local_write_allowed": local_write_allowed,
+                "external_calls_allowed": False,
+                "external_calls_made": 0,
+                "db_writes_required": db_writes_required or 0,
+                "db_writes_made": 0,
+                "broker_order_submitted": False,
+                "order_submission_allowed": False,
+                "live_trading_enabled": False,
+                "source": source,
+                "next_action": next_action
+                or "Review this supervised workbench action before continuing.",
+            }
+        )
+
+    paper = _mapping(active_plan.get("paper_decision"))
+    ticket = _mapping(active_plan.get("order_ticket"))
+    can_paper = bool(
+        paper.get("decision_card_id") and paper.get("decision") and paper.get("available_at")
+    )
+    can_ticket = bool(
+        ticket.get("ticker")
+        and ticket.get("side")
+        and ticket.get("entry_price")
+        and ticket.get("invalidation_price")
+    )
+    add_action(
+        "paper-decision-preview",
+        module="paper-trading",
+        label="Preview paper decision",
+        action_kind="backend_command",
+        command="paper-decision preview",
+        status="enabled" if can_paper else "blocked",
+        next_action="Preview the supervised paper decision without writing rows.",
+        source="trading_workbench.active_plan.paper_decision",
+    )
+    add_action(
+        "paper-decision-record",
+        module="paper-trading",
+        label="Record paper decision",
+        action_kind="backend_command",
+        command="paper-decision execute",
+        status="enabled" if can_paper else "blocked",
+        local_write_allowed=True,
+        db_writes_required=paper.get("db_writes_required", 0),
+        next_action="Record the paper decision locally; no broker order is submitted.",
+        source="trading_workbench.active_plan.paper_decision",
+    )
+    add_action(
+        "order-ticket-preview",
+        module="broker",
+        label="Preview order ticket",
+        action_kind="backend_command",
+        command="order-ticket preview",
+        status="enabled" if can_ticket else "blocked",
+        next_action="Preview a blocked local order ticket before any record step.",
+        source="trading_workbench.active_plan.order_ticket",
+    )
+    add_action(
+        "order-ticket-record",
+        module="broker",
+        label="Save blocked ticket",
+        action_kind="backend_command",
+        command="order-ticket record",
+        status="enabled" if can_ticket else "blocked",
+        local_write_allowed=True,
+        db_writes_required=ticket.get("db_writes_required", 0),
+        next_action="Save a local blocked ticket; live submission stays disabled.",
+        source="trading_workbench.active_plan.order_ticket",
+    )
+    if portfolio_position_rows or portfolio_balance_rows or portfolio_exposure_rows:
+        add_action(
+            "portfolio-review",
+            module="portfolio",
+            label="Review portfolio",
+            action_kind="page",
+            command="portfolio",
+            target_page="portfolio",
+            next_action="Open read-only portfolio context before sizing risk.",
+            source="trading_workbench.modules.portfolio",
+        )
+    if risk_approval_rows:
+        add_action(
+            "risk-desk-review",
+            module="risk-desk",
+            label="Review risk desk",
+            action_kind="page",
+            command="risk-desk",
+            target_page="risk-desk",
+            next_action="Open paper/live approval gates and current risk blocks.",
+            source="trading_workbench.modules.risk-desk",
+        )
+    if portfolio_open_order_rows:
+        add_action(
+            "broker-boundary-review",
+            module="broker",
+            label="Review broker boundary",
+            action_kind="page",
+            command="broker",
+            target_page="broker",
+            next_action="Open the read-only broker desk; order submission is disabled.",
+            source="trading_workbench.modules.broker",
+        )
+
+    lifecycle_row = next(
+        (
+            row
+            for row in trade_lifecycle_rows
+            if row.get("ledger_show_command")
+            or row.get("outcome_preview_command")
+            or row.get("outcome_update_command")
+        ),
+        {},
+    )
+    if lifecycle_row:
+        if lifecycle_row.get("ledger_show_command"):
+            add_action(
+                "lifecycle-ledger-review",
+                module="journal",
+                label="Open lifecycle ledger",
+                action_kind="backend_command",
+                command=lifecycle_row.get("ledger_show_command"),
+                next_action="Open linked local ledger evidence for this lifecycle row.",
+                source="trading_workbench.trade_lifecycle_rows",
+            )
+        if lifecycle_row.get("outcome_preview_command"):
+            add_action(
+                "lifecycle-outcome-preview",
+                module="journal",
+                label="Preview lifecycle outcome",
+                action_kind="backend_command",
+                command=lifecycle_row.get("outcome_preview_command"),
+                next_action="Preview local outcome evidence before updating rows.",
+                source="trading_workbench.trade_lifecycle_rows",
+            )
+        if lifecycle_row.get("outcome_update_command"):
+            add_action(
+                "lifecycle-outcome-update",
+                module="journal",
+                label="Update lifecycle outcome",
+                action_kind="backend_command",
+                command=lifecycle_row.get("outcome_update_command"),
+                local_write_allowed=True,
+                db_writes_required=1,
+                next_action="Update local outcome evidence after manual review.",
+                source="trading_workbench.trade_lifecycle_rows",
+            )
+
+    agent_preview_command = "agent"
+    if agent_action_rows:
+        agent_preview_command = str(
+            agent_action_rows[0].get("agent_preview_command") or "agent"
+        )
+    add_action(
+        "agent-preview",
+        module="agent",
+        label="Preview agent review",
+        action_kind="backend_command",
+        command=agent_preview_command,
+        next_action="Run a guarded agent preview; execute remains disabled.",
+        source="trading_workbench.modules.agent",
+    )
+    add_action(
+        "agent-execute-boundary",
+        module="agent",
+        label="Agent execute boundary",
+        action_kind="boundary",
+        command="agent execute",
+        status="disabled",
+        next_action="Agent execution remains an external approval boundary.",
+        source="trading_workbench.modules.agent",
+    )
+
+    return {
+        "schema_version": "trading-workbench-action-bus-v1",
+        "status": "ready" if actions else "empty",
+        "primary_action_id": next(
+            (
+                row["id"]
+                for row in actions
+                if row.get("status") == "enabled"
+                and row.get("action_kind") != "boundary"
+            ),
+            None,
+        ),
+        "metrics": {
+            "action_count": len(actions),
+            "backend_command_count": sum(
+                1 for row in actions if row.get("action_kind") == "backend_command"
+            ),
+            "page_route_count": sum(
+                1 for row in actions if row.get("action_kind") == "page"
+            ),
+            "boundary_count": sum(
+                1 for row in actions if row.get("action_kind") == "boundary"
+            ),
+            "local_write_count": sum(
+                1 for row in actions if row.get("local_write_allowed") is True
+            ),
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "actions": actions,
+    }
 
 
 def _workbench_queue_row(

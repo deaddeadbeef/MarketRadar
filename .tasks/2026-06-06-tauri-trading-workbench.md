@@ -65,3 +65,14 @@ engine, but it is not the whole product frame.
   paper-risk approval gates.
 - Route safe buttons through existing page/backend command paths.
 - Keep live submission and broker execution as disabled boundary text.
+
+## Current Slice: Shared Action Bus
+
+- Normalize paper, ticket, lifecycle, portfolio, risk, broker, and agent actions
+  into a single workbench action-bus snapshot contract.
+- Render a Command Center action panel and module-filtered action panels in the
+  Tauri dashboard.
+- Route action-bus buttons through one frontend dispatcher with explicit
+  backend-command, page-route, local-write, and boundary handling.
+- Preserve zero provider calls, no live broker submission, and disabled
+  autonomous execution.
