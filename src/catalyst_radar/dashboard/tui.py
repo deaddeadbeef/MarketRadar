@@ -1110,6 +1110,10 @@ def _trading_workbench_snapshot_payload(
         trade_lifecycle_rows=trade_lifecycle_rows,
         validation_result_rows=validation_result_rows,
     )
+    priority_queue = _workbench_priority_queue_payload(
+        action_bus=action_bus,
+        workflow_map=workflow_map,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1124,6 +1128,7 @@ def _trading_workbench_snapshot_payload(
         },
         "action_bus": action_bus,
         "workflow_map": workflow_map,
+        "priority_queue": priority_queue,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -3029,6 +3034,242 @@ def _workbench_workflow_transitions(
             }
         )
     return transitions
+
+
+def _workbench_priority_queue_payload(
+    *,
+    action_bus: Mapping[str, object],
+    workflow_map: Mapping[str, object],
+) -> dict[str, object]:
+    stages = _rows(workflow_map.get("stages"))
+    actions = _rows(action_bus.get("actions"))
+    active_stage_id = str(workflow_map.get("active_stage_id") or "").strip()
+    items: list[dict[str, object]] = []
+    used_action_ids: set[str] = set()
+
+    def add_stage_item(
+        stage: Mapping[str, object],
+        *,
+        reason: str,
+        priority: int,
+    ) -> None:
+        action = _mapping(stage.get("action"))
+        source_action_id = str(action.get("id") or "").strip()
+        if source_action_id:
+            used_action_ids.add(source_action_id)
+        items.append(
+            _workbench_priority_item(
+                item_id=f"priority-stage-{stage.get('id')}",
+                item_kind="workflow_stage",
+                module=stage.get("module"),
+                label=stage.get("label"),
+                status=stage.get("status"),
+                reason=reason,
+                priority=priority,
+                source_stage_id=stage.get("id"),
+                source_action_id=source_action_id or None,
+                action=action,
+                next_action=stage.get("next_action"),
+            )
+        )
+
+    active_stage = next(
+        (stage for stage in stages if str(stage.get("id") or "") == active_stage_id),
+        {},
+    )
+    if active_stage:
+        add_stage_item(
+            active_stage,
+            reason="Active workflow blocker"
+            if active_stage.get("status") == "blocked"
+            else "Active workflow stage",
+            priority=100,
+        )
+
+    for stage in stages:
+        stage_id = str(stage.get("id") or "")
+        if stage_id == active_stage_id or stage.get("status") != "blocked":
+            continue
+        add_stage_item(stage, reason="Workflow blocker", priority=90)
+
+    for _index, action in sorted(
+        enumerate(actions),
+        key=lambda pair: _workbench_priority_action_sort_key(pair[1], pair[0]),
+    ):
+        action_id = str(action.get("id") or "").strip()
+        if not action_id or action_id in used_action_ids:
+            continue
+        items.append(
+            _workbench_priority_item(
+                item_id=f"priority-action-{action_id}",
+                item_kind="action_bus",
+                module=action.get("module"),
+                label=action.get("label"),
+                status=action.get("status"),
+                reason=_workbench_priority_action_reason(action),
+                priority=_workbench_priority_action_priority(action),
+                source_stage_id=None,
+                source_action_id=action_id,
+                action=action,
+                next_action=action.get("next_action"),
+            )
+        )
+
+    for rank, item in enumerate(items, start=1):
+        item["rank"] = rank
+
+    return {
+        "schema_version": "trading-workbench-priority-queue-v1",
+        "status": "blocked"
+        if any(item.get("status") == "blocked" for item in items)
+        else "ready"
+        if items
+        else "empty",
+        "active_stage_id": active_stage_id or None,
+        "primary_item_id": items[0]["id"] if items else None,
+        "metrics": {
+            "item_count": len(items),
+            "blocked_item_count": sum(
+                1 for item in items if item.get("status") == "blocked"
+            ),
+            "enabled_item_count": sum(
+                1 for item in items if item.get("status") == "enabled"
+            ),
+            "backend_command_count": sum(
+                1 for item in items if item.get("action_kind") == "backend_command"
+            ),
+            "page_route_count": sum(
+                1 for item in items if item.get("action_kind") == "page"
+            ),
+            "local_write_count": sum(
+                1 for item in items if item.get("local_write_allowed") is True
+            ),
+            "boundary_count": sum(
+                1 for item in items if item.get("action_kind") == "boundary"
+            ),
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "items": items,
+    }
+
+
+def _workbench_priority_item(
+    *,
+    item_id: str,
+    item_kind: str,
+    module: object,
+    label: object,
+    status: object,
+    reason: str,
+    priority: int,
+    source_stage_id: object,
+    source_action_id: object,
+    action: Mapping[str, object],
+    next_action: object,
+) -> dict[str, object]:
+    action_kind = str(action.get("action_kind") or "backend_command").strip()
+    command = str(action.get("command") or "").strip()
+    target_page = str(action.get("target_page") or module or "").strip()
+    local_write_allowed = bool(action.get("local_write_allowed"))
+    return {
+        "id": item_id,
+        "rank": 0,
+        "priority": priority,
+        "item_kind": item_kind,
+        "module": module,
+        "label": label,
+        "status": status,
+        "reason": reason,
+        "source_stage_id": source_stage_id,
+        "source_action_id": source_action_id,
+        "action_kind": action_kind,
+        "command": command or None,
+        "target_page": target_page or None,
+        "safety": action.get("safety")
+        or (
+            "external_boundary"
+            if action_kind == "boundary"
+            else "local_db_write"
+            if local_write_allowed
+            else "zero_call_navigation"
+            if action_kind == "page"
+            else "local_backend_preview"
+        ),
+        "local_write_allowed": local_write_allowed,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_required": action.get("db_writes_required") or 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": next_action
+        or "Review this supervised priority item before continuing.",
+    }
+
+
+def _workbench_priority_action_sort_key(
+    action: Mapping[str, object],
+    index: int,
+) -> tuple[int, int, int]:
+    action_id = str(action.get("id") or "")
+    status = str(action.get("status") or "")
+    action_kind = str(action.get("action_kind") or "")
+    local_write = bool(action.get("local_write_allowed"))
+    preferred = {
+        "agent-preview": 0,
+        "paper-decision-preview": 1,
+        "order-ticket-preview": 2,
+        "portfolio-review": 3,
+        "lifecycle-ledger-review": 4,
+        "lifecycle-outcome-preview": 5,
+    }
+    if action_id == "agent-preview":
+        tier = 0
+    elif status == "enabled" and not local_write and action_kind != "boundary":
+        tier = 1
+    elif status == "enabled" and local_write:
+        tier = 2
+    elif status == "blocked":
+        tier = 3
+    elif action_kind == "boundary":
+        tier = 4
+    else:
+        tier = 5
+    return (tier, preferred.get(action_id, 100), index)
+
+
+def _workbench_priority_action_priority(action: Mapping[str, object]) -> int:
+    action_id = str(action.get("id") or "")
+    action_kind = str(action.get("action_kind") or "")
+    if action_id == "agent-preview":
+        return 85
+    if action.get("status") == "enabled" and not action.get("local_write_allowed"):
+        return 80
+    if action.get("status") == "enabled":
+        return 70
+    if action.get("status") == "blocked":
+        return 50
+    if action_kind == "boundary":
+        return 20
+    return 10
+
+
+def _workbench_priority_action_reason(action: Mapping[str, object]) -> str:
+    action_kind = str(action.get("action_kind") or "")
+    if action_kind == "boundary":
+        return "Disabled execution boundary"
+    if action.get("local_write_allowed"):
+        return "Guarded local write"
+    if action_kind == "page":
+        return "Safe module handoff"
+    if action.get("status") == "blocked":
+        return "Blocked supervised action"
+    return "Safe local preview"
 
 
 def _workbench_queue_row(

@@ -737,7 +737,8 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 920px;
 }
 
-.workbench-action-bus {
+.workbench-action-bus,
+.workbench-priority-queue {
   margin-top: 12px;
 }
 
@@ -745,7 +746,8 @@ tr[data-testid="queue-row"]:focus-visible td {
   margin-top: 12px;
 }
 
-.workflow-map-preview table {
+.workflow-map-preview table,
+.priority-queue-preview table {
   min-width: 980px;
 }
 
