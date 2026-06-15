@@ -1179,6 +1179,18 @@ def _trading_workbench_snapshot_payload(
         risk_envelope=risk_envelope,
         learning_loop=learning_loop,
     )
+    trade_monitor = _workbench_trade_monitor_payload(
+        active_plan=active_plan,
+        risk_envelope=risk_envelope,
+        paper_trade_preview=paper_trade_preview,
+        learning_loop=learning_loop,
+        strategy_review=strategy_review,
+        trade_lifecycle_rows=trade_lifecycle_rows,
+        paper_trade_rows=paper_trade_rows,
+        portfolio_open_order_rows=portfolio_open_order_rows,
+        alert_rows=alert_module_rows,
+        trigger_rows=alert_trigger_rows,
+    )
     trade_runbook = _workbench_trade_runbook_payload(
         decision_brief=decision_brief,
         scenario_matrix=scenario_matrix,
@@ -1226,6 +1238,7 @@ def _trading_workbench_snapshot_payload(
         "paper_trade_preview": paper_trade_preview,
         "learning_loop": learning_loop,
         "strategy_review": strategy_review,
+        "trade_monitor": trade_monitor,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
@@ -5745,6 +5758,402 @@ def _workbench_strategy_review_hypothesis(
         "order_submission_allowed": False,
         "strategy_update_allowed": False,
         "autonomous_update_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": next_action,
+    }
+
+
+def _workbench_trade_monitor_payload(
+    *,
+    active_plan: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    paper_trade_preview: Mapping[str, object],
+    learning_loop: Mapping[str, object],
+    strategy_review: Mapping[str, object],
+    trade_lifecycle_rows: Sequence[Mapping[str, object]],
+    paper_trade_rows: Sequence[Mapping[str, object]],
+    portfolio_open_order_rows: Sequence[Mapping[str, object]],
+    alert_rows: Sequence[Mapping[str, object]],
+    trigger_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    ticker = _learning_loop_ticker(
+        _first_value(
+            strategy_review.get("ticker"),
+            learning_loop.get("ticker"),
+            paper_trade_preview.get("ticker"),
+            risk_envelope.get("ticker"),
+            active_plan.get("ticker"),
+        )
+    )
+    decision_card_id = _first_value(
+        strategy_review.get("decision_card_id"),
+        learning_loop.get("decision_card_id"),
+        paper_trade_preview.get("decision_card_id"),
+        risk_envelope.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+    )
+    lifecycle = _workbench_learning_loop_lifecycle(
+        trade_lifecycle_rows,
+        decision_card_id=decision_card_id,
+        ticker=ticker,
+    )
+    paper_trade = _workbench_trade_monitor_match(
+        paper_trade_rows,
+        expected_id=lifecycle.get("paper_trade_id"),
+        decision_card_id=decision_card_id,
+        ticker=ticker,
+    )
+    paper_watch_rows = _workbench_trade_monitor_matching_rows(
+        paper_trade_rows,
+        ticker=ticker,
+    )
+    active_paper_rows = [
+        row
+        for row in paper_watch_rows
+        if str(row.get("state") or "").strip().lower()
+        in {"open", "active", "entered", "monitoring"}
+    ]
+    if not paper_trade and active_paper_rows:
+        paper_trade = active_paper_rows[0]
+
+    open_order_rows = [
+        row
+        for row in _workbench_trade_monitor_matching_rows(
+            portfolio_open_order_rows,
+            ticker=ticker,
+        )
+        if row.get("id")
+        and str(row.get("status") or "").strip().lower()
+        not in {"", "none", "cancelled", "canceled", "filled", "rejected"}
+    ]
+    alert_watch_rows = _workbench_trade_monitor_matching_rows(alert_rows, ticker=ticker)
+    trigger_watch_rows = _workbench_trade_monitor_matching_rows(
+        trigger_rows,
+        ticker=ticker,
+    )
+    active_trigger_count = sum(
+        1
+        for row in trigger_watch_rows
+        if str(row.get("status") or "").strip().lower() == "active"
+    )
+    primary_alert = _mapping(alert_watch_rows[0]) if alert_watch_rows else {}
+    primary_trigger = _mapping(trigger_watch_rows[0]) if trigger_watch_rows else {}
+    risk_metrics = _mapping(risk_envelope.get("metrics"))
+    risk_portfolio = _mapping(risk_envelope.get("portfolio_context"))
+    risk_sizing = _mapping(risk_envelope.get("sizing_context"))
+    risk_gate = _mapping(risk_envelope.get("gate_context"))
+    risk_blockers = _texts(risk_envelope.get("blockers"))
+    strategy_context = _mapping(strategy_review.get("strategy_context"))
+    journal_state = _mapping(learning_loop.get("journal_state"))
+    blocked_check_count = _first_nonnegative_int(
+        risk_metrics.get("blocked_check_count")
+    )
+    disabled_check_count = _first_nonnegative_int(
+        risk_metrics.get("disabled_check_count")
+    )
+    active_trade = {
+        "paper_trade_id": paper_trade.get("id"),
+        "paper_state": paper_trade.get("state"),
+        "decision": paper_trade.get("decision"),
+        "entry_price": _workbench_round_float(
+            _optional_float(
+                _first_value(paper_trade.get("entry_price"), risk_sizing.get("entry_price"))
+            )
+        ),
+        "invalidation_price": _workbench_round_float(
+            _optional_float(
+                _first_value(
+                    paper_trade.get("invalidation_price"),
+                    risk_sizing.get("invalidation_price"),
+                )
+            )
+        ),
+        "shares": paper_trade.get("shares"),
+        "notional": _workbench_round_float(_optional_float(paper_trade.get("notional"))),
+        "max_loss": _workbench_round_float(
+            _optional_float(
+                _first_value(paper_trade.get("max_loss"), risk_sizing.get("estimated_max_loss"))
+            )
+        ),
+        "outcome_id": journal_state.get("outcome_id"),
+        "outcome_status": journal_state.get("outcome_status"),
+        "no_execution": bool(paper_trade.get("no_execution", True)),
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+    }
+    exit_plan = {
+        "entry_price": active_trade["entry_price"],
+        "invalidation_price": active_trade["invalidation_price"],
+        "target_price": _workbench_round_float(
+            _optional_float(
+                _first_value(
+                    strategy_context.get("target_price"),
+                    risk_sizing.get("target_price"),
+                )
+            )
+        ),
+        "stop_status": "watch"
+        if active_trade.get("invalidation_price") is not None
+        else "blocked",
+        "target_status": "watch"
+        if _first_value(strategy_context.get("target_price"), risk_sizing.get("target_price"))
+        is not None
+        else "unlinked",
+        "exit_update_allowed": False,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "primary_command": "broker",
+        "next_action": "Review exit context manually; broker submission remains disabled.",
+    }
+    watch_items = [
+        _workbench_trade_monitor_watch_item(
+            item_id="active-paper-trade",
+            label="Active paper trade",
+            status="ready" if active_paper_rows else "blocked",
+            scope="paper-trading",
+            finding=active_trade.get("paper_state") or "missing_active_paper_trade",
+            evidence=str(active_trade.get("paper_trade_id") or "no paper trade"),
+            next_action=(
+                "Use the open paper trade as the monitored position state."
+                if active_paper_rows
+                else "Record or link a paper trade before monitoring position state."
+            ),
+        ),
+        _workbench_trade_monitor_watch_item(
+            item_id="invalidation-watch",
+            label="Invalidation watch",
+            status="ready"
+            if exit_plan.get("invalidation_price") is not None
+            else "blocked",
+            scope="risk-desk",
+            finding=f"invalidation={exit_plan.get('invalidation_price')}"
+            if exit_plan.get("invalidation_price") is not None
+            else "missing_invalidation_price",
+            evidence=(
+                f"entry={exit_plan.get('entry_price')}; "
+                f"target={exit_plan.get('target_price')}"
+            ),
+            next_action="Compare stored invalidation and target before changing state.",
+        ),
+        _workbench_trade_monitor_watch_item(
+            item_id="alert-trigger-watch",
+            label="Alert and trigger watch",
+            status="ready" if alert_watch_rows or trigger_watch_rows else "review",
+            scope="alerts",
+            finding=primary_trigger.get("id")
+            or primary_alert.get("id")
+            or "no_alert_or_trigger",
+            evidence=f"{len(alert_watch_rows)} alerts; {len(trigger_watch_rows)} triggers",
+            next_action=(
+                "Open alert evidence or evaluate saved trigger rules."
+                if alert_watch_rows or trigger_watch_rows
+                else "Create local alert or trigger context if this trade needs monitoring."
+            ),
+        ),
+        _workbench_trade_monitor_watch_item(
+            item_id="portfolio-open-orders",
+            label="Open order check",
+            status="review" if open_order_rows else "ready",
+            scope="broker",
+            finding="open_orders_present" if open_order_rows else "no_open_orders",
+            evidence=f"{len(open_order_rows)} open orders",
+            next_action=(
+                "Review read-only open orders before changing paper state."
+                if open_order_rows
+                else "No open broker orders are present in the read-only snapshot."
+            ),
+        ),
+        _workbench_trade_monitor_watch_item(
+            item_id="risk-blockers",
+            label="Risk blockers",
+            status="blocked" if blocked_check_count else "ready",
+            scope="risk-desk",
+            finding=risk_blockers[0] if risk_blockers else "risk_checks_clear",
+            evidence=(
+                f"{blocked_check_count} blocked checks; "
+                f"{disabled_check_count} disabled boundaries"
+            ),
+            next_action=(
+                "Resolve risk blockers before changing position state."
+                if blocked_check_count
+                else "Risk blockers are clear for supervised monitoring."
+            ),
+        ),
+        _workbench_trade_monitor_watch_item(
+            item_id="exit-boundary",
+            label="Exit boundary",
+            status="disabled",
+            scope="broker",
+            finding="broker_submission_disabled",
+            evidence="exit orders require manual broker workflow",
+            next_action="No exit order is submitted from this monitor.",
+        ),
+    ]
+    ready_count = sum(1 for row in watch_items if row.get("status") == "ready")
+    blocked_count = sum(1 for row in watch_items if row.get("status") == "blocked")
+    review_count = sum(1 for row in watch_items if row.get("status") == "review")
+    disabled_count = sum(1 for row in watch_items if row.get("status") == "disabled")
+    primary_blocker = risk_blockers[0] if risk_blockers else None
+    if primary_blocker is None:
+        primary_blocker = next(
+            (
+                str(row.get("finding"))
+                for row in watch_items
+                if row.get("status") == "blocked" and row.get("finding")
+            ),
+            None,
+        )
+    monitor_stage = (
+        lifecycle.get("current_stage")
+        or learning_loop.get("learning_stage")
+        or strategy_review.get("strategy_stage")
+        or "unlinked"
+    )
+    return {
+        "schema_version": "trading-workbench-trade-monitor-v1",
+        "status": "blocked"
+        if blocked_count
+        else "review"
+        if review_count
+        else "monitoring",
+        "source_tool": "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "monitor_id": (
+            f"trade-monitor-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "monitor_stage": monitor_stage,
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Resolve risk and monitor blockers before changing position state."
+            if primary_blocker
+            else "Monitor active trade evidence; exits and broker submission require manual review."
+        ),
+        "active_trade": active_trade,
+        "risk_watch": {
+            "risk_envelope_status": risk_envelope.get("status"),
+            "blocked_check_count": blocked_check_count,
+            "disabled_check_count": disabled_check_count,
+            "paper_block_count": _first_nonnegative_int(risk_gate.get("paper_block_count")),
+            "live_block_count": _first_nonnegative_int(risk_gate.get("live_block_count")),
+            "estimated_max_loss": risk_sizing.get("estimated_max_loss"),
+            "broker_data_stale": bool(risk_portfolio.get("broker_data_stale")),
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "live_trading_enabled": False,
+            "blockers": risk_blockers,
+        },
+        "alert_watch": {
+            "alert_count": len(alert_watch_rows),
+            "trigger_count": len(trigger_watch_rows),
+            "active_trigger_count": active_trigger_count,
+            "primary_alert_id": primary_alert.get("id"),
+            "primary_trigger_id": primary_trigger.get("id"),
+            "primary_trigger_type": primary_trigger.get("trigger_type"),
+            "latest_trigger_value": primary_trigger.get("latest_value"),
+            "next_action": "Open alert evidence or evaluate saved trigger rules.",
+        },
+        "exit_plan": exit_plan,
+        "commands": {
+            "paper_trade": "paper",
+            "alerts": "alerts",
+            "journal": journal_state.get("primary_command") or "journal",
+            "risk": "risk-desk",
+            "broker_boundary": "broker",
+        },
+        "watch_items": watch_items,
+        "metrics": {
+            "watch_item_count": len(watch_items),
+            "ready_watch_item_count": ready_count,
+            "review_watch_item_count": review_count,
+            "blocked_watch_item_count": blocked_count,
+            "disabled_watch_item_count": disabled_count,
+            "active_paper_trade_count": len(active_paper_rows),
+            "alert_count": len(alert_watch_rows),
+            "trigger_count": len(trigger_watch_rows),
+            "active_trigger_count": active_trigger_count,
+            "open_order_count": len(open_order_rows),
+            "blocked_check_count": blocked_check_count,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "position_state_update_allowed": False,
+        "exit_update_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_trade_monitor_matching_rows(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    ticker: object,
+) -> list[Mapping[str, object]]:
+    ticker_text = _learning_loop_ticker(ticker)
+    mapped_rows = _rows(rows)
+    if not ticker_text:
+        return mapped_rows
+    return [
+        row
+        for row in mapped_rows
+        if _learning_loop_ticker(row.get("ticker")) == ticker_text
+    ]
+
+
+def _workbench_trade_monitor_match(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    expected_id: object = None,
+    decision_card_id: object = None,
+    ticker: object = None,
+) -> Mapping[str, object]:
+    expected_text = str(expected_id or "").strip()
+    card_text = str(decision_card_id or "").strip()
+    ticker_text = _learning_loop_ticker(ticker)
+    mapped_rows = _rows(rows)
+    if expected_text:
+        for row in mapped_rows:
+            if str(row.get("id") or "").strip() == expected_text:
+                return row
+    if card_text:
+        for row in mapped_rows:
+            if str(row.get("decision_card_id") or "").strip() == card_text:
+                return row
+    if ticker_text:
+        for row in mapped_rows:
+            if _learning_loop_ticker(row.get("ticker")) == ticker_text:
+                return row
+    return _mapping(mapped_rows[0]) if mapped_rows else {}
+
+
+def _workbench_trade_monitor_watch_item(
+    *,
+    item_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: object,
+    evidence: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": item_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "evidence": evidence,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "position_state_update_allowed": False,
+        "exit_update_allowed": False,
         "live_trading_enabled": False,
         "next_action": next_action,
     }
