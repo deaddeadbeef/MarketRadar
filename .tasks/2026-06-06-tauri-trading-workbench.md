@@ -125,3 +125,16 @@ engine, but it is not the whole product frame.
   tools.
 - Expose decision-brief status, ticker, next command, and source tool in
   automation JSON without adding provider, broker, shell, or DB calls.
+
+## Current Slice: Scenario Matrix
+
+- Add a read-only scenario-matrix snapshot contract derived from the active
+  trading plan's entry, invalidation, reward/risk, target, sizing, and blocker
+  data.
+- Render the scenario matrix in the Tauri Command Center and relevant planning,
+  risk, paper, and broker pages so operators can inspect downside/upside before
+  interacting with local-write controls.
+- Expose scenario status, ticker, scenario count, and reward/risk in automation
+  JSON for agentic desktop control.
+- Preserve the same boundary: no provider calls, no broker order submission,
+  no shell execution, and no database writes from browsing the matrix.

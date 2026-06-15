@@ -372,6 +372,19 @@ function workbenchDecisionBrief(snapshot = state.snapshot || {}) {
   return brief && typeof brief === 'object' ? brief : {};
 }
 
+function workbenchScenarioMatrix(snapshot = state.snapshot || {}) {
+  const matrix = tradingWorkbenchSnapshot(snapshot)?.scenario_matrix;
+  return matrix && typeof matrix === 'object' ? matrix : { scenarios: [] };
+}
+
+function workbenchScenarioMatrixForPage(pageKey, snapshot = state.snapshot || {}) {
+  const matrix = workbenchScenarioMatrix(snapshot);
+  const rows = Array.isArray(matrix.scenarios) ? matrix.scenarios : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return rows;
+  const pages = new Set(['trade-planner', 'risk-desk', 'paper-trading', 'broker']);
+  return pages.has(pageKey) ? rows : [];
+}
+
 function workbenchActionBus(snapshot = state.snapshot || {}) {
   const bus = tradingWorkbenchSnapshot(snapshot)?.action_bus;
   return bus && typeof bus === 'object' ? bus : { actions: [] };
@@ -871,6 +884,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none'),
       decision_brief_source_tool: compact(workbenchDecisionBrief(snapshot)?.source_tool, 'market-radar'),
       decision_brief_next_command: compact(workbenchDecisionBrief(snapshot)?.next_action?.command, 'none'),
+      scenario_matrix_status: compact(workbenchScenarioMatrix(snapshot)?.status, 'unknown'),
+      scenario_matrix_ticker: compact(workbenchScenarioMatrix(snapshot)?.ticker, 'none'),
+      scenario_count: Number(workbenchScenarioMatrix(snapshot)?.metrics?.scenario_count || 0),
+      scenario_reward_risk: compact(workbenchScenarioMatrix(snapshot)?.metrics?.risk_reward, 'none'),
     },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
@@ -969,6 +986,7 @@ function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
     ${renderWorkbenchDecisionBrief(snapshot)}
+    ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
     ${renderWorkbenchPriorityQueue(snapshot, 'overview')}
     ${renderWorkbenchSupervisionGates(snapshot, 'overview')}
@@ -1126,6 +1144,69 @@ function decisionBriefSummary(brief) {
     `${compact(metrics.paper_block_count, '0')} paper blocks`,
     `${compact(metrics.live_block_count, '0')} live blocks`,
     `${compact(metrics.approval_required_count, '0')} approval gates`,
+    'zero provider calls',
+  ].join('; ');
+}
+
+function renderWorkbenchScenarioMatrix(snapshot, pageKey = 'overview') {
+  const matrix = workbenchScenarioMatrix(snapshot);
+  const rows = workbenchScenarioMatrixForPage(pageKey, snapshot);
+  const assumptions = matrix.assumptions || {};
+  if (!rows.length) return '';
+  return `
+    <section
+      class="panel wide workbench-scenario-matrix"
+      data-testid="workbench-scenario-matrix"
+      data-scenario-matrix-status="${escapeHtml(matrix.status || 'unknown')}"
+      data-scenario-matrix-ticker="${escapeHtml(matrix.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Scenario Matrix</h2>
+          <p>${escapeHtml(scenarioMatrixSummary(matrix))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(matrix.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Entry</span><b>${escapeHtml(text(assumptions.entry_price))}</b></div>
+        <div class="kv"><span>Invalidation</span><b>${escapeHtml(text(assumptions.invalidation_price))}</b></div>
+        <div class="kv"><span>Target</span><b>${escapeHtml(text(assumptions.target_price))}</b></div>
+        <div class="kv"><span>Sizing</span><b>${escapeHtml(catalogLabel(assumptions.sizing_status || 'unknown'))}</b></div>
+      </div>
+      <div class="table-wrap scenario-matrix-preview">
+        <table aria-label="Workbench scenario matrix">
+          <thead><tr><th>Scenario</th><th>Price</th><th>Move</th><th>P/L Share</th><th>Status</th><th>Boundary</th><th>Next</th></tr></thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr
+                data-testid="workbench-scenario-row"
+                data-scenario-kind="${escapeHtml(row.scenario_kind || 'unknown')}"
+                data-scenario-status="${escapeHtml(row.status || 'unknown')}"
+              >
+                <td data-label="Scenario">${escapeHtml(compact(row.label, row.id || '-'))}</td>
+                <td data-label="Price">${escapeHtml(text(row.price))}</td>
+                <td data-label="Move">${escapeHtml(text(row.move_pct))}</td>
+                <td data-label="P/L Share">${escapeHtml(text(row.pnl_per_share))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+                <td data-label="Boundary">${escapeHtml(catalogLabel(row.boundary || '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function scenarioMatrixSummary(matrix) {
+  const metrics = matrix?.metrics || {};
+  const assumptions = matrix?.assumptions || {};
+  return [
+    `${compact(matrix?.ticker, 'No ticker')} ${catalogLabel(matrix?.status || 'unknown')}`,
+    `${compact(metrics.scenario_count, '0')} scenarios`,
+    `R/R ${compact(metrics.risk_reward, 'n/a')}`,
+    `sizing ${catalogLabel(assumptions.sizing_status || 'unknown')}`,
     'zero provider calls',
   ].join('; ');
 }
@@ -1424,6 +1505,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
         <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(snapshot.external_calls_made, '0'))}</b></div>
       </div>
     </section>
+    ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
     ${renderWorkbenchPriorityQueue(snapshot, pageKey)}
     ${renderWorkbenchSupervisionGates(snapshot, pageKey)}

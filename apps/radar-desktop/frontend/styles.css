@@ -653,7 +653,8 @@ tr[data-testid="queue-row"]:focus-visible td {
   text-transform: uppercase;
 }
 
-.workbench-decision-brief {
+.workbench-decision-brief,
+.workbench-scenario-matrix {
   margin-top: 12px;
 }
 
@@ -811,6 +812,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 }
 
 .workflow-map-preview table,
+.scenario-matrix-preview table,
 .priority-queue-preview table,
 .supervision-gate-preview table {
   min-width: 980px;

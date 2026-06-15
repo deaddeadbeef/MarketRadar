@@ -569,6 +569,82 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert decision_brief["order_submission_allowed"] is False
     assert decision_brief["live_trading_enabled"] is False
 
+    scenario_matrix = workbench["scenario_matrix"]
+    assert scenario_matrix["schema_version"] == (
+        "trading-workbench-scenario-matrix-v1"
+    )
+    assert scenario_matrix["status"] == "blocked"
+    assert scenario_matrix["source_tool"] == "market-radar"
+    assert scenario_matrix["ticker"] == "MSFT"
+    assert scenario_matrix["decision_card_id"] == "card-msft-latest"
+    assert scenario_matrix["assumptions"] == {
+        "entry_price": 100.0,
+        "invalidation_price": 94.0,
+        "target_price": 116.2,
+        "risk_per_share": 6.0,
+        "reward_risk": 2.7,
+        "estimated_max_loss": 200.0,
+        "quantity": None,
+        "sizing_status": "blocked",
+    }
+    assert scenario_matrix["scenarios"] == [
+        {
+            "id": "invalidation",
+            "label": "Invalidation",
+            "scenario_kind": "downside",
+            "price": 94.0,
+            "move_pct": -6.0,
+            "pnl_per_share": -6.0,
+            "status": "blocked",
+            "boundary": "max_loss",
+            "next_action": (
+                "Resolve paper-trade blockers before recording any local decision."
+            ),
+        },
+        {
+            "id": "entry",
+            "label": "Entry",
+            "scenario_kind": "reference",
+            "price": 100.0,
+            "move_pct": 0.0,
+            "pnl_per_share": 0.0,
+            "status": "reference",
+            "boundary": "planned_entry",
+            "next_action": "Use as the reference price for review.",
+        },
+        {
+            "id": "target",
+            "label": "Reward target",
+            "scenario_kind": "upside",
+            "price": 116.2,
+            "move_pct": 16.2,
+            "pnl_per_share": 16.2,
+            "status": "review",
+            "boundary": "target_reward",
+            "next_action": "Compare upside to risk before any paper record.",
+        },
+    ]
+    assert scenario_matrix["blockers"] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "stale_broker_data",
+        "zero_preview_size",
+    ]
+    assert scenario_matrix["metrics"] == {
+        "scenario_count": 3,
+        "downside_count": 1,
+        "upside_count": 1,
+        "risk_reward": 2.7,
+        "estimated_max_loss": 200.0,
+        "external_calls_made": 0,
+    }
+    assert scenario_matrix["external_calls_made"] == 0
+    assert scenario_matrix["db_writes_made"] == 0
+    assert scenario_matrix["broker_order_submitted"] is False
+    assert scenario_matrix["order_submission_allowed"] is False
+    assert scenario_matrix["live_trading_enabled"] is False
+
     action_bus = workbench["action_bus"]
     assert action_bus["schema_version"] == "trading-workbench-action-bus-v1"
     assert action_bus["status"] == "ready"

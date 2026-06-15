@@ -81,6 +81,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderTradingWorkbenchOverview",
         "function tradingWorkbenchSnapshot",
         "function workbenchDecisionBrief",
+        "function workbenchScenarioMatrix",
+        "function workbenchScenarioMatrixForPage",
         "function workbenchActionBus",
         "function workbenchWorkflowMap",
         "function workbenchWorkflowStagesForPage",
@@ -103,6 +105,13 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="decision-brief-evidence-row"',
         "data-decision-brief-status",
         "data-decision-brief-ticker",
+        "function renderWorkbenchScenarioMatrix",
+        "function scenarioMatrixSummary",
+        'data-testid="workbench-scenario-matrix"',
+        'data-testid="workbench-scenario-row"',
+        "data-scenario-matrix-status",
+        "data-scenario-kind",
+        "data-scenario-status",
         "function renderWorkbenchWorkflowMap",
         "function workflowMapSummary",
         'data-testid="workbench-workflow-map"',
@@ -431,6 +440,11 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchDecisionBrief(snapshot)?.source_tool, 'market-radar')",
         "decision_brief_next_command: compact("
         "workbenchDecisionBrief(snapshot)?.next_action?.command, 'none')",
+        "scenario_matrix_status: compact(workbenchScenarioMatrix(snapshot)?.status, 'unknown')",
+        "scenario_matrix_ticker: compact(workbenchScenarioMatrix(snapshot)?.ticker, 'none')",
+        "scenario_count: Number(workbenchScenarioMatrix(snapshot)?.metrics?.scenario_count || 0)",
+        "scenario_reward_risk: compact("
+        "workbenchScenarioMatrix(snapshot)?.metrics?.risk_reward, 'none')",
         "pendingLocalWrite: null",
         "function localWriteArmKey",
         "function clearPendingLocalWrite",
@@ -492,6 +506,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".workbench-decision-brief" in styles
     assert ".decision-brief-grid" in styles
     assert ".decision-brief-evidence" in styles
+    assert ".workbench-scenario-matrix" in styles
+    assert ".scenario-matrix-preview" in styles
     assert ".workbench-workflow-map" in styles
     assert ".workflow-map-preview" in styles
     assert ".workbench-priority-queue" in styles

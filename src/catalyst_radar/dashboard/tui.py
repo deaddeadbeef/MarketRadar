@@ -1125,6 +1125,10 @@ def _trading_workbench_snapshot_payload(
         priority_queue=priority_queue,
         supervision_gates=supervision_gates,
     )
+    scenario_matrix = _workbench_scenario_matrix_payload(
+        active_plan=active_plan,
+        decision_brief=decision_brief,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1142,6 +1146,7 @@ def _trading_workbench_snapshot_payload(
         "priority_queue": priority_queue,
         "supervision_gates": supervision_gates,
         "decision_brief": decision_brief,
+        "scenario_matrix": scenario_matrix,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -3600,6 +3605,180 @@ def _workbench_primary_priority_item(
             if str(item.get("id") or "") == primary_item_id:
                 return item
     return items[0] if items else {}
+
+
+def _workbench_scenario_matrix_payload(
+    *,
+    active_plan: Mapping[str, object],
+    decision_brief: Mapping[str, object],
+) -> dict[str, object]:
+    strategy = _mapping(active_plan.get("strategy_proposal"))
+    risk = _mapping(active_plan.get("risk_approval"))
+    order = _mapping(active_plan.get("order_intent"))
+    ticket = _mapping(active_plan.get("order_ticket"))
+    setup = _mapping(decision_brief.get("setup"))
+    entry_price = _optional_float(
+        _first_value(
+            strategy.get("entry_price"),
+            order.get("limit_price"),
+            ticket.get("entry_price"),
+            setup.get("entry_price"),
+        )
+    )
+    invalidation_price = _optional_float(
+        _first_value(
+            strategy.get("invalidation_price"),
+            ticket.get("invalidation_price"),
+            order.get("stop_price"),
+            setup.get("invalidation_price"),
+        )
+    )
+    reward_risk = _optional_float(
+        _first_value(strategy.get("reward_risk"), setup.get("reward_risk"))
+    )
+    target_price = _optional_float(
+        _first_value(
+            strategy.get("target_price"),
+            ticket.get("target_price"),
+            order.get("target_price"),
+        )
+    )
+    risk_per_share = None
+    if entry_price is not None and invalidation_price is not None:
+        risk_per_share = abs(entry_price - invalidation_price)
+    if (
+        target_price is None
+        and entry_price is not None
+        and risk_per_share is not None
+        and reward_risk is not None
+    ):
+        direction = str(
+            _first_value(strategy.get("direction"), order.get("side"), "")
+        ).lower()
+        if direction in {"bearish", "short", "sell"}:
+            target_price = entry_price - (risk_per_share * reward_risk)
+        else:
+            target_price = entry_price + (risk_per_share * reward_risk)
+
+    raw_quantity = _optional_int(
+        _first_value(order.get("quantity"), ticket.get("quantity"), ticket.get("shares"))
+    )
+    quantity = raw_quantity if raw_quantity is not None and raw_quantity > 0 else None
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    blockers = list(dict.fromkeys([*paper_blocks, *live_blocks]))
+    sizing_status = "blocked" if quantity is None or blockers else "ready"
+    status = str(
+        _first_value(active_plan.get("status"), decision_brief.get("status"), "missing")
+    )
+    scenarios = [
+        _workbench_scenario_row(
+            scenario_id="invalidation",
+            label="Invalidation",
+            scenario_kind="downside",
+            price=invalidation_price,
+            entry_price=entry_price,
+            status="blocked" if blockers else "review",
+            boundary="max_loss",
+            next_action="Resolve paper-trade blockers before recording any local decision.",
+        ),
+        _workbench_scenario_row(
+            scenario_id="entry",
+            label="Entry",
+            scenario_kind="reference",
+            price=entry_price,
+            entry_price=entry_price,
+            status="reference",
+            boundary="planned_entry",
+            next_action="Use as the reference price for review.",
+        ),
+        _workbench_scenario_row(
+            scenario_id="target",
+            label="Reward target",
+            scenario_kind="upside",
+            price=target_price,
+            entry_price=entry_price,
+            status="review",
+            boundary="target_reward",
+            next_action="Compare upside to risk before any paper record.",
+        ),
+    ]
+    return {
+        "schema_version": "trading-workbench-scenario-matrix-v1",
+        "status": status,
+        "source_tool": decision_brief.get("source_tool") or "market-radar",
+        "ticker": _first_value(decision_brief.get("ticker"), active_plan.get("ticker")),
+        "decision_card_id": _first_value(
+            decision_brief.get("decision_card_id"),
+            active_plan.get("decision_card_id"),
+        ),
+        "assumptions": {
+            "entry_price": _workbench_round_float(entry_price),
+            "invalidation_price": _workbench_round_float(invalidation_price),
+            "target_price": _workbench_round_float(target_price),
+            "risk_per_share": _workbench_round_float(risk_per_share),
+            "reward_risk": _workbench_round_float(reward_risk),
+            "estimated_max_loss": _workbench_round_float(
+                _optional_float(risk.get("estimated_max_loss"))
+            ),
+            "quantity": quantity,
+            "sizing_status": sizing_status,
+        },
+        "scenarios": scenarios,
+        "blockers": blockers,
+        "metrics": {
+            "scenario_count": len(scenarios),
+            "downside_count": sum(
+                1 for row in scenarios if row.get("scenario_kind") == "downside"
+            ),
+            "upside_count": sum(
+                1 for row in scenarios if row.get("scenario_kind") == "upside"
+            ),
+            "risk_reward": _workbench_round_float(reward_risk),
+            "estimated_max_loss": _workbench_round_float(
+                _optional_float(risk.get("estimated_max_loss"))
+            ),
+            "external_calls_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_scenario_row(
+    *,
+    scenario_id: str,
+    label: str,
+    scenario_kind: str,
+    price: float | None,
+    entry_price: float | None,
+    status: str,
+    boundary: str,
+    next_action: str,
+) -> dict[str, object]:
+    move_pct = None
+    pnl_per_share = None
+    if price is not None and entry_price not in (None, 0):
+        move_pct = ((price - entry_price) / entry_price) * 100
+        pnl_per_share = price - entry_price
+    return {
+        "id": scenario_id,
+        "label": label,
+        "scenario_kind": scenario_kind,
+        "price": _workbench_round_float(price),
+        "move_pct": _workbench_round_float(move_pct),
+        "pnl_per_share": _workbench_round_float(pnl_per_share),
+        "status": status,
+        "boundary": boundary,
+        "next_action": next_action,
+    }
+
+
+def _workbench_round_float(value: float | None) -> float | None:
+    return round(value, 1) if value is not None else None
 
 
 def _workbench_priority_action_sort_key(
