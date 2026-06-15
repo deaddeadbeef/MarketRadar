@@ -458,6 +458,19 @@ function workbenchPaperTradePreviewForPage(pageKey, snapshot = state.snapshot ||
   return pages.has(pageKey) ? checks : [];
 }
 
+function workbenchLearningLoop(snapshot = state.snapshot || {}) {
+  const loop = tradingWorkbenchSnapshot(snapshot)?.learning_loop;
+  return loop && typeof loop === 'object' ? loop : { cards: [] };
+}
+
+function workbenchLearningLoopForPage(pageKey, snapshot = state.snapshot || {}) {
+  const loop = workbenchLearningLoop(snapshot);
+  const cards = Array.isArray(loop.cards) ? loop.cards : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return cards;
+  const pages = new Set(['paper-trading', 'backtest', 'validation', 'journal', 'agent']);
+  return pages.has(pageKey) ? cards : [];
+}
+
 function workbenchRiskEnvelope(snapshot = state.snapshot || {}) {
   const envelope = tradingWorkbenchSnapshot(snapshot)?.risk_envelope;
   return envelope && typeof envelope === 'object' ? envelope : { checks: [] };
@@ -1015,6 +1028,12 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       paper_trade_preview_decision: compact(workbenchPaperTradePreview(snapshot)?.paper_decision?.decision, 'none'),
       paper_trade_preview_suggested_quantity: Number(workbenchPaperTradePreview(snapshot)?.paper_decision?.suggested_quantity || 0),
       paper_trade_preview_block_count: Number(workbenchPaperTradePreview(snapshot)?.blockers?.length || 0),
+      learning_loop_status: compact(workbenchLearningLoop(snapshot)?.status, 'unknown'),
+      learning_loop_ticker: compact(workbenchLearningLoop(snapshot)?.ticker, 'none'),
+      learning_loop_stage: compact(workbenchLearningLoop(snapshot)?.learning_stage, 'unlinked'),
+      learning_loop_validation_result_id: compact(workbenchLearningLoop(snapshot)?.validation_state?.validation_result_id, 'none'),
+      learning_loop_outcome_id: compact(workbenchLearningLoop(snapshot)?.journal_state?.outcome_id, 'none'),
+      learning_loop_blocked_card_count: Number(workbenchLearningLoop(snapshot)?.metrics?.blocked_card_count || 0),
       risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown'),
       risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none'),
       risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
@@ -1129,6 +1148,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchPositionSizing(snapshot, 'overview')}
     ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
     ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
+    ${renderWorkbenchLearningLoop(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
@@ -1820,6 +1840,81 @@ function paperTradePreviewSummary(preview) {
   ].join('; ');
 }
 
+function renderWorkbenchLearningLoop(snapshot, pageKey = 'overview') {
+  const loop = workbenchLearningLoop(snapshot);
+  const cards = workbenchLearningLoopForPage(pageKey, snapshot);
+  const signal = loop.primary_signal || {};
+  const validation = loop.validation_state || {};
+  const journal = loop.journal_state || {};
+  const paper = loop.paper_state || {};
+  if (!cards.length) return '';
+  return `
+    <section
+      class="panel wide workbench-learning-loop"
+      data-testid="workbench-learning-loop"
+      data-learning-loop-status="${escapeHtml(loop.status || 'unknown')}"
+      data-learning-loop-stage="${escapeHtml(loop.learning_stage || 'unlinked')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Learning Loop</h2>
+          <p>${escapeHtml(learningLoopSummary(loop))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(loop.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Stage</span><b>${escapeHtml(catalogLabel(loop.learning_stage || 'unlinked'))}</b></div>
+        <div class="kv"><span>Paper</span><b>${escapeHtml(catalogLabel(paper.paper_state || paper.preview_status || '-'))}</b></div>
+        <div class="kv"><span>Validation</span><b>${escapeHtml(compact(validation.final_score, '-'))}</b></div>
+        <div class="kv"><span>Outcome</span><b>${escapeHtml(catalogLabel(journal.outcome_status || '-'))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Decision</span><b>${escapeHtml(catalogLabel(signal.paper_decision || signal.recommended_paper_decision || '-'))}</b></div>
+        <div class="kv"><span>Suggested qty</span><b>${escapeHtml(compact(signal.suggested_quantity, '-'))}</b></div>
+        <div class="kv"><span>20D return</span><b>${escapeHtml(text(journal.return_20d))}</b></div>
+        <div class="kv"><span>SPY relative</span><b>${escapeHtml(text(journal.spy_relative_return_20d))}</b></div>
+      </div>
+      <div class="plan-command-list learning-loop-commands">
+        <div><span>Validation</span><code>${escapeHtml(compact(validation.validation_result_id, 'no validation result'))}</code></div>
+        <div><span>Ledger</span><code>${escapeHtml(compact(journal.ledger_entry_id, 'no ledger entry'))}</code></div>
+        <div><span>Outcome</span><code>${escapeHtml(compact(journal.primary_command, 'no outcome command'))}</code></div>
+      </div>
+      <div class="table-wrap learning-loop-preview">
+        <table aria-label="Workbench learning loop">
+          <thead><tr><th>Step</th><th>Module</th><th>Status</th><th>Finding</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${cards.map((card) => `
+              <tr
+                data-testid="learning-loop-card"
+                data-learning-loop-card-status="${escapeHtml(card.status || 'unknown')}"
+                data-learning-loop-card-module="${escapeHtml(card.module || 'unknown')}"
+              >
+                <td data-label="Step">${escapeHtml(compact(card.label, card.id || '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(card.module || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(card.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(card.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(card.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(card.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function learningLoopSummary(loop) {
+  const metrics = loop?.metrics || {};
+  return [
+    `${compact(loop?.ticker, 'No ticker')} ${catalogLabel(loop?.status || 'unknown')}`,
+    `${catalogLabel(loop?.learning_stage || 'unlinked')} stage`,
+    `${compact(metrics.validation_result_count, '0')} validation results`,
+    `${compact(metrics.linked_outcome_count, '0')} linked outcomes`,
+    'strategy updates disabled',
+  ].join('; ');
+}
+
 function renderWorkbenchRiskEnvelope(snapshot, pageKey = 'overview') {
   const envelope = workbenchRiskEnvelope(snapshot);
   const checks = workbenchRiskEnvelopeForPage(pageKey, snapshot);
@@ -2247,6 +2342,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchPositionSizing(snapshot, pageKey)}
     ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
     ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
+    ${renderWorkbenchLearningLoop(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}

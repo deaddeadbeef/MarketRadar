@@ -1164,6 +1164,15 @@ def _trading_workbench_snapshot_payload(
         risk_envelope=risk_envelope,
         action_bus=action_bus,
     )
+    learning_loop = _workbench_learning_loop_payload(
+        active_plan=active_plan,
+        paper_trade_preview=paper_trade_preview,
+        trade_lifecycle_rows=trade_lifecycle_rows,
+        validation_result_rows=validation_result_rows,
+        journal_entry_rows=journal_entry_rows,
+        journal_outcome_rows=journal_outcome_rows,
+        useful_label_rows=validation_useful_label_rows,
+    )
     trade_runbook = _workbench_trade_runbook_payload(
         decision_brief=decision_brief,
         scenario_matrix=scenario_matrix,
@@ -1209,6 +1218,7 @@ def _trading_workbench_snapshot_payload(
         "position_sizing": position_sizing,
         "order_ticket_draft": order_ticket_draft,
         "paper_trade_preview": paper_trade_preview,
+        "learning_loop": learning_loop,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
@@ -5160,6 +5170,374 @@ def _workbench_paper_trade_preview_check(
         "status": status,
         "scope": scope,
         "finding": finding,
+        "next_action": next_action,
+    }
+
+
+def _workbench_learning_loop_payload(
+    *,
+    active_plan: Mapping[str, object],
+    paper_trade_preview: Mapping[str, object],
+    trade_lifecycle_rows: Sequence[Mapping[str, object]],
+    validation_result_rows: Sequence[Mapping[str, object]],
+    journal_entry_rows: Sequence[Mapping[str, object]],
+    journal_outcome_rows: Sequence[Mapping[str, object]],
+    useful_label_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    paper_decision = _mapping(paper_trade_preview.get("paper_decision"))
+    decision_card_id = _first_value(
+        active_plan.get("decision_card_id"),
+        paper_trade_preview.get("decision_card_id"),
+    )
+    ticker = _learning_loop_ticker(
+        _first_value(active_plan.get("ticker"), paper_trade_preview.get("ticker"))
+    )
+    lifecycle = _workbench_learning_loop_lifecycle(
+        trade_lifecycle_rows,
+        decision_card_id=decision_card_id,
+        ticker=ticker,
+    )
+    ticker = _learning_loop_ticker(
+        _first_value(ticker, lifecycle.get("ticker"), active_plan.get("ticker"))
+    )
+    decision_card_id = _first_value(
+        decision_card_id,
+        lifecycle.get("decision_card_id"),
+    )
+    validation_result = _workbench_learning_loop_match(
+        validation_result_rows,
+        expected_id=lifecycle.get("validation_result_id"),
+        decision_card_id=decision_card_id,
+        ticker=ticker,
+    )
+    journal_entry = _workbench_learning_loop_match(
+        journal_entry_rows,
+        expected_id=lifecycle.get("ledger_entry_id"),
+        ticker=ticker,
+    )
+    journal_outcome = _workbench_learning_loop_match(
+        journal_outcome_rows,
+        expected_id=lifecycle.get("outcome_id"),
+        related_id=lifecycle.get("ledger_entry_id"),
+        related_key="value_ledger_entry_id",
+        ticker=ticker,
+    )
+    lifecycle_stage = str(lifecycle.get("current_stage") or "").strip()
+    validation_result_id = _first_value(
+        lifecycle.get("validation_result_id"),
+        validation_result.get("id"),
+    )
+    ledger_entry_id = _first_value(
+        lifecycle.get("ledger_entry_id"),
+        journal_entry.get("id"),
+    )
+    outcome_id = _first_value(lifecycle.get("outcome_id"), journal_outcome.get("id"))
+    primary_blocker = (
+        paper_trade_preview.get("primary_blocker")
+        if str(paper_trade_preview.get("status") or "").lower() == "blocked"
+        else None
+    )
+    cards = [
+        _workbench_learning_loop_card(
+            card_id="radar-signal",
+            label="Radar signal",
+            module="market-radar",
+            status="ready" if decision_card_id else "blocked",
+            finding=decision_card_id or "missing_decision_card",
+            evidence=str(decision_card_id or "no decision card"),
+            command="market-radar",
+            target_page="market-radar",
+            next_action=(
+                "Use the active MarketRadar decision card as the loop source."
+                if decision_card_id
+                else "Review radar output before learning-loop analysis."
+            ),
+        ),
+        _workbench_learning_loop_card(
+            card_id="paper-preview",
+            label="Paper preview",
+            module="paper-trading",
+            status=str(paper_trade_preview.get("status") or "blocked"),
+            finding=paper_trade_preview.get("primary_blocker")
+            or "paper_preview_available",
+            evidence=str(paper_trade_preview.get("preview_id") or "paper preview"),
+            command=_mapping(paper_trade_preview.get("commands")).get("preview")
+            or "paper-decision preview",
+            target_page="paper-trading",
+            next_action=str(
+                paper_trade_preview.get("primary_next_action")
+                or "Review supervised paper preview before recording."
+            ),
+        ),
+        _workbench_learning_loop_card(
+            card_id="paper-evidence",
+            label="Paper evidence",
+            module="paper-trading",
+            status="ready" if lifecycle.get("paper_trade_id") else "blocked",
+            finding=lifecycle.get("paper_state") or "missing_paper_trade",
+            evidence=str(lifecycle.get("paper_trade_id") or "no paper trade"),
+            command="paper",
+            target_page="paper-trading",
+            next_action=(
+                "Use the local paper trade as outcome context."
+                if lifecycle.get("paper_trade_id")
+                else "Record or link a local paper decision after approval."
+            ),
+        ),
+        _workbench_learning_loop_card(
+            card_id="validation-replay",
+            label="Validation replay",
+            module="validation",
+            status="ready" if validation_result_id else "blocked",
+            finding=validation_result.get("state") or "missing_validation_result",
+            evidence=str(validation_result_id or "no validation result"),
+            command="validation",
+            target_page="validation",
+            next_action=(
+                "Review replay score and leakage flags before strategy changes."
+                if validation_result_id
+                else "Run or link validation evidence for this decision."
+            ),
+        ),
+        _workbench_learning_loop_card(
+            card_id="journal-entry",
+            label="Journal entry",
+            module="journal",
+            status="ready" if ledger_entry_id else "blocked",
+            finding=journal_entry.get("outcome_status") or "missing_value_ledger",
+            evidence=str(ledger_entry_id or "no ledger entry"),
+            command=lifecycle.get("ledger_show_command") or "ledger",
+            target_page="journal",
+            next_action=(
+                "Review local value ledger evidence."
+                if ledger_entry_id
+                else "Record local value evidence before outcome review."
+            ),
+        ),
+        _workbench_learning_loop_card(
+            card_id="outcome-review",
+            label="Outcome review",
+            module="journal",
+            status="ready" if outcome_id else "blocked",
+            finding=journal_outcome.get("status") or "missing_outcome",
+            evidence=str(outcome_id or "no outcome"),
+            command=lifecycle.get("outcome_show_command")
+            or lifecycle.get("outcome_preview_command")
+            or "outcome",
+            target_page="journal",
+            next_action=(
+                "Compare realized outcome with the original decision."
+                if outcome_id
+                else "Compute or attach outcome evidence before updating logic."
+            ),
+        ),
+        _workbench_learning_loop_card(
+            card_id="strategy-update-boundary",
+            label="Strategy update boundary",
+            module="agent",
+            status="disabled",
+            finding="autonomous_strategy_update_disabled",
+            evidence="manual review required",
+            command="agent",
+            target_page="agent",
+            next_action="Use learning evidence for review; do not auto-change strategy.",
+        ),
+    ]
+    blocked_card_count = sum(1 for row in cards if row.get("status") == "blocked")
+    disabled_card_count = sum(1 for row in cards if row.get("status") == "disabled")
+    ready_card_count = sum(1 for row in cards if row.get("status") == "ready")
+    if primary_blocker is None:
+        primary_blocker = next(
+            (
+                str(row.get("finding"))
+                for row in cards
+                if row.get("status") == "blocked" and row.get("finding")
+            ),
+            None,
+        )
+    primary_next_action = next(
+        (
+            str(row.get("next_action"))
+            for row in cards
+            if row.get("status") == "blocked" and row.get("next_action")
+        ),
+        str(lifecycle.get("next_action") or "Review linked learning evidence."),
+    )
+    return {
+        "schema_version": "trading-workbench-learning-loop-v1",
+        "status": "blocked" if blocked_card_count else "ready",
+        "source_tool": "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "loop_id": (
+            f"learning-loop-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "learning_stage": lifecycle_stage or "unlinked",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": primary_next_action,
+        "primary_signal": {
+            "plan_status": active_plan.get("status"),
+            "recommended_paper_decision": active_plan.get(
+                "recommended_paper_decision"
+            ),
+            "source_tool": "market-radar",
+            "paper_preview_status": paper_trade_preview.get("status"),
+            "paper_decision": paper_decision.get("decision"),
+            "suggested_quantity": paper_decision.get("suggested_quantity"),
+        },
+        "paper_state": {
+            "preview_status": paper_trade_preview.get("status"),
+            "preview_id": paper_trade_preview.get("preview_id"),
+            "paper_trade_id": lifecycle.get("paper_trade_id"),
+            "paper_state": lifecycle.get("paper_state"),
+            "record_allowed": False,
+            "broker_order_submitted": False,
+        },
+        "validation_state": {
+            "validation_result_id": validation_result_id,
+            "run_id": validation_result.get("run_id"),
+            "state": validation_result.get("state"),
+            "final_score": validation_result.get("final_score"),
+            "positive_labels": _texts(validation_result.get("positive_labels")),
+            "leakage_flags": _texts(validation_result.get("leakage_flags")),
+            "next_action": validation_result.get("next_action"),
+        },
+        "journal_state": {
+            "ledger_entry_id": ledger_entry_id,
+            "outcome_id": outcome_id,
+            "outcome_status": _first_value(
+                lifecycle.get("outcome_status"),
+                journal_outcome.get("status"),
+            ),
+            "return_20d": _workbench_round_ratio(
+                _optional_float(
+                    _first_value(
+                        lifecycle.get("return_20d"),
+                        journal_outcome.get("return_20d"),
+                    )
+                )
+            ),
+            "spy_relative_return_20d": _workbench_round_ratio(
+                _optional_float(
+                    _first_value(
+                        lifecycle.get("spy_relative_return_20d"),
+                        journal_outcome.get("spy_relative_return_20d"),
+                    )
+                )
+            ),
+            "invalidation_touched": bool(journal_outcome.get("invalidation_touched")),
+            "primary_command": lifecycle.get("primary_command"),
+        },
+        "cards": cards,
+        "metrics": {
+            "card_count": len(cards),
+            "ready_card_count": ready_card_count,
+            "blocked_card_count": blocked_card_count,
+            "disabled_card_count": disabled_card_count,
+            "trade_lifecycle_count": len(_rows(trade_lifecycle_rows)),
+            "paper_trade_count": sum(
+                1 for row in _rows(trade_lifecycle_rows) if row.get("paper_trade_id")
+            ),
+            "validation_result_count": len(_rows(validation_result_rows)),
+            "journal_entry_count": len(_rows(journal_entry_rows)),
+            "outcome_count": len(_rows(journal_outcome_rows)),
+            "useful_label_count": len(_rows(useful_label_rows)),
+            "linked_outcome_count": sum(
+                1 for row in _rows(trade_lifecycle_rows) if row.get("outcome_id")
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _learning_loop_ticker(value: object) -> str | None:
+    ticker = str(value or "").strip().upper()
+    return ticker or None
+
+
+def _workbench_learning_loop_lifecycle(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    decision_card_id: object,
+    ticker: object,
+) -> Mapping[str, object]:
+    card_text = str(decision_card_id or "").strip()
+    ticker_text = _learning_loop_ticker(ticker)
+    for row in _rows(rows):
+        if card_text and str(row.get("decision_card_id") or "").strip() == card_text:
+            return row
+    for row in _rows(rows):
+        if ticker_text and _learning_loop_ticker(row.get("ticker")) == ticker_text:
+            return row
+    return _mapping(_rows(rows)[0]) if _rows(rows) else {}
+
+
+def _workbench_learning_loop_match(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    expected_id: object = None,
+    related_id: object = None,
+    related_key: str | None = None,
+    decision_card_id: object = None,
+    ticker: object = None,
+) -> Mapping[str, object]:
+    expected_text = str(expected_id or "").strip()
+    related_text = str(related_id or "").strip()
+    card_text = str(decision_card_id or "").strip()
+    ticker_text = _learning_loop_ticker(ticker)
+    mapped_rows = _rows(rows)
+    if expected_text:
+        for row in mapped_rows:
+            if str(row.get("id") or "").strip() == expected_text:
+                return row
+    if related_text and related_key:
+        for row in mapped_rows:
+            if str(row.get(related_key) or "").strip() == related_text:
+                return row
+    if card_text:
+        for row in mapped_rows:
+            if str(row.get("decision_card_id") or "").strip() == card_text:
+                return row
+    if ticker_text:
+        for row in mapped_rows:
+            if _learning_loop_ticker(row.get("ticker")) == ticker_text:
+                return row
+    return _mapping(mapped_rows[0]) if mapped_rows else {}
+
+
+def _workbench_learning_loop_card(
+    *,
+    card_id: str,
+    label: str,
+    module: str,
+    status: object,
+    finding: object,
+    evidence: str,
+    command: object,
+    target_page: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": card_id,
+        "label": label,
+        "module": module,
+        "status": str(status or "unknown"),
+        "finding": finding,
+        "evidence": evidence,
+        "command": str(command or "").strip() or None,
+        "target_page": target_page,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
         "next_action": next_action,
     }
 
