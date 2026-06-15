@@ -508,6 +508,29 @@ function workbenchTradeReadinessBriefForPage(pageKey, snapshot = state.snapshot 
   return pages.has(pageKey) ? checks : [];
 }
 
+function workbenchAgentPlaybook(snapshot = state.snapshot || {}) {
+  const playbook = tradingWorkbenchSnapshot(snapshot)?.agent_playbook;
+  return playbook && typeof playbook === 'object' ? playbook : { tasks: [] };
+}
+
+function workbenchAgentPlaybookForPage(pageKey, snapshot = state.snapshot || {}) {
+  const playbook = workbenchAgentPlaybook(snapshot);
+  const tasks = Array.isArray(playbook.tasks) ? playbook.tasks : [];
+  if (
+    pageKey === 'overview'
+    || pageKey === 'command-center'
+    || pageKey === 'agent'
+    || pageKey === 'market-radar'
+  ) {
+    return tasks;
+  }
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return tasks.filter((task) => (
+    keys.has(task?.module) || keys.has(task?.target_page)
+  ));
+}
+
 function workbenchLearningLoop(snapshot = state.snapshot || {}) {
   const loop = tradingWorkbenchSnapshot(snapshot)?.learning_loop;
   return loop && typeof loop === 'object' ? loop : { cards: [] };
@@ -1126,6 +1149,17 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       trade_readiness_broker_handoff_allowed: Boolean(workbenchTradeReadinessBrief(snapshot)?.broker_handoff_allowed),
       trade_readiness_strategy_update_allowed: Boolean(workbenchTradeReadinessBrief(snapshot)?.strategy_update_allowed),
       trade_readiness_monitoring_ready: Boolean(workbenchTradeReadinessBrief(snapshot)?.monitoring_ready),
+      agent_playbook_status: compact(workbenchAgentPlaybook(snapshot)?.status, 'unknown'),
+      agent_playbook_ticker: compact(workbenchAgentPlaybook(snapshot)?.ticker, 'none'),
+      agent_playbook_primary_task_id: compact(workbenchAgentPlaybook(snapshot)?.primary_task_id, 'none'),
+      agent_playbook_next_page: compact(workbenchAgentPlaybook(snapshot)?.agent_handoff?.next_page, 'none'),
+      agent_playbook_next_command: compact(workbenchAgentPlaybook(snapshot)?.agent_handoff?.next_command, 'none'),
+      agent_playbook_task_count: Number(workbenchAgentPlaybook(snapshot)?.metrics?.task_count || 0),
+      agent_playbook_blocked_task_count: Number(workbenchAgentPlaybook(snapshot)?.metrics?.blocked_task_count || 0),
+      agent_playbook_approval_required_count: Number(workbenchAgentPlaybook(snapshot)?.metrics?.approval_required_count || 0),
+      agent_playbook_disabled_task_count: Number(workbenchAgentPlaybook(snapshot)?.metrics?.disabled_task_count || 0),
+      agent_playbook_safe_preview_task_count: Number(workbenchAgentPlaybook(snapshot)?.metrics?.safe_preview_task_count || 0),
+      agent_playbook_guarded_write_task_count: Number(workbenchAgentPlaybook(snapshot)?.metrics?.guarded_write_task_count || 0),
       learning_loop_status: compact(workbenchLearningLoop(snapshot)?.status, 'unknown'),
       learning_loop_ticker: compact(workbenchLearningLoop(snapshot)?.ticker, 'none'),
       learning_loop_stage: compact(workbenchLearningLoop(snapshot)?.learning_stage, 'unlinked'),
@@ -1263,6 +1297,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
     ${renderWorkbenchPretradeCompliance(snapshot, 'overview')}
     ${renderWorkbenchTradeReadinessBrief(snapshot, 'overview')}
+    ${renderWorkbenchAgentPlaybook(snapshot, 'overview')}
     ${renderWorkbenchLearningLoop(snapshot, 'overview')}
     ${renderWorkbenchStrategyReview(snapshot, 'overview')}
     ${renderWorkbenchTradeMonitor(snapshot, 'overview')}
@@ -2189,6 +2224,85 @@ function tradeReadinessBriefSummary(brief) {
   ].join('; ');
 }
 
+function renderWorkbenchAgentPlaybook(snapshot, pageKey = 'overview') {
+  const playbook = workbenchAgentPlaybook(snapshot);
+  const tasks = workbenchAgentPlaybookForPage(pageKey, snapshot);
+  const handoff = playbook.agent_handoff || {};
+  const metrics = playbook.metrics || {};
+  if (!tasks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-agent-playbook"
+      data-testid="workbench-agent-playbook"
+      data-agent-playbook-status="${escapeHtml(playbook.status || 'unknown')}"
+      data-agent-playbook-ticker="${escapeHtml(playbook.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Agent Playbook</h2>
+          <p>${escapeHtml(agentPlaybookSummary(playbook))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(playbook.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Primary task</span><b>${escapeHtml(compact(playbook.primary_task_id, '-'))}</b></div>
+        <div class="kv"><span>Next page</span><b>${escapeHtml(compact(handoff.next_page, '-'))}</b></div>
+        <div class="kv"><span>Next command</span><b>${escapeHtml(compact(handoff.next_command, '-'))}</b></div>
+        <div class="kv"><span>Safety</span><b>${escapeHtml(catalogLabel(handoff.safety || '-'))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Tasks</span><b>${escapeHtml(compact(metrics.task_count, '0'))}</b></div>
+        <div class="kv"><span>Blocked</span><b>${escapeHtml(compact(metrics.blocked_task_count, '0'))}</b></div>
+        <div class="kv"><span>Arm required</span><b>${escapeHtml(compact(metrics.approval_required_count, '0'))}</b></div>
+        <div class="kv"><span>Safe previews</span><b>${escapeHtml(compact(metrics.safe_preview_task_count, '0'))}</b></div>
+      </div>
+      <div class="table-wrap agent-playbook-preview">
+        <table aria-label="Workbench agent playbook">
+          <thead><tr><th>Task</th><th>Module</th><th>Status</th><th>Kind</th><th>Command</th><th>Safety</th><th>Approval</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${tasks.map((task) => `
+              <tr
+                data-testid="agent-playbook-task"
+                data-agent-playbook-task-status="${escapeHtml(task.status || 'unknown')}"
+                data-agent-playbook-task-kind="${escapeHtml(task.task_kind || 'unknown')}"
+                data-agent-playbook-task-module="${escapeHtml(task.module || 'unknown')}"
+              >
+                <td data-label="Task">${escapeHtml(compact(task.label, task.id || '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(task.module || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(task.status || '-'))}</td>
+                <td data-label="Kind">${escapeHtml(catalogLabel(task.task_kind || '-'))}</td>
+                <td data-label="Command"><code>${escapeHtml(compact(task.command, '-'))}</code></td>
+                <td data-label="Safety">${escapeHtml(catalogLabel(task.safety || '-'))}</td>
+                <td data-label="Approval">${escapeHtml(agentPlaybookApprovalLabel(task))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(task.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(task.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function agentPlaybookSummary(playbook) {
+  const metrics = playbook?.metrics || {};
+  return [
+    `${compact(playbook?.ticker, 'No ticker')} ${catalogLabel(playbook?.status || 'unknown')}`,
+    `primary ${compact(playbook?.primary_task_id, 'none')}`,
+    `${compact(metrics.blocked_task_count, '0')} blocked tasks`,
+    `${compact(metrics.safe_preview_task_count, '0')} safe previews`,
+    'supervised agent only',
+  ].join('; ');
+}
+
+function agentPlaybookApprovalLabel(task) {
+  if (task?.requires_arm_before_run) return 'arm required';
+  if (task?.can_execute_without_approval) return 'no approval';
+  if (task?.status === 'disabled') return 'disabled';
+  return 'review';
+}
+
 function renderWorkbenchLearningLoop(snapshot, pageKey = 'overview') {
   const loop = workbenchLearningLoop(snapshot);
   const cards = workbenchLearningLoopForPage(pageKey, snapshot);
@@ -2846,6 +2960,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
     ${renderWorkbenchPretradeCompliance(snapshot, pageKey)}
     ${renderWorkbenchTradeReadinessBrief(snapshot, pageKey)}
+    ${renderWorkbenchAgentPlaybook(snapshot, pageKey)}
     ${renderWorkbenchLearningLoop(snapshot, pageKey)}
     ${renderWorkbenchStrategyReview(snapshot, pageKey)}
     ${renderWorkbenchTradeMonitor(snapshot, pageKey)}

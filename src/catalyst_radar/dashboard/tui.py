@@ -1244,6 +1244,13 @@ def _trading_workbench_snapshot_payload(
         operator_state=operator_state,
         execution_sandbox=execution_sandbox,
     )
+    agent_playbook = _workbench_agent_playbook_payload(
+        trade_readiness_brief=trade_readiness_brief,
+        priority_queue=priority_queue,
+        action_bus=action_bus,
+        execution_sandbox=execution_sandbox,
+        operator_state=operator_state,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1276,6 +1283,7 @@ def _trading_workbench_snapshot_payload(
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
         "trade_readiness_brief": trade_readiness_brief,
+        "agent_playbook": agent_playbook,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -2052,6 +2060,7 @@ def _trading_workbench_snapshot_payload(
                 "source_keys": [
                     "runtime_context",
                     "agent_brief",
+                    "trading_workbench.agent_playbook",
                     "trading_workbench.active_plan.capability_map",
                 ],
             },
@@ -2190,6 +2199,7 @@ def _workbench_agent_brief_module(
             "agent_brief.agents",
             "agent_brief.next_actions",
             "agent_brief.security_checks",
+            "trading_workbench.agent_playbook",
             "trading_workbench.active_plan.capability_map",
         ],
     }
@@ -6191,6 +6201,399 @@ def _workbench_trade_readiness_check(
         "order_submission_allowed": False,
         "live_trading_enabled": False,
         "next_action": next_action,
+    }
+
+
+def _workbench_agent_playbook_payload(
+    *,
+    trade_readiness_brief: Mapping[str, object],
+    priority_queue: Mapping[str, object],
+    action_bus: Mapping[str, object],
+    execution_sandbox: Mapping[str, object],
+    operator_state: Mapping[str, object],
+) -> dict[str, object]:
+    priority_items = {
+        str(row.get("id")): row
+        for row in _rows(priority_queue.get("items"))
+        if row.get("id")
+    }
+    lanes = {
+        str(row.get("id")): row
+        for row in _rows(execution_sandbox.get("lanes"))
+        if row.get("id")
+    }
+    checks = {
+        str(row.get("id")): row
+        for row in _rows(trade_readiness_brief.get("checks"))
+        if row.get("id")
+    }
+    tasks: list[dict[str, object]] = []
+
+    def add_priority_task(item_id: str, *, task_kind: str, source: str) -> None:
+        item = priority_items.get(item_id)
+        if not item:
+            return
+        tasks.append(
+            _workbench_agent_playbook_task(
+                task_id=item_id,
+                rank=len(tasks) + 1,
+                module=str(item.get("module") or "agent"),
+                label=str(item.get("label") or item_id),
+                status=_workbench_agent_playbook_status(item.get("status")),
+                task_kind=task_kind,
+                action_kind=str(item.get("action_kind") or "review"),
+                command=item.get("command"),
+                target_page=item.get("target_page") or item.get("module"),
+                safety=item.get("safety") or "zero_call_navigation",
+                source=source,
+                source_id=item_id,
+                evidence=item.get("reason") or item.get("label") or item_id,
+                next_action=item.get("next_action")
+                or "Review this supervised playbook task.",
+                local_write_allowed=bool(item.get("local_write_allowed")),
+                db_writes_required=item.get("db_writes_required"),
+            )
+        )
+
+    def add_lane_task(
+        lane_id: str,
+        *,
+        task_id: str,
+        label: str,
+        task_kind: str,
+        source: str,
+    ) -> None:
+        lane = lanes.get(lane_id)
+        if not lane:
+            return
+        tasks.append(
+            _workbench_agent_playbook_task(
+                task_id=task_id,
+                rank=len(tasks) + 1,
+                module=str(lane.get("module") or "agent"),
+                label=label,
+                status=_workbench_agent_playbook_status(lane.get("status")),
+                task_kind=task_kind,
+                action_kind=str(lane.get("action_kind") or "backend_command"),
+                command=lane.get("command"),
+                target_page=lane.get("target_page") or lane.get("module"),
+                safety=lane.get("safety") or "local_backend_preview",
+                source=source,
+                source_id=lane_id,
+                evidence=lane.get("evidence") or label,
+                next_action=lane.get("next_action")
+                or "Review this supervised execution lane.",
+                local_write_allowed=bool(lane.get("local_write_allowed")),
+                requires_arm_before_run=bool(lane.get("requires_arm_before_run")),
+                db_writes_required=lane.get("db_writes_required"),
+            )
+        )
+
+    add_priority_task(
+        "priority-stage-decision-review",
+        task_kind="readiness_gate",
+        source="trading_workbench.priority_queue.decision-review",
+    )
+    add_priority_task(
+        "priority-stage-trade-planning",
+        task_kind="planning_gate",
+        source="trading_workbench.priority_queue.trade-planning",
+    )
+    add_priority_task(
+        "priority-stage-risk-approval",
+        task_kind="risk_gate",
+        source="trading_workbench.priority_queue.risk-approval",
+    )
+    add_priority_task(
+        "priority-action-agent-preview",
+        task_kind="safe_preview",
+        source="trading_workbench.action_bus.agent-preview",
+    )
+    add_priority_task(
+        "priority-action-paper-decision-preview",
+        task_kind="safe_preview",
+        source="trading_workbench.action_bus.paper-decision-preview",
+    )
+    add_priority_task(
+        "priority-action-order-ticket-preview",
+        task_kind="safe_preview",
+        source="trading_workbench.action_bus.order-ticket-preview",
+    )
+    add_lane_task(
+        "paper-record",
+        task_id="execution-lane-paper-record",
+        label="Guarded paper record",
+        task_kind="guarded_local_write",
+        source="trading_workbench.execution_sandbox.paper-record",
+    )
+    add_lane_task(
+        "ticket-record",
+        task_id="execution-lane-ticket-record",
+        label="Guarded ticket record",
+        task_kind="guarded_local_write",
+        source="trading_workbench.execution_sandbox.ticket-record",
+    )
+
+    monitoring_check = checks.get("monitoring-readiness")
+    if monitoring_check:
+        tasks.append(
+            _workbench_agent_playbook_task(
+                task_id="readiness-monitoring",
+                rank=len(tasks) + 1,
+                module=str(monitoring_check.get("module") or "portfolio"),
+                label=str(monitoring_check.get("label") or "Monitoring readiness"),
+                status=_workbench_agent_playbook_status(monitoring_check.get("status")),
+                task_kind=str(monitoring_check.get("gate_kind") or "monitor"),
+                action_kind="page",
+                command="portfolio",
+                target_page="portfolio",
+                safety="zero_call_navigation",
+                source="trading_workbench.trade_readiness_brief.monitoring-readiness",
+                source_id="monitoring-readiness",
+                evidence=monitoring_check.get("evidence")
+                or monitoring_check.get("finding")
+                or "monitoring readiness",
+                next_action=monitoring_check.get("next_action")
+                or "Review monitoring before changing position state.",
+            )
+        )
+    add_lane_task(
+        "agent-execute",
+        task_id="execution-lane-agent-execute",
+        label="Agent execute boundary",
+        task_kind="agent_boundary",
+        source="trading_workbench.execution_sandbox.agent-execute",
+    )
+
+    # Fall back to the action bus if the current fixture has no priority queue.
+    if not tasks:
+        for action in _rows(action_bus.get("actions"))[:8]:
+            action_id = str(action.get("id") or "").strip()
+            if not action_id:
+                continue
+            action_kind = str(action.get("action_kind") or "backend_command")
+            task_kind = (
+                "agent_boundary"
+                if action_kind == "boundary"
+                else "guarded_local_write"
+                if action.get("local_write_allowed")
+                else "safe_preview"
+                if action_kind == "backend_command"
+                else "review"
+            )
+            tasks.append(
+                _workbench_agent_playbook_task(
+                    task_id=f"action-{action_id}",
+                    rank=len(tasks) + 1,
+                    module=str(action.get("module") or "agent"),
+                    label=str(action.get("label") or action_id),
+                    status=_workbench_agent_playbook_status(action.get("status")),
+                    task_kind=task_kind,
+                    action_kind=action_kind,
+                    command=action.get("command"),
+                    target_page=action.get("target_page") or action.get("module"),
+                    safety=action.get("safety") or "local_backend_preview",
+                    source=f"trading_workbench.action_bus.{action_id}",
+                    source_id=action_id,
+                    evidence=action.get("source") or action_id,
+                    next_action=action.get("next_action")
+                    or "Review this supervised action.",
+                    local_write_allowed=bool(action.get("local_write_allowed")),
+                    db_writes_required=action.get("db_writes_required"),
+                )
+            )
+
+    blocked_count = sum(1 for row in tasks if row.get("status") == "blocked")
+    approval_required_count = sum(
+        1 for row in tasks if row.get("status") == "approval_required"
+    )
+    disabled_count = sum(1 for row in tasks if row.get("status") == "disabled")
+    ready_count = sum(1 for row in tasks if row.get("status") == "ready")
+    primary_task = next(
+        (
+            row
+            for row in tasks
+            if row.get("status") in {"blocked", "approval_required"}
+        ),
+        tasks[0] if tasks else {},
+    )
+    handoff = _mapping(trade_readiness_brief.get("agent_handoff"))
+    ticker = _first_value(
+        trade_readiness_brief.get("ticker"),
+        operator_state.get("ticker"),
+        execution_sandbox.get("ticker"),
+    )
+    decision_card_id = _first_value(
+        trade_readiness_brief.get("decision_card_id"),
+        operator_state.get("decision_card_id"),
+        execution_sandbox.get("decision_card_id"),
+    )
+    status = (
+        "blocked"
+        if blocked_count
+        else "approval_required"
+        if approval_required_count
+        else "ready"
+        if ready_count
+        else "empty"
+    )
+    return {
+        "schema_version": "trading-workbench-agent-playbook-v1",
+        "status": status,
+        "source_tool": trade_readiness_brief.get("source_tool") or "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "playbook_id": (
+            f"agent-playbook-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "operating_mode": "supervised_agent_playbook",
+        "primary_task_id": primary_task.get("id"),
+        "primary_blocker": (
+            trade_readiness_brief.get("primary_blocker")
+            or primary_task.get("evidence")
+            or primary_task.get("label")
+        ),
+        "primary_next_action": primary_task.get("next_action")
+        or trade_readiness_brief.get("primary_next_action")
+        or "Review supervised agent playbook tasks.",
+        "primary_action": {
+            "task_id": primary_task.get("id"),
+            "module": primary_task.get("module"),
+            "command": primary_task.get("command"),
+            "target_page": primary_task.get("target_page"),
+            "safety": primary_task.get("safety"),
+            "requires_arm_before_run": bool(
+                primary_task.get("requires_arm_before_run")
+            ),
+            "can_execute_without_approval": bool(
+                primary_task.get("can_execute_without_approval")
+            ),
+        },
+        "agent_handoff": {
+            "next_page": primary_task.get("target_page")
+            or handoff.get("next_page")
+            or "agent",
+            "next_command": primary_task.get("command")
+            or handoff.get("next_command")
+            or "agent",
+            "safety": primary_task.get("safety")
+            or handoff.get("safety")
+            or "zero_call_navigation",
+            "can_execute_without_approval": bool(
+                primary_task.get("can_execute_without_approval")
+            ),
+            "local_write_requires_arm": bool(
+                primary_task.get("requires_arm_before_run")
+            )
+            or bool(handoff.get("local_write_requires_arm")),
+        },
+        "permissions": {
+            "provider_calls_for_browsing": 0,
+            "external_calls_allowed": False,
+            "external_calls_made": 0,
+            "local_write_requires_arm": True,
+            "autonomous_execution": "disabled",
+            "broker_order_submission": "disabled",
+            "order_submission_allowed": False,
+            "live_trading_enabled": False,
+            "strategy_update_allowed": bool(
+                trade_readiness_brief.get("strategy_update_allowed")
+            ),
+        },
+        "tasks": tasks,
+        "metrics": {
+            "task_count": len(tasks),
+            "ready_task_count": ready_count,
+            "blocked_task_count": blocked_count,
+            "approval_required_count": approval_required_count,
+            "disabled_task_count": disabled_count,
+            "safe_preview_task_count": sum(
+                1 for row in tasks if row.get("task_kind") == "safe_preview"
+            ),
+            "guarded_write_task_count": sum(
+                1 for row in tasks if row.get("task_kind") == "guarded_local_write"
+            ),
+            "zero_call_navigation_count": sum(
+                1 for row in tasks if row.get("safety") == "zero_call_navigation"
+            ),
+            "external_boundary_count": sum(
+                1
+                for row in tasks
+                if row.get("safety")
+                in {"external_boundary", "agent_execution_boundary"}
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_agent_playbook_status(value: object) -> str:
+    status = str(value or "unknown").strip().lower()
+    if status == "enabled":
+        return "ready"
+    return status or "unknown"
+
+
+def _workbench_agent_playbook_task(
+    *,
+    task_id: str,
+    rank: int,
+    module: str,
+    label: str,
+    status: str,
+    task_kind: str,
+    action_kind: str,
+    command: object,
+    target_page: object,
+    safety: object,
+    source: str,
+    source_id: str,
+    evidence: object,
+    next_action: object,
+    local_write_allowed: bool = False,
+    requires_arm_before_run: bool = False,
+    db_writes_required: object = 0,
+) -> dict[str, object]:
+    safe_preview = str(safety or "") == "local_backend_preview"
+    zero_call_navigation = str(safety or "") == "zero_call_navigation"
+    can_execute = (
+        status == "ready"
+        and not local_write_allowed
+        and action_kind != "boundary"
+        and (safe_preview or zero_call_navigation)
+    )
+    return {
+        "id": task_id,
+        "rank": rank,
+        "module": module,
+        "label": label,
+        "status": status,
+        "task_kind": task_kind,
+        "action_kind": action_kind,
+        "command": str(command or "").strip() or None,
+        "target_page": str(target_page or module).strip() or module,
+        "safety": str(safety or "zero_call_navigation"),
+        "source": source,
+        "source_id": source_id,
+        "evidence": evidence,
+        "next_action": next_action,
+        "local_write_allowed": local_write_allowed,
+        "requires_arm_before_run": requires_arm_before_run or local_write_allowed,
+        "can_execute_without_approval": can_execute,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_required": _first_nonnegative_int(db_writes_required),
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
     }
 
 

@@ -623,6 +623,30 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "trade_readiness_broker_handoff_allowed: Boolean(",
         "trade_readiness_strategy_update_allowed: Boolean(",
         "trade_readiness_monitoring_ready: Boolean(",
+        "function workbenchAgentPlaybook",
+        "function workbenchAgentPlaybookForPage",
+        "function renderWorkbenchAgentPlaybook",
+        "function agentPlaybookSummary",
+        "function agentPlaybookApprovalLabel",
+        "${renderWorkbenchAgentPlaybook(snapshot, 'overview')}",
+        "${renderWorkbenchAgentPlaybook(snapshot, pageKey)}",
+        'data-testid="workbench-agent-playbook"',
+        'data-testid="agent-playbook-task"',
+        "data-agent-playbook-status=\"${escapeHtml(playbook.status || 'unknown')}\"",
+        "data-agent-playbook-task-status=\"${escapeHtml(task.status || 'unknown')}\"",
+        "data-agent-playbook-task-kind=\"${escapeHtml(task.task_kind || 'unknown')}\"",
+        "data-agent-playbook-task-module=\"${escapeHtml(task.module || 'unknown')}\"",
+        "agent_playbook_status: compact(",
+        "agent_playbook_ticker: compact(",
+        "agent_playbook_primary_task_id: compact(",
+        "agent_playbook_next_page: compact(",
+        "agent_playbook_next_command: compact(",
+        "agent_playbook_task_count: Number(",
+        "agent_playbook_blocked_task_count: Number(",
+        "agent_playbook_approval_required_count: Number(",
+        "agent_playbook_disabled_task_count: Number(",
+        "agent_playbook_safe_preview_task_count: Number(",
+        "agent_playbook_guarded_write_task_count: Number(",
         "function workbenchLearningLoop",
         "function workbenchLearningLoopForPage",
         "function renderWorkbenchLearningLoop",
@@ -793,6 +817,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".pretrade-compliance-preview" in styles
     assert ".workbench-trade-readiness-brief" in styles
     assert ".trade-readiness-preview" in styles
+    assert ".workbench-agent-playbook" in styles
+    assert ".agent-playbook-preview" in styles
     assert ".workbench-learning-loop" in styles
     assert ".learning-loop-preview" in styles
     assert ".workbench-strategy-review" in styles
