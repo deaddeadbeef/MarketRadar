@@ -741,6 +741,14 @@ tr[data-testid="queue-row"]:focus-visible td {
   margin-top: 12px;
 }
 
+.workbench-workflow-map {
+  margin-top: 12px;
+}
+
+.workflow-map-preview table {
+  min-width: 980px;
+}
+
 .action-bus-preview table {
   min-width: 980px;
 }

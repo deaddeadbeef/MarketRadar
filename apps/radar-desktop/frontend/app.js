@@ -371,6 +371,20 @@ function workbenchActionBus(snapshot = state.snapshot || {}) {
   return bus && typeof bus === 'object' ? bus : { actions: [] };
 }
 
+function workbenchWorkflowMap(snapshot = state.snapshot || {}) {
+  const workflow = tradingWorkbenchSnapshot(snapshot)?.workflow_map;
+  return workflow && typeof workflow === 'object' ? workflow : { stages: [] };
+}
+
+function workbenchWorkflowStagesForPage(pageKey, snapshot = state.snapshot || {}) {
+  const workflow = workbenchWorkflowMap(snapshot);
+  const stages = Array.isArray(workflow.stages) ? workflow.stages : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return stages;
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return stages.filter((stage) => keys.has(stage?.module));
+}
+
 function workbenchActionsForPage(pageKey, snapshot = state.snapshot || {}) {
   const bus = workbenchActionBus(snapshot);
   const actions = Array.isArray(bus.actions) ? bus.actions : [];
@@ -805,6 +819,9 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       live_trading_enabled: Boolean(platformBoundary().live_trading_enabled),
       modules: platformModules().map((module) => module.key),
       action_count: Number(workbenchActionBus(snapshot)?.metrics?.action_count || 0),
+      workflow_status: compact(workbenchWorkflowMap(snapshot)?.status, 'unknown'),
+      active_stage_id: compact(workbenchWorkflowMap(snapshot)?.active_stage_id, 'none'),
+      stage_count: Number(workbenchWorkflowMap(snapshot)?.stage_count || 0),
     },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
@@ -902,6 +919,7 @@ function metric(label, value, caption) {
 function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
+    ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
     ${renderWorkbenchActionBus(snapshot, 'overview')}
     ${renderLiveTradingBoundary()}
     <section class="panel" data-testid="first-blocker">
@@ -969,6 +987,59 @@ function platformToolCard(module) {
       </div>
     </article>
   `;
+}
+
+function renderWorkbenchWorkflowMap(snapshot, pageKey = 'overview') {
+  const workflow = workbenchWorkflowMap(snapshot);
+  const stages = workbenchWorkflowStagesForPage(pageKey, snapshot);
+  if (!stages.length) return '';
+  return `
+    <section
+      class="panel wide workbench-workflow-map"
+      data-testid="workbench-workflow-map"
+      data-workflow-status="${escapeHtml(workflow.status || 'unknown')}"
+      data-active-stage="${escapeHtml(workflow.active_stage_id || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Workflow Map</h2>
+          <p>${escapeHtml(workflowMapSummary(workflow))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(workflow.status || 'unknown'))}</span>
+      </div>
+      <div class="table-wrap workflow-map-preview">
+        <table aria-label="Supervised trading workflow map">
+          <thead><tr><th>Stage</th><th>Module</th><th>Status</th><th>Evidence</th><th>Action</th><th>Next</th></tr></thead>
+          <tbody>
+            ${stages.map((stage) => `
+              <tr
+                data-testid="workbench-workflow-stage"
+                data-stage="${escapeHtml(stage.id || '')}"
+                data-stage-status="${escapeHtml(stage.status || 'unknown')}"
+              >
+                <td data-label="Stage">${escapeHtml(compact(stage.label, '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(stage.module || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(stage.status || '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(stage.evidence_count, '0'))}</td>
+                <td data-label="Action">${renderWorkbenchActionControl(stage.action || {})}</td>
+                <td data-label="Next">${escapeHtml(compact(stage.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function workflowMapSummary(workflow) {
+  return [
+    `${compact(workflow.stage_count, '0')} stages`,
+    `${compact(workflow.blocked_stage_count, '0')} blocked`,
+    `${compact(workflow.disabled_stage_count, '0')} disabled`,
+    'MarketRadar to review to supervised paper workflow',
+    'live trading disabled',
+  ].join('; ');
 }
 
 function renderWorkbenchActionBus(snapshot, pageKey = 'overview') {
@@ -1086,6 +1157,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
         <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(snapshot.external_calls_made, '0'))}</b></div>
       </div>
     </section>
+    ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
     ${renderWorkbenchActionBus(snapshot, pageKey)}
     ${renderWorkbenchModuleData(moduleData)}
     ${renderLiveTradingBoundary()}

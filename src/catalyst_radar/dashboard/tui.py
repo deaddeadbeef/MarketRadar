@@ -1098,6 +1098,18 @@ def _trading_workbench_snapshot_payload(
             for index, action in enumerate(_rows(_mapping(active_plan).get("next_actions")))
         ],
     )
+    workflow_map = _workbench_workflow_map_payload(
+        action_bus=action_bus,
+        queue_rows=queue_rows,
+        candidate_module_rows=candidate_module_rows,
+        priced_in_answer=priced_in_answer,
+        active_plan=active_plan,
+        risk_approval_rows=risk_approval_rows,
+        paper_trade_rows=paper_trade_rows,
+        broker_ticket_rows=broker_ticket_rows,
+        trade_lifecycle_rows=trade_lifecycle_rows,
+        validation_result_rows=validation_result_rows,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1111,6 +1123,7 @@ def _trading_workbench_snapshot_payload(
             "provider_calls_for_browsing": 0,
         },
         "action_bus": action_bus,
+        "workflow_map": workflow_map,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -2679,6 +2692,343 @@ def _workbench_action_bus_payload(
         "live_trading_enabled": False,
         "actions": actions,
     }
+
+
+def _workbench_workflow_map_payload(
+    *,
+    action_bus: Mapping[str, object],
+    queue_rows: Sequence[Mapping[str, object]],
+    candidate_module_rows: Sequence[Mapping[str, object]],
+    priced_in_answer: Mapping[str, object],
+    active_plan: Mapping[str, object],
+    risk_approval_rows: Sequence[Mapping[str, object]],
+    paper_trade_rows: Sequence[Mapping[str, object]],
+    broker_ticket_rows: Sequence[Mapping[str, object]],
+    trade_lifecycle_rows: Sequence[Mapping[str, object]],
+    validation_result_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    actions_by_id = {
+        str(row.get("id")): row
+        for row in _rows(action_bus.get("actions"))
+        if row.get("id")
+    }
+    paper_gate = next(
+        (
+            row
+            for row in risk_approval_rows
+            if str(row.get("gate") or "") == "paper_trade"
+        ),
+        {},
+    )
+    live_gate = next(
+        (
+            row
+            for row in risk_approval_rows
+            if str(row.get("gate") or "") == "live_submission"
+        ),
+        {},
+    )
+    decision_ready = bool(
+        priced_in_answer.get("manual_investment_decision_ready")
+        or priced_in_answer.get("can_make_investment_decision")
+        or priced_in_answer.get("priced_in_answer_ready")
+    )
+    stages = [
+        _workbench_workflow_stage(
+            "market-scout",
+            label="Market Scout",
+            module="market-radar",
+            status="ready" if queue_rows else "blocked",
+            action=_workbench_workflow_page_action(
+                module="market-radar",
+                label="Open Market Radar",
+                page="market-radar",
+            ),
+            evidence_count=len(queue_rows),
+            source_key="trading_workbench.modules.market-radar.rows",
+            next_action=(
+                "Open the scouted queue before promoting a trade idea."
+                if queue_rows
+                else "Run MarketRadar before building the supervised workflow."
+            ),
+        ),
+        _workbench_workflow_stage(
+            "candidate-review",
+            label="Candidate Review",
+            module="candidates",
+            status="ready" if candidate_module_rows else "blocked",
+            action=_workbench_workflow_page_action(
+                module="candidates",
+                label="Review Candidates",
+                page="candidates",
+            ),
+            evidence_count=len(candidate_module_rows),
+            source_key="trading_workbench.modules.candidates.rows",
+            next_action=(
+                "Review the candidate evidence packet before planning."
+                if candidate_module_rows
+                else "Create candidate evidence before planning a trade."
+            ),
+        ),
+        _workbench_workflow_stage(
+            "decision-review",
+            label="Decision Review",
+            module="review",
+            status="ready" if decision_ready else "blocked",
+            action=_workbench_workflow_page_action(
+                module="review",
+                label="Open Decision Review",
+                page="review",
+            ),
+            evidence_count=_first_nonnegative_int(
+                _mapping(priced_in_answer.get("counts")).get("decision_ready_rows"),
+                len(
+                    [
+                        row
+                        for row in candidate_module_rows
+                        if bool(row.get("decision_ready"))
+                    ]
+                ),
+            ),
+            source_key="trading_workbench.modules.review",
+            next_action=priced_in_answer.get("next_action")
+            or "Resolve decision-readiness blockers before planning.",
+        ),
+        _workbench_workflow_stage(
+            "trade-planning",
+            label="Trade Planning",
+            module="trade-planner",
+            status=(
+                "blocked"
+                if active_plan.get("status") in {None, "missing", "blocked"}
+                else "ready"
+            ),
+            action=_workbench_workflow_page_action(
+                module="trade-planner",
+                label="Open Trade Planner",
+                page="trade-planner",
+            ),
+            evidence_count=0
+            if active_plan.get("status") in {None, "missing"}
+            else 1,
+            source_key="trading_workbench.active_plan",
+            next_action=active_plan.get("next_action")
+            or "Build a supervised trade plan from a reviewed decision card.",
+        ),
+        _workbench_workflow_stage(
+            "risk-approval",
+            label="Risk Approval",
+            module="risk-desk",
+            status="ready" if paper_gate.get("approved") else "blocked",
+            action=actions_by_id.get("risk-desk-review")
+            or _workbench_workflow_page_action(
+                module="risk-desk",
+                label="Review Risk Desk",
+                page="risk-desk",
+            ),
+            evidence_count=len(risk_approval_rows),
+            source_key="trading_workbench.modules.risk-desk.risk_approval_rows",
+            next_action=paper_gate.get("next_action")
+            or "Resolve paper-trade risk blocks before paper review.",
+        ),
+        _workbench_workflow_stage(
+            "paper-trading",
+            label="Paper Trading",
+            module="paper-trading",
+            status="ready" if paper_trade_rows else "blocked",
+            action=actions_by_id.get("paper-decision-preview")
+            or _workbench_workflow_command_action(
+                module="paper-trading",
+                label="Preview Paper Decision",
+                command="paper-decision preview",
+            ),
+            evidence_count=len(paper_trade_rows),
+            source_key="trading_workbench.modules.paper-trading.paper_trades",
+            next_action=(
+                "Review paper trade evidence and execution audit."
+                if paper_trade_rows
+                else "Preview the supervised paper decision before recording."
+            ),
+        ),
+        _workbench_workflow_stage(
+            "broker-boundary",
+            label="Broker Boundary",
+            module="broker",
+            status="disabled",
+            action=actions_by_id.get("broker-boundary-review")
+            or _workbench_workflow_page_action(
+                module="broker",
+                label="Review Broker Boundary",
+                page="broker",
+            ),
+            evidence_count=len(broker_ticket_rows),
+            source_key="trading_workbench.modules.broker.order_tickets",
+            next_action=live_gate.get("next_action")
+            or "Live broker submission remains disabled.",
+        ),
+        _workbench_workflow_stage(
+            "journal-validation",
+            label="Journal And Validation",
+            module="journal",
+            status="ready"
+            if trade_lifecycle_rows or validation_result_rows
+            else "blocked",
+            action=_workbench_workflow_page_action(
+                module="journal",
+                label="Open Journal",
+                page="journal",
+            ),
+            evidence_count=len(trade_lifecycle_rows) + len(validation_result_rows),
+            source_key="trading_workbench.modules.journal",
+            next_action=(
+                "Review lifecycle, journal, and validation evidence."
+                if trade_lifecycle_rows or validation_result_rows
+                else "Record local review evidence before trusting the workflow."
+            ),
+        ),
+        _workbench_workflow_stage(
+            "agent-review",
+            label="Agent Review",
+            module="agent",
+            status="ready",
+            action=actions_by_id.get("agent-preview")
+            or _workbench_workflow_command_action(
+                module="agent",
+                label="Preview Agent Review",
+                command="agent",
+            ),
+            evidence_count=1,
+            source_key="trading_workbench.modules.agent",
+            next_action="Preview agent reasoning; autonomous execution remains disabled.",
+        ),
+    ]
+    active_stage_id = next(
+        (
+            str(stage["id"])
+            for stage in stages
+            if stage.get("status") == "blocked"
+        ),
+        str(stages[-1]["id"]) if stages else None,
+    )
+    return {
+        "schema_version": "trading-workbench-workflow-map-v1",
+        "status": "blocked"
+        if any(stage.get("status") == "blocked" for stage in stages)
+        else "ready",
+        "active_stage_id": active_stage_id,
+        "stage_count": len(stages),
+        "blocked_stage_count": sum(
+            1 for stage in stages if stage.get("status") == "blocked"
+        ),
+        "disabled_stage_count": sum(
+            1 for stage in stages if stage.get("status") == "disabled"
+        ),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "stages": stages,
+        "transitions": _workbench_workflow_transitions(stages),
+    }
+
+
+def _workbench_workflow_stage(
+    stage_id: str,
+    *,
+    label: str,
+    module: str,
+    status: str,
+    action: Mapping[str, object],
+    evidence_count: int,
+    source_key: str,
+    next_action: object,
+) -> dict[str, object]:
+    return {
+        "id": stage_id,
+        "label": label,
+        "module": module,
+        "status": status,
+        "action": dict(action),
+        "evidence_count": evidence_count,
+        "source_key": source_key,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": next_action,
+    }
+
+
+def _workbench_workflow_page_action(
+    *,
+    module: str,
+    label: str,
+    page: str,
+) -> dict[str, object]:
+    return {
+        "id": f"{module}-workflow-page",
+        "module": module,
+        "label": label,
+        "action_kind": "page",
+        "command": page,
+        "target_page": page,
+        "status": "enabled",
+        "safety": "zero_call_navigation",
+        "local_write_allowed": False,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_workflow_command_action(
+    *,
+    module: str,
+    label: str,
+    command: str,
+) -> dict[str, object]:
+    return {
+        "id": f"{module}-workflow-command",
+        "module": module,
+        "label": label,
+        "action_kind": "backend_command",
+        "command": command,
+        "target_page": module,
+        "status": "enabled",
+        "safety": "local_backend_preview",
+        "local_write_allowed": False,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_workflow_transitions(
+    stages: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    transitions = []
+    for previous, current in zip(stages, stages[1:], strict=False):
+        blocked = str(previous.get("status") or "") == "blocked"
+        disabled = str(current.get("status") or "") == "disabled"
+        transitions.append(
+            {
+                "from_stage": previous.get("id"),
+                "to_stage": current.get("id"),
+                "status": "disabled" if disabled else "blocked" if blocked else "open",
+                "external_calls_made": 0,
+                "broker_order_submitted": False,
+                "order_submission_allowed": False,
+            }
+        )
+    return transitions
 
 
 def _workbench_queue_row(

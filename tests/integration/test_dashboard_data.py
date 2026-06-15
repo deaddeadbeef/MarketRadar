@@ -534,6 +534,64 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         row["broker_order_submitted"] is False for row in action_bus["actions"]
     )
 
+    workflow_map = workbench["workflow_map"]
+    assert workflow_map["schema_version"] == "trading-workbench-workflow-map-v1"
+    assert workflow_map["status"] == "blocked"
+    assert workflow_map["active_stage_id"] == "decision-review"
+    assert workflow_map["stage_count"] == 9
+    assert workflow_map["blocked_stage_count"] == 3
+    assert workflow_map["disabled_stage_count"] == 1
+    assert workflow_map["external_calls_made"] == 0
+    assert workflow_map["db_writes_made"] == 0
+    assert workflow_map["broker_order_submitted"] is False
+    assert workflow_map["order_submission_allowed"] is False
+    assert workflow_map["live_trading_enabled"] is False
+    workflow_stages = {row["id"]: row for row in workflow_map["stages"]}
+    assert list(workflow_stages) == [
+        "market-scout",
+        "candidate-review",
+        "decision-review",
+        "trade-planning",
+        "risk-approval",
+        "paper-trading",
+        "broker-boundary",
+        "journal-validation",
+        "agent-review",
+    ]
+    assert workflow_stages["market-scout"]["module"] == "market-radar"
+    assert workflow_stages["market-scout"]["status"] == "ready"
+    assert workflow_stages["market-scout"]["evidence_count"] == 2
+    assert workflow_stages["market-scout"]["action"]["action_kind"] == "page"
+    assert workflow_stages["market-scout"]["action"]["target_page"] == "market-radar"
+    assert workflow_stages["decision-review"]["status"] == "blocked"
+    assert workflow_stages["decision-review"]["action"]["target_page"] == "review"
+    assert workflow_stages["trade-planning"]["status"] == "blocked"
+    assert workflow_stages["trade-planning"]["action"]["target_page"] == "trade-planner"
+    assert workflow_stages["risk-approval"]["status"] == "blocked"
+    assert workflow_stages["risk-approval"]["action"]["target_page"] == "risk-desk"
+    assert workflow_stages["paper-trading"]["status"] == "ready"
+    assert workflow_stages["paper-trading"]["action"]["command"] == "paper-decision preview"
+    assert workflow_stages["broker-boundary"]["status"] == "disabled"
+    assert workflow_stages["broker-boundary"]["action"]["target_page"] == "broker"
+    assert workflow_stages["agent-review"]["status"] == "ready"
+    assert workflow_stages["agent-review"]["action"]["command"] == "agent"
+    assert all(row["external_calls_made"] == 0 for row in workflow_map["stages"])
+    assert all(
+        row["broker_order_submitted"] is False for row in workflow_map["stages"]
+    )
+    assert all(
+        row["order_submission_allowed"] is False for row in workflow_map["stages"]
+    )
+    assert workflow_map["transitions"][0] == {
+        "from_stage": "market-scout",
+        "to_stage": "candidate-review",
+        "status": "open",
+        "external_calls_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+    }
+    assert workflow_map["transitions"][5]["status"] == "disabled"
+
     modules = workbench["modules"]
     assert {
         "portfolio",

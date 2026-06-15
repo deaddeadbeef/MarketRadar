@@ -76,3 +76,14 @@ engine, but it is not the whole product frame.
   backend-command, page-route, local-write, and boundary handling.
 - Preserve zero provider calls, no live broker submission, and disabled
   autonomous execution.
+
+## Current Slice: Workflow Map
+
+- Add a supervised workflow-map snapshot contract that connects MarketRadar
+  scouting to candidate review, decision review, trade planning, risk approval,
+  paper trading, broker boundary, journal/validation, and agent review.
+- Render the workflow map in the Tauri Command Center and as a module-filtered
+  stage view on relevant platform pages.
+- Reuse the shared action dispatcher for workflow stage controls.
+- Preserve the same decision-support boundary: zero provider calls from
+  browsing, no live broker submission, and no autonomous execution.

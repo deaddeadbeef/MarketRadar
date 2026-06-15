@@ -81,11 +81,20 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderTradingWorkbenchOverview",
         "function tradingWorkbenchSnapshot",
         "function workbenchActionBus",
+        "function workbenchWorkflowMap",
+        "function workbenchWorkflowStagesForPage",
         "function workbenchActionsForPage",
         "function tradingWorkbenchModule",
         "trading_workbench",
         "function compactMapping",
         'data-testid="trading-workbench-overview"',
+        "function renderWorkbenchWorkflowMap",
+        "function workflowMapSummary",
+        'data-testid="workbench-workflow-map"',
+        'data-testid="workbench-workflow-stage"',
+        "data-workflow-status",
+        "data-active-stage",
+        "data-stage-status",
         "function renderWorkbenchActionBus",
         "function actionBusSummary",
         "function renderWorkbenchActionControl",
@@ -374,6 +383,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "primary_tool: platformManifest().primary_tool",
         "live_trading_enabled: Boolean(platformBoundary().live_trading_enabled)",
         "action_count: Number(workbenchActionBus(snapshot)?.metrics?.action_count || 0)",
+        "workflow_status: compact(workbenchWorkflowMap(snapshot)?.status, 'unknown')",
+        "active_stage_id: compact(workbenchWorkflowMap(snapshot)?.active_stage_id, 'none')",
+        "stage_count: Number(workbenchWorkflowMap(snapshot)?.stage_count || 0)",
     ):
         assert text in source
 
@@ -427,6 +439,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
 
     assert ".platform-tools" in styles
     assert ".platform-tool-card" in styles
+    assert ".workbench-workflow-map" in styles
+    assert ".workflow-map-preview" in styles
     assert ".workbench-action-bus" in styles
     assert ".action-bus-preview" in styles
     assert ".workbench-action-button" in styles
