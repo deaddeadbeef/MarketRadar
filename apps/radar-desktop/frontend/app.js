@@ -628,6 +628,19 @@ function workbenchTradeMonitorForPage(pageKey, snapshot = state.snapshot || {}) 
   return pages.has(pageKey) ? items : [];
 }
 
+function workbenchPerformanceAttribution(snapshot = state.snapshot || {}) {
+  const attribution = tradingWorkbenchSnapshot(snapshot)?.performance_attribution;
+  return attribution && typeof attribution === 'object' ? attribution : { attribution_rows: [] };
+}
+
+function workbenchPerformanceAttributionForPage(pageKey, snapshot = state.snapshot || {}) {
+  const attribution = workbenchPerformanceAttribution(snapshot);
+  const rows = Array.isArray(attribution.attribution_rows) ? attribution.attribution_rows : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return rows;
+  const pages = new Set(['portfolio', 'paper-trading', 'backtest', 'validation', 'journal', 'agent']);
+  return pages.has(pageKey) ? rows : [];
+}
+
 function workbenchRiskEnvelope(snapshot = state.snapshot || {}) {
   const envelope = tradingWorkbenchSnapshot(snapshot)?.risk_envelope;
   return envelope && typeof envelope === 'object' ? envelope : { checks: [] };
@@ -1268,6 +1281,14 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       trade_monitor_open_order_count: Number(workbenchTradeMonitor(snapshot)?.metrics?.open_order_count || 0),
       trade_monitor_primary_trigger_id: compact(workbenchTradeMonitor(snapshot)?.alert_watch?.primary_trigger_id, 'none'),
       trade_monitor_exit_update_allowed: Boolean(workbenchTradeMonitor(snapshot)?.exit_update_allowed),
+      performance_attribution_status: compact(workbenchPerformanceAttribution(snapshot)?.status, 'unknown'),
+      performance_attribution_ticker: compact(workbenchPerformanceAttribution(snapshot)?.ticker, 'none'),
+      performance_attribution_stage: compact(workbenchPerformanceAttribution(snapshot)?.performance_stage, 'unlinked'),
+      performance_attribution_row_count: Number(workbenchPerformanceAttribution(snapshot)?.metrics?.attribution_row_count || 0),
+      performance_attribution_computed_outcome_count: Number(workbenchPerformanceAttribution(snapshot)?.metrics?.computed_outcome_count || 0),
+      performance_attribution_avg_return_20d: compact(workbenchPerformanceAttribution(snapshot)?.metrics?.avg_return_20d, 'none'),
+      performance_attribution_spy_relative_20d: compact(workbenchPerformanceAttribution(snapshot)?.metrics?.avg_spy_relative_return_20d, 'none'),
+      performance_attribution_strategy_update_allowed: Boolean(workbenchPerformanceAttribution(snapshot)?.strategy_update_allowed),
       risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown'),
       risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none'),
       risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
@@ -1392,6 +1413,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchLearningLoop(snapshot, 'overview')}
     ${renderWorkbenchStrategyReview(snapshot, 'overview')}
     ${renderWorkbenchTradeMonitor(snapshot, 'overview')}
+    ${renderWorkbenchPerformanceAttribution(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
@@ -2840,6 +2862,81 @@ function tradeMonitorSummary(monitor) {
   ].join('; ');
 }
 
+function renderWorkbenchPerformanceAttribution(snapshot, pageKey = 'overview') {
+  const attribution = workbenchPerformanceAttribution(snapshot);
+  const rows = workbenchPerformanceAttributionForPage(pageKey, snapshot);
+  const metrics = attribution.metrics || {};
+  const summary = attribution.attribution || {};
+  const commands = attribution.commands || {};
+  if (!rows.length) return '';
+  return `
+    <section
+      class="panel wide workbench-performance-attribution"
+      data-testid="workbench-performance-attribution"
+      data-performance-attribution-status="${escapeHtml(attribution.status || 'unknown')}"
+      data-performance-attribution-stage="${escapeHtml(attribution.performance_stage || 'unlinked')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Performance Attribution</h2>
+          <p>${escapeHtml(performanceAttributionSummary(attribution))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(attribution.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Stage</span><b>${escapeHtml(catalogLabel(attribution.performance_stage || 'unlinked'))}</b></div>
+        <div class="kv"><span>Outcome</span><b>${escapeHtml(compact(summary.outcome_id, 'none'))}</b></div>
+        <div class="kv"><span>20D return</span><b>${escapeHtml(text(metrics.avg_return_20d))}</b></div>
+        <div class="kv"><span>SPY relative</span><b>${escapeHtml(text(metrics.avg_spy_relative_return_20d))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Hit rate</span><b>${escapeHtml(text(metrics.hit_rate_20d))}</b></div>
+        <div class="kv"><span>MAE</span><b>${escapeHtml(text(metrics.avg_max_adverse_excursion))}</b></div>
+        <div class="kv"><span>MFE</span><b>${escapeHtml(text(metrics.avg_max_favorable_excursion))}</b></div>
+        <div class="kv"><span>Update</span><b>${escapeHtml(attribution.strategy_update_allowed ? 'allowed' : 'disabled')}</b></div>
+      </div>
+      <div class="plan-command-list performance-attribution-commands">
+        <div><span>Paper</span><code>${escapeHtml(compact(commands.paper, 'paper'))}</code></div>
+        <div><span>Validation</span><code>${escapeHtml(compact(commands.validation, 'validation'))}</code></div>
+        <div><span>Journal</span><code>${escapeHtml(compact(commands.journal, 'journal'))}</code></div>
+        <div><span>Update boundary</span><code>${escapeHtml(compact(commands.strategy_update_boundary, 'agent execute'))}</code></div>
+      </div>
+      <div class="table-wrap performance-attribution-preview">
+        <table aria-label="Workbench performance attribution">
+          <thead><tr><th>Evidence</th><th>Scope</th><th>Status</th><th>Finding</th><th>Value</th><th>Next</th></tr></thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr
+                data-testid="performance-attribution-row"
+                data-performance-attribution-row-status="${escapeHtml(row.status || 'unknown')}"
+                data-performance-attribution-row-scope="${escapeHtml(row.scope || 'unknown')}"
+              >
+                <td data-label="Evidence">${escapeHtml(compact(row.label, row.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(row.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(row.finding, '-'))}</td>
+                <td data-label="Value">${escapeHtml(compact(row.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function performanceAttributionSummary(attribution) {
+  const metrics = attribution?.metrics || {};
+  return [
+    `${compact(attribution?.ticker, 'No ticker')} ${catalogLabel(attribution?.status || 'unknown')}`,
+    `${catalogLabel(attribution?.performance_stage || 'unlinked')} stage`,
+    `${compact(metrics.computed_outcome_count, '0')} computed outcomes`,
+    `avg 20D ${compact(metrics.avg_return_20d, 'n/a')}`,
+    'strategy updates disabled',
+  ].join('; ');
+}
+
 function renderWorkbenchRiskEnvelope(snapshot, pageKey = 'overview') {
   const envelope = workbenchRiskEnvelope(snapshot);
   const checks = workbenchRiskEnvelopeForPage(pageKey, snapshot);
@@ -3277,6 +3374,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchLearningLoop(snapshot, pageKey)}
     ${renderWorkbenchStrategyReview(snapshot, pageKey)}
     ${renderWorkbenchTradeMonitor(snapshot, pageKey)}
+    ${renderWorkbenchPerformanceAttribution(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}

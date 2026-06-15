@@ -1221,6 +1221,17 @@ def _trading_workbench_snapshot_payload(
         alert_rows=alert_module_rows,
         trigger_rows=alert_trigger_rows,
     )
+    performance_attribution = _workbench_performance_attribution_payload(
+        active_plan=active_plan,
+        learning_loop=learning_loop,
+        strategy_review=strategy_review,
+        trade_monitor=trade_monitor,
+        trade_lifecycle_rows=trade_lifecycle_rows,
+        paper_trade_rows=paper_trade_rows,
+        validation_result_rows=validation_result_rows,
+        journal_entry_rows=journal_entry_rows,
+        journal_outcome_rows=journal_outcome_rows,
+    )
     trade_runbook = _workbench_trade_runbook_payload(
         decision_brief=decision_brief,
         scenario_matrix=scenario_matrix,
@@ -1288,6 +1299,7 @@ def _trading_workbench_snapshot_payload(
         learning_loop=learning_loop,
         strategy_review=strategy_review,
         trade_monitor=trade_monitor,
+        performance_attribution=performance_attribution,
         workflow_map=workflow_map,
         priority_queue=priority_queue,
         supervision_gates=supervision_gates,
@@ -1327,6 +1339,7 @@ def _trading_workbench_snapshot_payload(
         "learning_loop": learning_loop,
         "strategy_review": strategy_review,
         "trade_monitor": trade_monitor,
+        "performance_attribution": performance_attribution,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
@@ -2111,6 +2124,7 @@ def _trading_workbench_snapshot_payload(
                     "agent_brief",
                     "trading_workbench.case_file",
                     "trading_workbench.portfolio_guardrails",
+                    "trading_workbench.performance_attribution",
                     "trading_workbench.agent_playbook",
                     "trading_workbench.market_intelligence_dossier",
                     "trading_workbench.active_plan.capability_map",
@@ -2253,6 +2267,7 @@ def _workbench_agent_brief_module(
             "agent_brief.security_checks",
             "trading_workbench.case_file",
             "trading_workbench.portfolio_guardrails",
+            "trading_workbench.performance_attribution",
             "trading_workbench.agent_playbook",
             "trading_workbench.market_intelligence_dossier",
             "trading_workbench.active_plan.capability_map",
@@ -7112,6 +7127,7 @@ def _workbench_case_file_payload(
     learning_loop: Mapping[str, object],
     strategy_review: Mapping[str, object],
     trade_monitor: Mapping[str, object],
+    performance_attribution: Mapping[str, object],
     workflow_map: Mapping[str, object],
     priority_queue: Mapping[str, object],
     supervision_gates: Mapping[str, object],
@@ -7152,6 +7168,7 @@ def _workbench_case_file_payload(
     pretrade_metrics = _mapping(pretrade_compliance.get("metrics"))
     learning_metrics = _mapping(learning_loop.get("metrics"))
     monitor_metrics = _mapping(trade_monitor.get("metrics"))
+    attribution_metrics = _mapping(performance_attribution.get("metrics"))
     playbook_metrics = _mapping(agent_playbook.get("metrics"))
     supervision_metrics = _mapping(supervision_gates.get("metrics"))
     handoff = _mapping(agent_playbook.get("agent_handoff"))
@@ -7310,8 +7327,28 @@ def _workbench_case_file_payload(
             next_action="Use validation as evidence; strategy updates remain supervised.",
         ),
         _workbench_case_file_tool(
-            tool_id="trade-monitor",
+            tool_id="performance-attribution",
             rank=9,
+            module="journal",
+            label="Performance attribution",
+            status=str(performance_attribution.get("status") or "unknown"),
+            tool_kind="attribution",
+            target_page="journal",
+            finding=performance_attribution.get("primary_blocker")
+            or performance_attribution.get("status"),
+            evidence=(
+                "avg_return_20d="
+                f"{attribution_metrics.get('avg_return_20d')}; "
+                "spy_relative="
+                f"{attribution_metrics.get('avg_spy_relative_return_20d')}; "
+                f"outcomes={attribution_metrics.get('computed_outcome_count')}"
+            ),
+            next_action=performance_attribution.get("primary_next_action")
+            or "Review attribution before any strategy or sizing update.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="trade-monitor",
+            rank=10,
             module="alerts",
             label="Trade monitor",
             status=str(trade_monitor.get("status") or "unknown"),
@@ -7327,7 +7364,7 @@ def _workbench_case_file_payload(
         ),
         _workbench_case_file_tool(
             tool_id="agent-handoff",
-            rank=10,
+            rank=11,
             module="agent",
             label="Agent handoff",
             status=str(agent_playbook.get("status") or "unknown"),
@@ -7346,7 +7383,7 @@ def _workbench_case_file_payload(
         ),
         _workbench_case_file_tool(
             tool_id="live-execution-boundary",
-            rank=11,
+            rank=12,
             module="broker",
             label="Live execution boundary",
             status="disabled",
@@ -7439,6 +7476,7 @@ def _workbench_case_file_payload(
             "trading_workbench.learning_loop",
             "trading_workbench.strategy_review",
             "trading_workbench.trade_monitor",
+            "trading_workbench.performance_attribution",
             "trading_workbench.agent_playbook",
         ],
         "metrics": {
@@ -8851,6 +8889,463 @@ def _workbench_trade_monitor_watch_item(
         "order_submission_allowed": False,
         "position_state_update_allowed": False,
         "exit_update_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": next_action,
+    }
+
+
+def _workbench_performance_attribution_payload(
+    *,
+    active_plan: Mapping[str, object],
+    learning_loop: Mapping[str, object],
+    strategy_review: Mapping[str, object],
+    trade_monitor: Mapping[str, object],
+    trade_lifecycle_rows: Sequence[Mapping[str, object]],
+    paper_trade_rows: Sequence[Mapping[str, object]],
+    validation_result_rows: Sequence[Mapping[str, object]],
+    journal_entry_rows: Sequence[Mapping[str, object]],
+    journal_outcome_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    ticker = _learning_loop_ticker(
+        _first_value(
+            trade_monitor.get("ticker"),
+            strategy_review.get("ticker"),
+            learning_loop.get("ticker"),
+            active_plan.get("ticker"),
+        )
+    )
+    decision_card_id = _first_value(
+        trade_monitor.get("decision_card_id"),
+        strategy_review.get("decision_card_id"),
+        learning_loop.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+    )
+    lifecycle = _workbench_learning_loop_lifecycle(
+        trade_lifecycle_rows,
+        decision_card_id=decision_card_id,
+        ticker=ticker,
+    )
+    lifecycle_rows = [
+        row
+        for row in _rows(trade_lifecycle_rows)
+        if _workbench_attribution_row_matches(
+            row,
+            ticker=ticker,
+            decision_card_id=decision_card_id,
+        )
+    ]
+    if not lifecycle_rows and lifecycle:
+        lifecycle_rows = [_mapping(lifecycle)]
+
+    paper_rows = _workbench_trade_monitor_matching_rows(paper_trade_rows, ticker=ticker)
+    if not paper_rows:
+        paper_trade = _workbench_trade_monitor_match(
+            paper_trade_rows,
+            expected_id=lifecycle.get("paper_trade_id"),
+            decision_card_id=decision_card_id,
+            ticker=ticker,
+        )
+        if paper_trade:
+            paper_rows = [paper_trade]
+    active_paper_count = sum(
+        1
+        for row in paper_rows
+        if str(row.get("state") or "").strip().lower()
+        in {"open", "active", "entered", "monitoring"}
+    )
+
+    ledger_rows = _workbench_trade_monitor_matching_rows(journal_entry_rows, ticker=ticker)
+    if not ledger_rows:
+        ledger_entry = _workbench_learning_loop_match(
+            journal_entry_rows,
+            expected_id=lifecycle.get("ledger_entry_id"),
+            ticker=ticker,
+        )
+        if ledger_entry:
+            ledger_rows = [ledger_entry]
+    outcome_rows = _workbench_trade_monitor_matching_rows(journal_outcome_rows, ticker=ticker)
+    if not outcome_rows:
+        outcome = _workbench_learning_loop_match(
+            journal_outcome_rows,
+            expected_id=lifecycle.get("outcome_id"),
+            related_id=lifecycle.get("ledger_entry_id"),
+            related_key="value_ledger_entry_id",
+            ticker=ticker,
+        )
+        if outcome:
+            outcome_rows = [outcome]
+    validation_rows = _workbench_trade_monitor_matching_rows(
+        validation_result_rows,
+        ticker=ticker,
+    )
+    if not validation_rows:
+        validation = _workbench_learning_loop_match(
+            validation_result_rows,
+            expected_id=lifecycle.get("validation_result_id"),
+            decision_card_id=decision_card_id,
+            ticker=ticker,
+        )
+        if validation:
+            validation_rows = [validation]
+
+    computed_outcome_rows = [
+        row
+        for row in outcome_rows
+        if str(row.get("status") or "").strip().lower() == "computed"
+    ]
+    return_values = [
+        value
+        for value in (_optional_float(row.get("return_20d")) for row in computed_outcome_rows)
+        if value is not None
+    ]
+    spy_relative_values = [
+        value
+        for value in (
+            _optional_float(row.get("spy_relative_return_20d"))
+            for row in computed_outcome_rows
+        )
+        if value is not None
+    ]
+    adverse_values = [
+        value
+        for value in (
+            _optional_float(row.get("max_adverse_excursion"))
+            for row in computed_outcome_rows
+        )
+        if value is not None
+    ]
+    favorable_values = [
+        value
+        for value in (
+            _optional_float(row.get("max_favorable_excursion"))
+            for row in computed_outcome_rows
+        )
+        if value is not None
+    ]
+    missing_outcome_count = max(len(ledger_rows) - len(computed_outcome_rows), 0)
+    invalidation_touch_count = sum(
+        1 for row in computed_outcome_rows if bool(row.get("invalidation_touched"))
+    )
+    leakage_flag_count = sum(
+        len(_texts(row.get("leakage_flags"))) for row in validation_rows
+    )
+    positive_label_count = sum(
+        len(_texts(row.get("positive_labels"))) for row in validation_rows
+    )
+    validation_warning_count = sum(
+        1
+        for row in validation_rows
+        if str(row.get("state") or "").strip().lower()
+        in {"warning", "warn", "blocked", "failed", "error"}
+    )
+    avg_return_20d = _workbench_average_ratio(return_values)
+    avg_spy_relative = _workbench_average_ratio(spy_relative_values)
+    avg_adverse = _workbench_average_ratio(adverse_values)
+    avg_favorable = _workbench_average_ratio(favorable_values)
+    hit_rate_20d = _workbench_round_ratio(
+        sum(1 for value in return_values if value > 0) / len(return_values)
+        if return_values
+        else None
+    )
+
+    primary_outcome = _workbench_learning_loop_match(
+        computed_outcome_rows,
+        expected_id=lifecycle.get("outcome_id"),
+        related_id=lifecycle.get("ledger_entry_id"),
+        related_key="value_ledger_entry_id",
+        ticker=ticker,
+    )
+    primary_validation = _workbench_learning_loop_match(
+        validation_rows,
+        expected_id=lifecycle.get("validation_result_id"),
+        decision_card_id=decision_card_id,
+        ticker=ticker,
+    )
+    primary_ledger = _workbench_learning_loop_match(
+        ledger_rows,
+        expected_id=lifecycle.get("ledger_entry_id"),
+        ticker=ticker,
+    )
+    primary_paper = _workbench_trade_monitor_match(
+        paper_rows,
+        expected_id=lifecycle.get("paper_trade_id"),
+        decision_card_id=decision_card_id,
+        ticker=ticker,
+    )
+
+    attribution_rows = [
+        _workbench_performance_attribution_row(
+            row_id="paper-performance",
+            label="Paper performance",
+            scope="paper-trading",
+            status="ready" if computed_outcome_rows else "blocked",
+            finding="positive_20d_return"
+            if return_values and avg_return_20d is not None and avg_return_20d > 0
+            else "missing_computed_outcome"
+            if not computed_outcome_rows
+            else "non_positive_20d_return",
+            evidence=f"avg_return_20d={avg_return_20d}; hit_rate={hit_rate_20d}",
+            next_action=(
+                "Review realized paper performance before sizing another case."
+                if computed_outcome_rows
+                else "Compute local value outcomes before attributing performance."
+            ),
+        ),
+        _workbench_performance_attribution_row(
+            row_id="benchmark-relative",
+            label="Benchmark relative",
+            scope="validation",
+            status="ready"
+            if avg_spy_relative is not None and avg_spy_relative > 0
+            else "review"
+            if computed_outcome_rows
+            else "blocked",
+            finding="outperformed_spy"
+            if avg_spy_relative is not None and avg_spy_relative > 0
+            else "benchmark_review_required",
+            evidence=f"avg_spy_relative_return_20d={avg_spy_relative}",
+            next_action="Compare outcome against benchmark before changing playbook rules.",
+        ),
+        _workbench_performance_attribution_row(
+            row_id="excursion-risk",
+            label="Excursion risk",
+            scope="risk-desk",
+            status="blocked"
+            if invalidation_touch_count
+            else "ready"
+            if computed_outcome_rows
+            else "blocked",
+            finding="invalidation_touched"
+            if invalidation_touch_count
+            else "excursion_within_plan"
+            if computed_outcome_rows
+            else "missing_excursion_evidence",
+            evidence=(
+                f"avg_mae={avg_adverse}; avg_mfe={avg_favorable}; "
+                f"invalidation_touches={invalidation_touch_count}"
+            ),
+            next_action="Use excursion evidence for manual risk calibration only.",
+        ),
+        _workbench_performance_attribution_row(
+            row_id="evidence-coverage",
+            label="Evidence coverage",
+            scope="journal",
+            status="ready" if ledger_rows and missing_outcome_count == 0 else "blocked",
+            finding="outcomes_linked"
+            if ledger_rows and missing_outcome_count == 0
+            else "missing_value_outcome",
+            evidence=(
+                f"ledger={len(ledger_rows)}; outcomes={len(computed_outcome_rows)}; "
+                f"lifecycle={len(lifecycle_rows)}"
+            ),
+            next_action="Keep attribution tied to local journal evidence.",
+        ),
+        _workbench_performance_attribution_row(
+            row_id="validation-quality",
+            label="Validation quality",
+            scope="validation",
+            status="blocked"
+            if leakage_flag_count
+            else "review"
+            if validation_warning_count
+            else "ready"
+            if validation_rows
+            else "blocked",
+            finding="validation_warning"
+            if validation_warning_count
+            else "leakage_flags_present"
+            if leakage_flag_count
+            else "validation_clear"
+            if validation_rows
+            else "missing_validation_result",
+            evidence=(
+                f"results={len(validation_rows)}; warnings={validation_warning_count}; "
+                f"leakage={leakage_flag_count}; labels={positive_label_count}"
+            ),
+            next_action="Review validation quality before treating attribution as durable.",
+        ),
+        _workbench_performance_attribution_row(
+            row_id="strategy-update-boundary",
+            label="Strategy update boundary",
+            scope="agent",
+            status="disabled",
+            finding="autonomous_strategy_update_disabled",
+            evidence="manual approval required for strategy changes",
+            next_action="Do not auto-update strategy from attribution evidence.",
+        ),
+    ]
+    ready_count = sum(1 for row in attribution_rows if row.get("status") == "ready")
+    review_count = sum(1 for row in attribution_rows if row.get("status") == "review")
+    blocked_count = sum(1 for row in attribution_rows if row.get("status") == "blocked")
+    disabled_count = sum(1 for row in attribution_rows if row.get("status") == "disabled")
+    primary_blocker = next(
+        (
+            str(row.get("finding"))
+            for row in attribution_rows
+            if row.get("status") in {"blocked", "review"} and row.get("finding")
+        ),
+        None,
+    )
+    return {
+        "schema_version": "trading-workbench-performance-attribution-v1",
+        "status": "blocked" if blocked_count else "review" if review_count else "ready",
+        "source_tool": "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "attribution_id": (
+            f"performance-attribution-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "attribution_mode": "read_only_performance_evidence",
+        "performance_stage": (
+            trade_monitor.get("monitor_stage")
+            or learning_loop.get("learning_stage")
+            or "unlinked"
+        ),
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Review performance attribution before any strategy or sizing update."
+            if primary_blocker
+            else "Use attribution as local evidence; strategy updates remain manual."
+        ),
+        "attribution": {
+            "paper_trade_id": _first_value(
+                lifecycle.get("paper_trade_id"),
+                primary_paper.get("id"),
+            ),
+            "paper_state": _first_value(
+                lifecycle.get("paper_state"),
+                primary_paper.get("state"),
+            ),
+            "ledger_entry_id": _first_value(
+                lifecycle.get("ledger_entry_id"),
+                primary_ledger.get("id"),
+            ),
+            "outcome_id": _first_value(lifecycle.get("outcome_id"), primary_outcome.get("id")),
+            "validation_result_id": _first_value(
+                lifecycle.get("validation_result_id"),
+                primary_validation.get("id"),
+            ),
+            "outcome_status": _first_value(
+                lifecycle.get("outcome_status"),
+                primary_outcome.get("status"),
+            ),
+            "return_20d": _workbench_round_ratio(
+                _optional_float(
+                    _first_value(
+                        lifecycle.get("return_20d"),
+                        primary_outcome.get("return_20d"),
+                    )
+                )
+            ),
+            "spy_relative_return_20d": _workbench_round_ratio(
+                _optional_float(
+                    _first_value(
+                        lifecycle.get("spy_relative_return_20d"),
+                        primary_outcome.get("spy_relative_return_20d"),
+                    )
+                )
+            ),
+            "max_adverse_excursion": _workbench_round_ratio(
+                _optional_float(primary_outcome.get("max_adverse_excursion"))
+            ),
+            "max_favorable_excursion": _workbench_round_ratio(
+                _optional_float(primary_outcome.get("max_favorable_excursion"))
+            ),
+            "invalidation_touched": bool(primary_outcome.get("invalidation_touched")),
+            "primary_command": lifecycle.get("primary_command")
+            or learning_loop.get("primary_next_action")
+            or "journal",
+        },
+        "commands": {
+            "paper": "paper",
+            "validation": "validation",
+            "journal": lifecycle.get("outcome_show_command")
+            or lifecycle.get("ledger_show_command")
+            or "journal",
+            "strategy_update_boundary": "agent execute",
+        },
+        "attribution_rows": attribution_rows,
+        "metrics": {
+            "attribution_row_count": len(attribution_rows),
+            "ready_attribution_count": ready_count,
+            "review_attribution_count": review_count,
+            "blocked_attribution_count": blocked_count,
+            "disabled_attribution_count": disabled_count,
+            "paper_trade_count": len(paper_rows),
+            "active_paper_trade_count": active_paper_count,
+            "trade_lifecycle_count": len(lifecycle_rows),
+            "ledger_entry_count": len(ledger_rows),
+            "outcome_count": len(outcome_rows),
+            "computed_outcome_count": len(computed_outcome_rows),
+            "missing_outcome_count": missing_outcome_count,
+            "validation_result_count": len(validation_rows),
+            "validation_warning_count": validation_warning_count,
+            "positive_label_count": positive_label_count,
+            "leakage_flag_count": leakage_flag_count,
+            "avg_return_20d": avg_return_20d,
+            "avg_spy_relative_return_20d": avg_spy_relative,
+            "hit_rate_20d": hit_rate_20d,
+            "avg_max_adverse_excursion": avg_adverse,
+            "avg_max_favorable_excursion": avg_favorable,
+            "invalidation_touch_count": invalidation_touch_count,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "strategy_update_allowed": False,
+        "autonomous_update_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_attribution_row_matches(
+    row: Mapping[str, object],
+    *,
+    ticker: object,
+    decision_card_id: object,
+) -> bool:
+    ticker_text = _learning_loop_ticker(ticker)
+    card_text = str(decision_card_id or "").strip()
+    return bool(
+        (ticker_text and _learning_loop_ticker(row.get("ticker")) == ticker_text)
+        or (
+            card_text
+            and str(row.get("decision_card_id") or "").strip() == card_text
+        )
+    )
+
+
+def _workbench_average_ratio(values: Sequence[float]) -> float | None:
+    return _workbench_round_ratio(sum(values) / len(values)) if values else None
+
+
+def _workbench_performance_attribution_row(
+    *,
+    row_id: str,
+    label: str,
+    scope: str,
+    status: str,
+    finding: object,
+    evidence: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": row_id,
+        "label": label,
+        "scope": scope,
+        "status": status,
+        "finding": finding,
+        "evidence": evidence,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "strategy_update_allowed": False,
+        "autonomous_update_allowed": False,
         "live_trading_enabled": False,
         "next_action": next_action,
     }

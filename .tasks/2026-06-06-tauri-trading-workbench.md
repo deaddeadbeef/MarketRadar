@@ -372,3 +372,16 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the guardrails board makes no provider calls,
   submits no broker order, performs no autonomous allocation change, and writes
   no database rows from browsing the board.
+
+## Current Slice: Performance Attribution
+
+- Add a read-only performance-attribution snapshot contract that joins local
+  paper trades, lifecycle rows, validation results, value ledger entries, and
+  value outcomes into one post-trade evidence board.
+- Render the attribution board in the Tauri Command Center and relevant
+  portfolio, paper-trading, backtest, validation, journal, and agent pages.
+- Expose attribution status, ticker, stage, outcome counts, 20-day return,
+  benchmark-relative return, and strategy-update permission in automation JSON.
+- Preserve the same boundary: the attribution board makes no provider calls,
+  submits no broker order, performs no autonomous strategy update, and writes
+  no database rows from browsing the board.
