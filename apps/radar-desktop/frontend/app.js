@@ -490,6 +490,19 @@ function workbenchCapitalAllocationForPage(pageKey, snapshot = state.snapshot ||
   return pages.has(pageKey) ? checks : [];
 }
 
+function workbenchPortfolioGuardrails(snapshot = state.snapshot || {}) {
+  const guardrails = tradingWorkbenchSnapshot(snapshot)?.portfolio_guardrails;
+  return guardrails && typeof guardrails === 'object' ? guardrails : { guardrails: [] };
+}
+
+function workbenchPortfolioGuardrailsForPage(pageKey, snapshot = state.snapshot || {}) {
+  const board = workbenchPortfolioGuardrails(snapshot);
+  const rows = Array.isArray(board.guardrails) ? board.guardrails : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return rows;
+  const pages = new Set(['portfolio', 'trade-planner', 'risk-desk', 'paper-trading', 'broker', 'agent']);
+  return pages.has(pageKey) ? rows : [];
+}
+
 function workbenchOrderTicketDraft(snapshot = state.snapshot || {}) {
   const draft = tradingWorkbenchSnapshot(snapshot)?.order_ticket_draft;
   return draft && typeof draft === 'object' ? draft : { checks: [] };
@@ -1192,6 +1205,13 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       capital_allocation_buying_power_usage_pct: compact(workbenchCapitalAllocation(snapshot)?.allocation_plan?.buying_power_usage_pct, 'none'),
       capital_allocation_blocked_check_count: Number(workbenchCapitalAllocation(snapshot)?.metrics?.blocked_check_count || 0),
       capital_allocation_allowed: Boolean(workbenchCapitalAllocation(snapshot)?.allocation_plan?.allocation_allowed),
+      portfolio_guardrails_status: compact(workbenchPortfolioGuardrails(snapshot)?.status, 'unknown'),
+      portfolio_guardrails_ticker: compact(workbenchPortfolioGuardrails(snapshot)?.ticker, 'none'),
+      portfolio_guardrails_blocked_count: Number(workbenchPortfolioGuardrails(snapshot)?.metrics?.blocked_guardrail_count || 0),
+      portfolio_guardrails_review_count: Number(workbenchPortfolioGuardrails(snapshot)?.metrics?.review_guardrail_count || 0),
+      portfolio_guardrails_single_name_after_pct: compact(workbenchPortfolioGuardrails(snapshot)?.metrics?.single_name_after_pct, 'none'),
+      portfolio_guardrails_buying_power_usage_pct: compact(workbenchPortfolioGuardrails(snapshot)?.metrics?.buying_power_usage_pct, 'none'),
+      portfolio_guardrails_allocation_update_allowed: Boolean(workbenchPortfolioGuardrails(snapshot)?.allocation_update_allowed),
       order_ticket_draft_status: compact(workbenchOrderTicketDraft(snapshot)?.status, 'unknown'),
       order_ticket_draft_ticker: compact(workbenchOrderTicketDraft(snapshot)?.ticker, 'none'),
       order_ticket_draft_suggested_shares: Number(workbenchOrderTicketDraft(snapshot)?.ticket?.suggested_quantity || 0),
@@ -1363,6 +1383,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchPortfolioImpact(snapshot, 'overview')}
     ${renderWorkbenchPositionSizing(snapshot, 'overview')}
     ${renderWorkbenchCapitalAllocation(snapshot, 'overview')}
+    ${renderWorkbenchPortfolioGuardrails(snapshot, 'overview')}
     ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
     ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
     ${renderWorkbenchPretradeCompliance(snapshot, 'overview')}
@@ -2136,6 +2157,78 @@ function capitalAllocationSummary(allocation) {
     `buying power ${compact(plan.buying_power_usage_pct, 'n/a')}`,
     `${compact(metrics.blocked_check_count, '0')} blocked checks`,
     'allocation changes disabled',
+  ].join('; ');
+}
+
+function renderWorkbenchPortfolioGuardrails(snapshot, pageKey = 'overview') {
+  const board = workbenchPortfolioGuardrails(snapshot);
+  const guardrails = workbenchPortfolioGuardrailsForPage(pageKey, snapshot);
+  const account = board.account_context || {};
+  const plan = board.exposure_plan || {};
+  const limits = board.policy_limits || {};
+  const metrics = board.metrics || {};
+  if (!guardrails.length) return '';
+  return `
+    <section
+      class="panel wide workbench-portfolio-guardrails"
+      data-testid="workbench-portfolio-guardrails"
+      data-portfolio-guardrails-status="${escapeHtml(board.status || 'unknown')}"
+      data-portfolio-guardrails-ticker="${escapeHtml(board.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Portfolio Guardrails</h2>
+          <p>${escapeHtml(portfolioGuardrailsSummary(board))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(board.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Equity</span><b>${escapeHtml(text(account.portfolio_equity))}</b></div>
+        <div class="kv"><span>Buying power</span><b>${escapeHtml(text(account.buying_power))}</b></div>
+        <div class="kv"><span>Gross after</span><b>${escapeHtml(text(account.projected_gross_exposure_pct))}</b></div>
+        <div class="kv"><span>Broker data</span><b>${escapeHtml(account.broker_data_stale ? 'stale' : 'current')}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Effective notional</span><b>${escapeHtml(text(plan.effective_notional))}</b></div>
+        <div class="kv"><span>Single-name after</span><b>${escapeHtml(text(plan.single_name_after_pct))}</b></div>
+        <div class="kv"><span>Single-name limit</span><b>${escapeHtml(text(limits.max_single_name_pct))}</b></div>
+        <div class="kv"><span>Blocked</span><b>${escapeHtml(compact(metrics.blocked_guardrail_count, '0'))}</b></div>
+      </div>
+      <div class="table-wrap portfolio-guardrails-preview">
+        <table aria-label="Workbench portfolio guardrails">
+          <thead><tr><th>Guardrail</th><th>Scope</th><th>Status</th><th>Value</th><th>Limit</th><th>Finding</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${guardrails.map((row) => `
+              <tr
+                data-testid="portfolio-guardrail-row"
+                data-portfolio-guardrail-status="${escapeHtml(row.status || 'unknown')}"
+                data-portfolio-guardrail-scope="${escapeHtml(row.scope || 'unknown')}"
+              >
+                <td data-label="Guardrail">${escapeHtml(compact(row.label, row.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(row.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+                <td data-label="Value">${escapeHtml(text(row.value))}</td>
+                <td data-label="Limit">${escapeHtml(text(row.limit))}</td>
+                <td data-label="Finding">${escapeHtml(compact(row.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(row.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function portfolioGuardrailsSummary(board) {
+  const metrics = board?.metrics || {};
+  return [
+    `${compact(board?.ticker, 'No ticker')} ${catalogLabel(board?.status || 'unknown')}`,
+    `${compact(metrics.blocked_guardrail_count, '0')} blocked guardrails`,
+    `single-name after ${compact(metrics.single_name_after_pct, 'n/a')}`,
+    `buying power ${compact(metrics.buying_power_usage_pct, 'n/a')}`,
+    'read-only governance',
   ].join('; ');
 }
 
@@ -3175,6 +3268,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchPortfolioImpact(snapshot, pageKey)}
     ${renderWorkbenchPositionSizing(snapshot, pageKey)}
     ${renderWorkbenchCapitalAllocation(snapshot, pageKey)}
+    ${renderWorkbenchPortfolioGuardrails(snapshot, pageKey)}
     ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
     ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
     ${renderWorkbenchPretradeCompliance(snapshot, pageKey)}

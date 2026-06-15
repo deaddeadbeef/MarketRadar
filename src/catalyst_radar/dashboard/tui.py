@@ -75,6 +75,7 @@ from catalyst_radar.market.status import (
     market_bars_import_verification_payload,
     market_bars_post_capture_verification_payload,
 )
+from catalyst_radar.portfolio.risk import PortfolioPolicy
 from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -1160,6 +1161,17 @@ def _trading_workbench_snapshot_payload(
         portfolio_open_order_rows=portfolio_open_order_rows,
         paper_trade_rows=paper_trade_rows,
     )
+    portfolio_guardrails = _workbench_portfolio_guardrails_payload(
+        active_plan=active_plan,
+        config=config,
+        risk_envelope=risk_envelope,
+        portfolio_impact_preview=portfolio_impact_preview,
+        position_sizing=position_sizing,
+        capital_allocation=capital_allocation,
+        portfolio_exposure_rows=portfolio_exposure_rows,
+        portfolio_open_order_rows=portfolio_open_order_rows,
+        paper_trade_rows=paper_trade_rows,
+    )
     order_ticket_draft = _workbench_order_ticket_draft_payload(
         active_plan=active_plan,
         position_sizing=position_sizing,
@@ -1270,6 +1282,7 @@ def _trading_workbench_snapshot_payload(
         scenario_matrix=scenario_matrix,
         risk_envelope=risk_envelope,
         capital_allocation=capital_allocation,
+        portfolio_guardrails=portfolio_guardrails,
         paper_trade_preview=paper_trade_preview,
         pretrade_compliance=pretrade_compliance,
         learning_loop=learning_loop,
@@ -1307,6 +1320,7 @@ def _trading_workbench_snapshot_payload(
         "portfolio_impact_preview": portfolio_impact_preview,
         "position_sizing": position_sizing,
         "capital_allocation": capital_allocation,
+        "portfolio_guardrails": portfolio_guardrails,
         "order_ticket_draft": order_ticket_draft,
         "paper_trade_preview": paper_trade_preview,
         "pretrade_compliance": pretrade_compliance,
@@ -2096,6 +2110,7 @@ def _trading_workbench_snapshot_payload(
                     "runtime_context",
                     "agent_brief",
                     "trading_workbench.case_file",
+                    "trading_workbench.portfolio_guardrails",
                     "trading_workbench.agent_playbook",
                     "trading_workbench.market_intelligence_dossier",
                     "trading_workbench.active_plan.capability_map",
@@ -2237,6 +2252,7 @@ def _workbench_agent_brief_module(
             "agent_brief.next_actions",
             "agent_brief.security_checks",
             "trading_workbench.case_file",
+            "trading_workbench.portfolio_guardrails",
             "trading_workbench.agent_playbook",
             "trading_workbench.market_intelligence_dossier",
             "trading_workbench.active_plan.capability_map",
@@ -5080,6 +5096,453 @@ def _workbench_capital_allocation_check(
     }
 
 
+def _workbench_portfolio_guardrails_payload(
+    *,
+    active_plan: Mapping[str, object],
+    config: AppConfig,
+    risk_envelope: Mapping[str, object],
+    portfolio_impact_preview: Mapping[str, object],
+    position_sizing: Mapping[str, object],
+    capital_allocation: Mapping[str, object],
+    portfolio_exposure_rows: Sequence[Mapping[str, object]],
+    portfolio_open_order_rows: Sequence[Mapping[str, object]],
+    paper_trade_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    policy = PortfolioPolicy(
+        max_position_pct=float(config.max_single_name_pct),
+        risk_per_trade_pct=float(config.risk_per_trade_pct),
+    )
+    portfolio = _mapping(risk_envelope.get("portfolio_context"))
+    impact = _mapping(portfolio_impact_preview.get("impact"))
+    impact_metrics = _mapping(portfolio_impact_preview.get("metrics"))
+    allocation_plan = _mapping(capital_allocation.get("allocation_plan"))
+    capital_context = _mapping(capital_allocation.get("capital_context"))
+    exposure_context = _mapping(capital_allocation.get("exposure_context"))
+    recommendation = _mapping(position_sizing.get("recommendation"))
+    active_ticker = _learning_loop_ticker(
+        _first_value(
+            capital_allocation.get("ticker"),
+            position_sizing.get("ticker"),
+            portfolio_impact_preview.get("ticker"),
+            risk_envelope.get("ticker"),
+            active_plan.get("ticker"),
+        )
+    )
+    decision_card_id = _first_value(
+        capital_allocation.get("decision_card_id"),
+        position_sizing.get("decision_card_id"),
+        portfolio_impact_preview.get("decision_card_id"),
+        risk_envelope.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+    )
+    portfolio_equity = _optional_float(
+        _first_value(
+            capital_context.get("portfolio_equity"),
+            portfolio.get("portfolio_equity"),
+        )
+    )
+    buying_power = _optional_float(
+        _first_value(capital_context.get("buying_power"), portfolio.get("buying_power"))
+    )
+    cash = _optional_float(_first_value(capital_context.get("cash"), portfolio.get("cash")))
+    gross_before_pct = _optional_float(
+        _first_value(
+            exposure_context.get("current_gross_exposure_pct"),
+            capital_context.get("gross_exposure_pct"),
+            portfolio.get("gross_exposure_pct"),
+        )
+    )
+    suggested_notional = _optional_float(allocation_plan.get("suggested_notional"))
+    proposed_notional = _optional_float(impact.get("proposed_notional"))
+    effective_notional = _optional_float(
+        _first_value(suggested_notional, proposed_notional)
+    )
+    effective_notional_pct = _workbench_round_ratio(
+        _workbench_ratio(effective_notional, portfolio_equity)
+    )
+    gross_after_pct = _workbench_round_ratio(
+        gross_before_pct + effective_notional_pct
+        if gross_before_pct is not None and effective_notional_pct is not None
+        else None
+    )
+    risk_budget = _optional_float(recommendation.get("risk_budget"))
+    estimated_max_loss = _optional_float(
+        _first_value(
+            allocation_plan.get("suggested_max_loss"),
+            recommendation.get("estimated_max_loss"),
+            impact.get("max_loss"),
+        )
+    )
+    max_loss_pct = _workbench_round_ratio(
+        _workbench_ratio(estimated_max_loss, portfolio_equity)
+    )
+    buying_power_usage_pct = _optional_float(
+        allocation_plan.get("buying_power_usage_pct")
+    )
+    if buying_power_usage_pct is None:
+        buying_power_usage_pct = _workbench_round_ratio(
+            _workbench_ratio(effective_notional, buying_power)
+        )
+    single_name_before_pct = _workbench_single_name_exposure_pct(
+        portfolio_exposure_rows,
+        ticker=active_ticker,
+    )
+    single_name_after_pct = _workbench_round_ratio(
+        single_name_before_pct + effective_notional_pct
+        if single_name_before_pct is not None and effective_notional_pct is not None
+        else None
+    )
+    exposure_ready_count = _first_nonnegative_int(
+        impact_metrics.get("ready_exposure_scope_count"),
+        exposure_context.get("ready_exposure_scope_count"),
+    )
+    exposure_scope_count = _first_nonnegative_int(
+        impact_metrics.get("exposure_scope_count"),
+        exposure_context.get("exposure_scope_count"),
+    )
+    active_paper_rows = [
+        row
+        for row in _workbench_trade_monitor_matching_rows(
+            paper_trade_rows,
+            ticker=active_ticker,
+        )
+        if str(row.get("state") or "").strip().lower()
+        in {"open", "active", "entered", "monitoring"}
+    ]
+    active_paper_notional = sum(
+        _number_or_zero(row.get("notional")) for row in active_paper_rows
+    )
+    open_order_rows = [
+        row
+        for row in _workbench_trade_monitor_matching_rows(
+            portfolio_open_order_rows,
+            ticker=active_ticker,
+        )
+        if row.get("id")
+        and str(row.get("status") or "").strip().lower()
+        not in {"", "none", "cancelled", "canceled", "filled", "rejected"}
+    ]
+    broker_data_stale = bool(
+        _first_value(
+            capital_context.get("broker_data_stale"),
+            portfolio.get("broker_data_stale"),
+        )
+    )
+    blockers = list(
+        dict.fromkeys(
+            [
+                *_texts(capital_allocation.get("blockers")),
+                *_texts(portfolio_impact_preview.get("blockers")),
+                *_texts(position_sizing.get("blockers")),
+                *_texts(risk_envelope.get("blockers")),
+            ]
+        )
+    )
+    if (
+        single_name_after_pct is not None
+        and single_name_after_pct > policy.max_position_pct
+    ):
+        blockers.append("single_name_exposure_limit_exceeded")
+    blockers = list(dict.fromkeys(blockers))
+    guardrails = [
+        _workbench_portfolio_guardrail(
+            guardrail_id="account-freshness",
+            label="Account freshness",
+            status="blocked" if broker_data_stale else "ready",
+            scope="portfolio",
+            finding="stale_broker_data" if broker_data_stale else "broker_data_current",
+            value="stale" if broker_data_stale else "current",
+            limit="current read-only broker context",
+            evidence=(
+                f"broker_connected={str(bool(portfolio.get('broker_connected'))).lower()}; "
+                f"broker_data_stale={str(broker_data_stale).lower()}"
+            ),
+            next_action=(
+                "Refresh read-only broker context before relying on guardrails."
+                if broker_data_stale
+                else "Broker context is current enough for portfolio guardrails."
+            ),
+        ),
+        _workbench_portfolio_guardrail(
+            guardrail_id="buying-power-limit",
+            label="Buying power limit",
+            status=(
+                "ready"
+                if buying_power_usage_pct is not None and buying_power_usage_pct <= 1
+                else "blocked"
+            ),
+            scope="portfolio",
+            finding=f"buying_power_usage={buying_power_usage_pct}"
+            if buying_power_usage_pct is not None
+            else "missing_buying_power_usage",
+            value=buying_power_usage_pct,
+            limit=1.0,
+            evidence=(
+                f"suggested_notional={_workbench_round_float(suggested_notional)}; "
+                f"buying_power={_workbench_round_float(buying_power)}"
+            ),
+            next_action="Keep proposed allocation inside available buying power.",
+        ),
+        _workbench_portfolio_guardrail(
+            guardrail_id="risk-budget-limit",
+            label="Risk budget limit",
+            status=(
+                "ready"
+                if risk_budget is not None
+                and estimated_max_loss is not None
+                and estimated_max_loss <= risk_budget
+                else "blocked"
+            ),
+            scope="risk-desk",
+            finding="risk_budget_available"
+            if risk_budget is not None and estimated_max_loss is not None
+            else "missing_risk_budget",
+            value=_workbench_round_float(estimated_max_loss),
+            limit=_workbench_round_float(risk_budget),
+            evidence=(
+                f"max_loss={_workbench_round_float(estimated_max_loss)}; "
+                f"risk_budget={_workbench_round_float(risk_budget)}"
+            ),
+            next_action="Keep estimated max loss inside the configured risk budget.",
+        ),
+        _workbench_portfolio_guardrail(
+            guardrail_id="single-name-limit",
+            label="Single-name limit",
+            status=(
+                "blocked"
+                if single_name_after_pct is None
+                or single_name_after_pct > policy.max_position_pct
+                else "ready"
+            ),
+            scope="portfolio",
+            finding=(
+                "single_name_exposure_limit_exceeded"
+                if single_name_after_pct is not None
+                and single_name_after_pct > policy.max_position_pct
+                else "single_name_exposure_within_limit"
+                if single_name_after_pct is not None
+                else "missing_single_name_exposure"
+            ),
+            value=single_name_after_pct,
+            limit=policy.max_position_pct,
+            evidence=(
+                f"before={single_name_before_pct}; "
+                f"after={single_name_after_pct}; "
+                f"limit={policy.max_position_pct}"
+            ),
+            next_action="Reduce size or manually override before adding exposure."
+            if single_name_after_pct is not None
+            and single_name_after_pct > policy.max_position_pct
+            else "Single-name exposure remains within policy.",
+        ),
+        _workbench_portfolio_guardrail(
+            guardrail_id="exposure-delta-coverage",
+            label="Exposure delta coverage",
+            status="ready" if exposure_ready_count else "blocked",
+            scope="risk-desk",
+            finding="exposure_deltas_available"
+            if exposure_ready_count
+            else "missing_portfolio_impact:exposure_deltas",
+            value=exposure_ready_count,
+            limit=exposure_scope_count,
+            evidence=f"{exposure_ready_count}/{exposure_scope_count} exposure scopes ready",
+            next_action=(
+                "Review single-name, sector, theme, and correlation deltas."
+                if exposure_ready_count
+                else "Rebuild portfolio impact before relying on exposure deltas."
+            ),
+        ),
+        _workbench_portfolio_guardrail(
+            guardrail_id="paper-exposure-overlap",
+            label="Paper exposure overlap",
+            status="review" if active_paper_rows else "ready",
+            scope="paper-trading",
+            finding="active_paper_trade_open"
+            if active_paper_rows
+            else "no_active_paper_trade",
+            value=len(active_paper_rows),
+            limit="manual review",
+            evidence=(
+                f"{len(active_paper_rows)} active paper trades; "
+                f"notional={_workbench_round_float(active_paper_notional)}"
+            ),
+            next_action=(
+                "Review active paper exposure before allocating more risk."
+                if active_paper_rows
+                else "No active paper exposure overlaps this case."
+            ),
+        ),
+        _workbench_portfolio_guardrail(
+            guardrail_id="open-order-overlap",
+            label="Open order overlap",
+            status="review" if open_order_rows else "ready",
+            scope="broker",
+            finding="open_orders_present" if open_order_rows else "no_open_orders",
+            value=len(open_order_rows),
+            limit="manual review",
+            evidence=f"{len(open_order_rows)} open orders",
+            next_action=(
+                "Review read-only open orders before changing exposure."
+                if open_order_rows
+                else "No open broker orders overlap this case."
+            ),
+        ),
+        _workbench_portfolio_guardrail(
+            guardrail_id="broker-execution-boundary",
+            label="Broker execution boundary",
+            status="disabled",
+            scope="broker",
+            finding="broker_submission_disabled",
+            value="disabled",
+            limit="disabled",
+            evidence="order_submission_allowed=false; live_trading_enabled=false",
+            next_action="Do not submit live broker orders from this board.",
+        ),
+    ]
+    ready_count = sum(1 for row in guardrails if row.get("status") == "ready")
+    blocked_count = sum(1 for row in guardrails if row.get("status") == "blocked")
+    review_count = sum(1 for row in guardrails if row.get("status") == "review")
+    disabled_count = sum(1 for row in guardrails if row.get("status") == "disabled")
+    primary_blocker = blockers[0] if blockers else None
+    if primary_blocker is None:
+        primary_blocker = next(
+            (
+                str(row.get("finding"))
+                for row in guardrails
+                if row.get("status") == "blocked" and row.get("finding")
+            ),
+            None,
+        )
+    return {
+        "schema_version": "trading-workbench-portfolio-guardrails-v1",
+        "status": "blocked"
+        if blocked_count
+        else "review"
+        if review_count
+        else "ready",
+        "source_tool": "market-radar",
+        "ticker": active_ticker,
+        "decision_card_id": decision_card_id,
+        "guardrail_id": (
+            f"guardrails-{str(active_ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "guardrail_mode": "read_only_portfolio_governance",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Resolve portfolio guardrails before adding exposure."
+            if primary_blocker
+            else "Portfolio guardrails are ready for supervised review."
+        ),
+        "account_context": {
+            "broker_connected": bool(portfolio.get("broker_connected")),
+            "broker_data_stale": broker_data_stale,
+            "portfolio_equity": _workbench_round_float(portfolio_equity),
+            "cash": _workbench_round_float(cash),
+            "buying_power": _workbench_round_float(buying_power),
+            "gross_exposure_pct": _workbench_round_ratio(gross_before_pct),
+            "projected_gross_exposure_pct": gross_after_pct,
+            "position_count": _first_nonnegative_int(capital_context.get("position_count")),
+            "open_order_count": len(open_order_rows),
+            "active_paper_trade_count": len(active_paper_rows),
+        },
+        "policy_limits": {
+            "risk_per_trade_pct": policy.risk_per_trade_pct,
+            "max_single_name_pct": policy.max_position_pct,
+            "max_sector_pct": policy.max_sector_pct,
+            "max_theme_pct": policy.max_theme_pct,
+            "max_buying_power_usage_pct": 1.0,
+            "max_gross_exposure_pct": 1.0,
+        },
+        "exposure_plan": {
+            "proposed_notional": _workbench_round_float(proposed_notional),
+            "suggested_notional": _workbench_round_float(suggested_notional),
+            "effective_notional": _workbench_round_float(effective_notional),
+            "effective_notional_pct_of_equity": effective_notional_pct,
+            "risk_budget": _workbench_round_float(risk_budget),
+            "estimated_max_loss": _workbench_round_float(estimated_max_loss),
+            "estimated_max_loss_pct_of_equity": max_loss_pct,
+            "buying_power_usage_pct": buying_power_usage_pct,
+            "single_name_before_pct": single_name_before_pct,
+            "single_name_after_pct": single_name_after_pct,
+            "gross_before_pct": _workbench_round_ratio(gross_before_pct),
+            "gross_after_pct": gross_after_pct,
+            "allocation_allowed": False,
+            "requires_manual_approval": True,
+            "no_execution": True,
+        },
+        "guardrails": guardrails,
+        "blockers": blockers,
+        "metrics": {
+            "guardrail_count": len(guardrails),
+            "ready_guardrail_count": ready_count,
+            "review_guardrail_count": review_count,
+            "blocked_guardrail_count": blocked_count,
+            "disabled_guardrail_count": disabled_count,
+            "active_paper_trade_count": len(active_paper_rows),
+            "open_order_count": len(open_order_rows),
+            "single_name_after_pct": single_name_after_pct,
+            "buying_power_usage_pct": buying_power_usage_pct,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "allocation_update_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_single_name_exposure_pct(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    ticker: object,
+) -> float | None:
+    ticker_text = _learning_loop_ticker(ticker)
+    if not ticker_text:
+        return None
+    for row in _rows(rows):
+        if (
+            str(row.get("scope") or "").strip().lower() == "single_name"
+            and _learning_loop_ticker(row.get("metric")) == ticker_text
+        ):
+            return _workbench_round_ratio(_optional_float(row.get("value")))
+    return 0.0
+
+
+def _workbench_portfolio_guardrail(
+    *,
+    guardrail_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: object,
+    value: object,
+    limit: object,
+    evidence: str,
+    next_action: object,
+) -> dict[str, object]:
+    return {
+        "id": guardrail_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "value": value,
+        "limit": limit,
+        "evidence": evidence,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "allocation_update_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": next_action,
+    }
+
+
 def _workbench_order_ticket_draft_payload(
     *,
     active_plan: Mapping[str, object],
@@ -6643,6 +7106,7 @@ def _workbench_case_file_payload(
     scenario_matrix: Mapping[str, object],
     risk_envelope: Mapping[str, object],
     capital_allocation: Mapping[str, object],
+    portfolio_guardrails: Mapping[str, object],
     paper_trade_preview: Mapping[str, object],
     pretrade_compliance: Mapping[str, object],
     learning_loop: Mapping[str, object],
@@ -6683,6 +7147,7 @@ def _workbench_case_file_payload(
     scenario_metrics = _mapping(scenario_matrix.get("metrics"))
     risk_metrics = _mapping(risk_envelope.get("metrics"))
     allocation_metrics = _mapping(capital_allocation.get("metrics"))
+    guardrail_metrics = _mapping(portfolio_guardrails.get("metrics"))
     paper_metrics = _mapping(paper_trade_preview.get("metrics"))
     pretrade_metrics = _mapping(pretrade_compliance.get("metrics"))
     learning_metrics = _mapping(learning_loop.get("metrics"))
@@ -6792,8 +7257,27 @@ def _workbench_case_file_payload(
             next_action="Review portfolio impact and allocation before sizing.",
         ),
         _workbench_case_file_tool(
-            tool_id="paper-broker-boundary",
+            tool_id="portfolio-guardrails",
             rank=6,
+            module="portfolio",
+            label="Portfolio guardrails",
+            status=str(portfolio_guardrails.get("status") or "unknown"),
+            tool_kind="guardrails",
+            target_page="portfolio",
+            finding=portfolio_guardrails.get("primary_blocker")
+            or portfolio_guardrails.get("status"),
+            evidence=(
+                f"guardrails={guardrail_metrics.get('guardrail_count')}; "
+                f"blocked={guardrail_metrics.get('blocked_guardrail_count')}; "
+                "single_name_after="
+                f"{guardrail_metrics.get('single_name_after_pct')}"
+            ),
+            next_action=portfolio_guardrails.get("primary_next_action")
+            or "Review portfolio guardrails before adding exposure.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="paper-broker-boundary",
+            rank=7,
             module="paper-trading",
             label="Paper and broker boundary",
             status=str(pretrade_compliance.get("status") or "unknown"),
@@ -6811,7 +7295,7 @@ def _workbench_case_file_payload(
         ),
         _workbench_case_file_tool(
             tool_id="learning-validation",
-            rank=7,
+            rank=8,
             module="validation",
             label="Learning and validation",
             status=str(learning_loop.get("status") or "unknown"),
@@ -6827,7 +7311,7 @@ def _workbench_case_file_payload(
         ),
         _workbench_case_file_tool(
             tool_id="trade-monitor",
-            rank=8,
+            rank=9,
             module="alerts",
             label="Trade monitor",
             status=str(trade_monitor.get("status") or "unknown"),
@@ -6843,7 +7327,7 @@ def _workbench_case_file_payload(
         ),
         _workbench_case_file_tool(
             tool_id="agent-handoff",
-            rank=9,
+            rank=10,
             module="agent",
             label="Agent handoff",
             status=str(agent_playbook.get("status") or "unknown"),
@@ -6862,7 +7346,7 @@ def _workbench_case_file_payload(
         ),
         _workbench_case_file_tool(
             tool_id="live-execution-boundary",
-            rank=10,
+            rank=11,
             module="broker",
             label="Live execution boundary",
             status="disabled",
@@ -6949,6 +7433,7 @@ def _workbench_case_file_payload(
             "trading_workbench.scenario_matrix",
             "trading_workbench.risk_envelope",
             "trading_workbench.capital_allocation",
+            "trading_workbench.portfolio_guardrails",
             "trading_workbench.paper_trade_preview",
             "trading_workbench.pretrade_compliance",
             "trading_workbench.learning_loop",

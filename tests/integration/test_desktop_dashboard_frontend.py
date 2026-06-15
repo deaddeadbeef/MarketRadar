@@ -595,6 +595,24 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "capital_allocation_buying_power_usage_pct: compact(",
         "capital_allocation_blocked_check_count: Number(",
         "capital_allocation_allowed: Boolean(",
+        "function workbenchPortfolioGuardrails",
+        "function workbenchPortfolioGuardrailsForPage",
+        "function renderWorkbenchPortfolioGuardrails",
+        "function portfolioGuardrailsSummary",
+        "${renderWorkbenchPortfolioGuardrails(snapshot, 'overview')}",
+        "${renderWorkbenchPortfolioGuardrails(snapshot, pageKey)}",
+        'data-testid="workbench-portfolio-guardrails"',
+        'data-testid="portfolio-guardrail-row"',
+        "data-portfolio-guardrails-status=\"${escapeHtml(board.status || 'unknown')}\"",
+        "data-portfolio-guardrail-status=\"${escapeHtml(row.status || 'unknown')}\"",
+        "data-portfolio-guardrail-scope=\"${escapeHtml(row.scope || 'unknown')}\"",
+        "portfolio_guardrails_status: compact(",
+        "portfolio_guardrails_ticker: compact(",
+        "portfolio_guardrails_blocked_count: Number(",
+        "portfolio_guardrails_review_count: Number(",
+        "portfolio_guardrails_single_name_after_pct: compact(",
+        "portfolio_guardrails_buying_power_usage_pct: compact(",
+        "portfolio_guardrails_allocation_update_allowed: Boolean(",
         "function workbenchOrderTicketDraft",
         "function workbenchOrderTicketDraftForPage",
         "function renderWorkbenchOrderTicketDraft",
@@ -860,6 +878,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".position-sizing-preview" in styles
     assert ".workbench-capital-allocation" in styles
     assert ".capital-allocation-preview" in styles
+    assert ".workbench-portfolio-guardrails" in styles
+    assert ".portfolio-guardrails-preview" in styles
     assert ".workbench-order-ticket-draft" in styles
     assert ".order-ticket-draft-preview" in styles
     assert ".workbench-paper-trade-preview" in styles
