@@ -163,3 +163,15 @@ engine, but it is not the whole product frame.
   automation JSON for agentic desktop control.
 - Preserve the same boundary: no provider calls, no broker order submission,
   no shell execution, and no database writes from browsing the runbook.
+
+## Current Slice: Operator State
+
+- Add a top-level operator-state snapshot contract that condenses the current
+  workbench case into active blocker, active module, safe next control,
+  readiness, risk, and execution-boundary summaries.
+- Render operator state at the top of the Tauri Command Center and relevant
+  module pages so an agent or human can orient without reconciling every panel.
+- Expose operator status, active module, active blocker, and next command in
+  automation JSON for agentic desktop control.
+- Preserve the same boundary: no provider calls, no broker order submission,
+  no shell execution, and no database writes from browsing operator state.

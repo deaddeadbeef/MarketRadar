@@ -367,6 +367,11 @@ function tradingWorkbenchSnapshot(snapshot = state.snapshot || {}) {
   return snapshot?.trading_workbench || {};
 }
 
+function workbenchOperatorState(snapshot = state.snapshot || {}) {
+  const operator = tradingWorkbenchSnapshot(snapshot)?.operator_state;
+  return operator && typeof operator === 'object' ? operator : { state_cards: [] };
+}
+
 function workbenchDecisionBrief(snapshot = state.snapshot || {}) {
   const brief = tradingWorkbenchSnapshot(snapshot)?.decision_brief;
   return brief && typeof brief === 'object' ? brief : {};
@@ -909,6 +914,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       primary_supervision_gate_id: compact(workbenchSupervisionGates(snapshot)?.primary_gate_id, 'none'),
       approval_required_count: Number(workbenchSupervisionGates(snapshot)?.metrics?.approval_required_count || 0),
       armed_local_write: compact(state.pendingLocalWrite?.command, 'none'),
+      operator_status: compact(workbenchOperatorState(snapshot)?.status, 'unknown'),
+      operator_active_module: compact(workbenchOperatorState(snapshot)?.active_module, 'none'),
+      operator_active_blocker: compact(workbenchOperatorState(snapshot)?.primary_blocker, 'none'),
+      operator_next_command: compact(workbenchOperatorState(snapshot)?.primary_next_action?.command, 'none'),
       decision_brief_status: compact(workbenchDecisionBrief(snapshot)?.status, 'unknown'),
       decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none'),
       decision_brief_source_tool: compact(workbenchDecisionBrief(snapshot)?.source_tool, 'market-radar'),
@@ -1023,6 +1032,7 @@ function metric(label, value, caption) {
 function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
+    ${renderWorkbenchOperatorState(snapshot)}
     ${renderWorkbenchDecisionBrief(snapshot)}
     ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
@@ -1097,6 +1107,97 @@ function platformToolCard(module) {
       </div>
     </article>
   `;
+}
+
+function renderWorkbenchOperatorState(snapshot) {
+  const operator = workbenchOperatorState(snapshot);
+  if (!operator || !operator.schema_version) return '';
+  const readiness = operator.readiness || {};
+  const risk = operator.risk || {};
+  const handoff = operator.agent_handoff || {};
+  const boundaries = operator.boundaries || {};
+  const cards = Array.isArray(operator.state_cards) ? operator.state_cards : [];
+  const nextAction = operator.primary_next_action || {};
+  return `
+    <section
+      class="panel wide workbench-operator-state"
+      data-testid="workbench-operator-state"
+      data-operator-status="${escapeHtml(operator.status || 'unknown')}"
+      data-operator-active-module="${escapeHtml(operator.active_module || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Operator State</h2>
+          <p>${escapeHtml(operatorStateSummary(operator))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(operator.status || 'unknown'))}</span>
+      </div>
+      <div class="operator-state-grid">
+        <div class="operator-state-block">
+          <h3>Case</h3>
+          <div class="kv-grid">
+            <div class="kv"><span>Ticker</span><b>${escapeHtml(compact(operator.ticker, '-'))}</b></div>
+            <div class="kv"><span>Module</span><b>${escapeHtml(catalogLabel(operator.active_module || '-'))}</b></div>
+            <div class="kv"><span>Blocker</span><b>${escapeHtml(compact(operator.primary_blocker, '-'))}</b></div>
+            <div class="kv"><span>Step</span><b>${escapeHtml(compact(operator.active_step_id, '-'))}</b></div>
+          </div>
+        </div>
+        <div class="operator-state-block">
+          <h3>Readiness</h3>
+          <div class="kv-grid">
+            <div class="kv"><span>Decision</span><b>${escapeHtml(catalogLabel(readiness.decision_brief_status || '-'))}</b></div>
+            <div class="kv"><span>Risk</span><b>${escapeHtml(catalogLabel(readiness.risk_envelope_status || '-'))}</b></div>
+            <div class="kv"><span>Supervision</span><b>${escapeHtml(catalogLabel(readiness.supervision_status || '-'))}</b></div>
+            <div class="kv"><span>Approval</span><b>${escapeHtml(readiness.approval_required ? 'required' : 'not required')}</b></div>
+          </div>
+        </div>
+        <div class="operator-state-block">
+          <h3>Risk</h3>
+          <div class="kv-grid">
+            <div class="kv"><span>Sizing</span><b>${escapeHtml(catalogLabel(risk.sizing_status || '-'))}</b></div>
+            <div class="kv"><span>Blocked checks</span><b>${escapeHtml(compact(risk.blocked_check_count, '0'))}</b></div>
+            <div class="kv"><span>Max loss</span><b>${escapeHtml(text(risk.estimated_max_loss))}</b></div>
+            <div class="kv"><span>Calls</span><b>${escapeHtml(compact(boundaries.external_calls_made, '0'))}</b></div>
+          </div>
+        </div>
+        <div class="operator-state-block" data-testid="operator-state-next-action">
+          <h3>Next</h3>
+          <div class="kv-grid">
+            <div class="kv"><span>Command</span><b>${escapeHtml(compact(handoff.next_command, '-'))}</b></div>
+            <div class="kv"><span>Page</span><b>${escapeHtml(compact(handoff.next_page, '-'))}</b></div>
+            <div class="kv"><span>Safety</span><b>${escapeHtml(catalogLabel(handoff.safety || '-'))}</b></div>
+            <div class="kv"><span>Approval</span><b>${escapeHtml(handoff.can_execute_without_approval ? 'not required' : 'required')}</b></div>
+          </div>
+          <div class="decision-brief-action">${renderWorkbenchActionControl({ ...nextAction, status: 'enabled' })}</div>
+        </div>
+      </div>
+      <div class="operator-state-cards" aria-label="Operator state cards">
+        ${cards.map((card) => `
+          <article
+            data-testid="operator-state-card"
+            data-operator-card-status="${escapeHtml(card.status || 'unknown')}"
+            data-operator-card-module="${escapeHtml(card.module || '')}"
+          >
+            <span>${escapeHtml(compact(card.label, card.id || '-'))}</span>
+            <b>${escapeHtml(catalogLabel(card.status || '-'))}</b>
+            <p>${escapeHtml(compact(card.evidence, '-'))}</p>
+          </article>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function operatorStateSummary(operator) {
+  const metrics = operator?.metrics || {};
+  const boundaries = operator?.boundaries || {};
+  return [
+    `${compact(operator?.ticker, 'No ticker')} ${catalogLabel(operator?.status || 'unknown')}`,
+    `${compact(operator?.primary_blocker, 'no blocker')}`,
+    `${compact(metrics.runbook_step_count, '0')} runbook steps`,
+    `${compact(metrics.approval_required_count, '0')} approval required`,
+    `provider calls ${compact(boundaries.external_calls_made, '0')}`,
+  ].join('; ');
 }
 
 function renderWorkbenchDecisionBrief(snapshot) {
@@ -1671,6 +1772,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
         <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(snapshot.external_calls_made, '0'))}</b></div>
       </div>
     </section>
+    ${renderWorkbenchOperatorState(snapshot)}
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}

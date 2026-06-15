@@ -80,6 +80,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "fallbackPlatformModules",
         "function renderTradingWorkbenchOverview",
         "function tradingWorkbenchSnapshot",
+        "function workbenchOperatorState",
         "function workbenchDecisionBrief",
         "function workbenchScenarioMatrix",
         "function workbenchScenarioMatrixForPage",
@@ -99,6 +100,13 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "trading_workbench",
         "function compactMapping",
         'data-testid="trading-workbench-overview"',
+        "function renderWorkbenchOperatorState",
+        "function operatorStateSummary",
+        'data-testid="workbench-operator-state"',
+        'data-testid="operator-state-card"',
+        'data-testid="operator-state-next-action"',
+        "data-operator-status",
+        "data-operator-active-module",
         "function renderWorkbenchDecisionBrief",
         "function decisionBriefSummary",
         'data-testid="workbench-decision-brief"',
@@ -452,6 +460,13 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "approval_required_count: Number("
         "workbenchSupervisionGates(snapshot)?.metrics?.approval_required_count || 0)",
         "armed_local_write: compact(state.pendingLocalWrite?.command, 'none')",
+        "operator_status: compact(workbenchOperatorState(snapshot)?.status, 'unknown')",
+        "operator_active_module: compact("
+        "workbenchOperatorState(snapshot)?.active_module, 'none')",
+        "operator_active_blocker: compact("
+        "workbenchOperatorState(snapshot)?.primary_blocker, 'none')",
+        "operator_next_command: compact("
+        "workbenchOperatorState(snapshot)?.primary_next_action?.command, 'none')",
         "decision_brief_status: compact(workbenchDecisionBrief(snapshot)?.status, 'unknown')",
         "decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none')",
         "decision_brief_source_tool: compact("
@@ -535,6 +550,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
 
     assert ".platform-tools" in styles
     assert ".platform-tool-card" in styles
+    assert ".workbench-operator-state" in styles
+    assert ".operator-state-grid" in styles
+    assert ".operator-state-cards" in styles
     assert ".workbench-decision-brief" in styles
     assert ".decision-brief-grid" in styles
     assert ".decision-brief-evidence" in styles
