@@ -236,3 +236,17 @@ engine, but it is not the whole product frame.
   in automation JSON for agentic desktop review.
 - Preserve the same boundary: preview makes no provider calls, writes no rows,
   submits no broker order, and keeps the record command behind manual approval.
+
+## Current Slice: Learning Loop
+
+- Add a read-only learning-loop snapshot contract that joins the active
+  MarketRadar plan, paper preview, local paper evidence, validation replay,
+  value ledger, and outcome state into one agent-review dossier.
+- Render the loop in the Tauri Command Center and relevant paper, backtest,
+  validation, journal, and agent pages so operators can see what the platform
+  has learned without reconciling three evidence tables.
+- Expose loop status, ticker, stage, validation result, outcome, and blocked
+  card count in automation JSON for agentic desktop review.
+- Preserve the same boundary: the loop makes no provider calls, submits no
+  broker order, performs no autonomous strategy update, and writes no database
+  rows from browsing the dossier.

@@ -567,6 +567,29 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchPaperTradePreview(snapshot)?.paper_decision?.suggested_quantity || 0)",
         "paper_trade_preview_block_count: Number("
         "workbenchPaperTradePreview(snapshot)?.blockers?.length || 0)",
+        "function workbenchLearningLoop",
+        "function workbenchLearningLoopForPage",
+        "function renderWorkbenchLearningLoop",
+        "function learningLoopSummary",
+        "${renderWorkbenchLearningLoop(snapshot, 'overview')}",
+        "${renderWorkbenchLearningLoop(snapshot, pageKey)}",
+        'data-testid="workbench-learning-loop"',
+        'data-testid="learning-loop-card"',
+        "data-learning-loop-status=\"${escapeHtml(loop.status || 'unknown')}\"",
+        "data-learning-loop-card-status=\"${escapeHtml(card.status || 'unknown')}\"",
+        "data-learning-loop-card-module=\"${escapeHtml(card.module || 'unknown')}\"",
+        "learning_loop_status: compact("
+        "workbenchLearningLoop(snapshot)?.status, 'unknown')",
+        "learning_loop_ticker: compact("
+        "workbenchLearningLoop(snapshot)?.ticker, 'none')",
+        "learning_loop_stage: compact("
+        "workbenchLearningLoop(snapshot)?.learning_stage, 'unlinked')",
+        "learning_loop_validation_result_id: compact("
+        "workbenchLearningLoop(snapshot)?.validation_state?.validation_result_id, 'none')",
+        "learning_loop_outcome_id: compact("
+        "workbenchLearningLoop(snapshot)?.journal_state?.outcome_id, 'none')",
+        "learning_loop_blocked_card_count: Number("
+        "workbenchLearningLoop(snapshot)?.metrics?.blocked_card_count || 0)",
         "risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown')",
         "risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none')",
         "risk_sizing_status: compact("
@@ -658,6 +681,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".order-ticket-draft-preview" in styles
     assert ".workbench-paper-trade-preview" in styles
     assert ".paper-trade-preview-checks" in styles
+    assert ".workbench-learning-loop" in styles
+    assert ".learning-loop-preview" in styles
     assert ".workbench-risk-envelope" in styles
     assert ".risk-envelope-preview" in styles
     assert ".workbench-trade-runbook" in styles

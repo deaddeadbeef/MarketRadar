@@ -1320,6 +1320,100 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert paper_trade_preview["order_submission_allowed"] is False
     assert paper_trade_preview["live_trading_enabled"] is False
 
+    learning_loop = workbench["learning_loop"]
+    assert learning_loop["schema_version"] == "trading-workbench-learning-loop-v1"
+    assert learning_loop["status"] == "blocked"
+    assert learning_loop["source_tool"] == "market-radar"
+    assert learning_loop["ticker"] == "MSFT"
+    assert learning_loop["decision_card_id"] == "card-msft-latest"
+    assert (
+        learning_loop["loop_id"]
+        == "learning-loop-msft-card-msft-latest"
+    )
+    assert learning_loop["learning_stage"] == "outcome_computed"
+    assert (
+        learning_loop["primary_blocker"]
+        == "action_state_not_manual_review_eligible"
+    )
+    assert learning_loop["primary_next_action"] == (
+        "Resolve paper-trade blockers before recording locally."
+    )
+    assert learning_loop["primary_signal"] == {
+        "plan_status": "blocked",
+        "recommended_paper_decision": "deferred",
+        "source_tool": "market-radar",
+        "paper_preview_status": "blocked",
+        "paper_decision": "deferred",
+        "suggested_quantity": 208,
+    }
+    assert learning_loop["paper_state"] == {
+        "preview_status": "blocked",
+        "preview_id": "paper-preview-msft-card-msft-latest",
+        "paper_trade_id": "paper-msft",
+        "paper_state": "open",
+        "record_allowed": False,
+        "broker_order_submitted": False,
+    }
+    assert learning_loop["validation_state"] == {
+        "validation_result_id": "validation-result-msft",
+        "run_id": "validation-run-latest",
+        "state": "Warning",
+        "final_score": 88.0,
+        "positive_labels": ["target_20d_25"],
+        "leakage_flags": [],
+        "next_action": "Review replay result before changing strategy logic.",
+    }
+    assert learning_loop["journal_state"] == {
+        "ledger_entry_id": "value-ledger-msft",
+        "outcome_id": "value-outcome-msft",
+        "outcome_status": "computed",
+        "return_20d": 0.08,
+        "spy_relative_return_20d": 0.05,
+        "invalidation_touched": False,
+        "primary_command": "outcome show value-outcome-msft",
+    }
+    assert [card["id"] for card in learning_loop["cards"]] == [
+        "radar-signal",
+        "paper-preview",
+        "paper-evidence",
+        "validation-replay",
+        "journal-entry",
+        "outcome-review",
+        "strategy-update-boundary",
+    ]
+    assert [card["status"] for card in learning_loop["cards"]] == [
+        "ready",
+        "blocked",
+        "ready",
+        "ready",
+        "ready",
+        "ready",
+        "disabled",
+    ]
+    assert learning_loop["cards"][3]["finding"] == "Warning"
+    assert learning_loop["cards"][4]["command"] == "ledger show value-ledger-msft"
+    assert learning_loop["cards"][5]["command"] == "outcome show value-outcome-msft"
+    assert learning_loop["metrics"] == {
+        "card_count": 7,
+        "ready_card_count": 5,
+        "blocked_card_count": 1,
+        "disabled_card_count": 1,
+        "trade_lifecycle_count": 1,
+        "paper_trade_count": 1,
+        "validation_result_count": 1,
+        "journal_entry_count": 1,
+        "outcome_count": 1,
+        "useful_label_count": 1,
+        "linked_outcome_count": 1,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert learning_loop["external_calls_made"] == 0
+    assert learning_loop["db_writes_made"] == 0
+    assert learning_loop["broker_order_submitted"] is False
+    assert learning_loop["order_submission_allowed"] is False
+    assert learning_loop["live_trading_enabled"] is False
+
     trade_runbook = workbench["trade_runbook"]
     assert trade_runbook["schema_version"] == "trading-workbench-runbook-v1"
     assert trade_runbook["status"] == "blocked"

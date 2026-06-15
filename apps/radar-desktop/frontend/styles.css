@@ -661,6 +661,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 .workbench-position-sizing,
 .workbench-order-ticket-draft,
 .workbench-paper-trade-preview,
+.workbench-learning-loop,
 .workbench-risk-envelope,
 .workbench-trade-runbook {
   margin-top: 12px;
@@ -881,6 +882,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 .position-sizing-preview table,
 .order-ticket-draft-preview table,
 .paper-trade-preview-checks table,
+.learning-loop-preview table,
 .risk-envelope-preview table,
 .execution-sandbox-preview table,
 .trade-runbook-preview table,
