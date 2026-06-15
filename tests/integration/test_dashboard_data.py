@@ -1397,6 +1397,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert agent["credit_gate"]["max_openai_calls"] == 3
     assert "CATALYST_LLM_DAILY_BUDGET_USD>0" in agent["credit_gate"]["missing"]
     assert agent["decision_boundary"] == "setup_blocked; research/manual triage only"
+    assert agent["agent_preview_command"] == "agent"
+    assert agent["agent_execute_boundary_command"] == "agent execute"
+    assert agent["primary_command"] == "agent"
     assert "agent_brief.next_actions" in agent["source_keys"]
     assert "trading_workbench.active_plan.capability_map" in agent["source_keys"]
     assert agent["next_action"] == (
@@ -1424,6 +1427,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,
+        "agent_preview_command": "agent",
+        "agent_execute_boundary_command": "agent execute",
+        "primary_command": "agent",
         "next_action": "Seed the ticker universe before calling this a full-market scan.",
     }
     assert agent["agent_insights"][0]["status"] == "decision_support"

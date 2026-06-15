@@ -50,3 +50,10 @@ engine, but it is not the whole product frame.
 - Route lifecycle actions through the existing dashboard backend command path.
 - Preserve the no-live-trading boundary: no broker order submission and no
   provider calls from browsing.
+
+## Current Slice: Agent Preview Actions
+
+- Add safe agent preview command metadata to Agent Cockpit action rows.
+- Render row-level preview buttons for proposed human actions.
+- Route preview buttons through the existing dashboard backend command path.
+- Keep `agent execute` outside clickable browsing controls.
