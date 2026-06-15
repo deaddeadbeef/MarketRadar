@@ -628,6 +628,19 @@ function workbenchTradeMonitorForPage(pageKey, snapshot = state.snapshot || {}) 
   return pages.has(pageKey) ? items : [];
 }
 
+function workbenchExitManagement(snapshot = state.snapshot || {}) {
+  const exit = tradingWorkbenchSnapshot(snapshot)?.exit_management;
+  return exit && typeof exit === 'object' ? exit : { exit_checks: [] };
+}
+
+function workbenchExitManagementForPage(pageKey, snapshot = state.snapshot || {}) {
+  const exit = workbenchExitManagement(snapshot);
+  const checks = Array.isArray(exit.exit_checks) ? exit.exit_checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return checks;
+  const pages = new Set(['portfolio', 'risk-desk', 'paper-trading', 'broker', 'alerts', 'journal', 'agent']);
+  return pages.has(pageKey) ? checks : [];
+}
+
 function workbenchPerformanceAttribution(snapshot = state.snapshot || {}) {
   const attribution = tradingWorkbenchSnapshot(snapshot)?.performance_attribution;
   return attribution && typeof attribution === 'object' ? attribution : { attribution_rows: [] };
@@ -1281,6 +1294,14 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       trade_monitor_open_order_count: Number(workbenchTradeMonitor(snapshot)?.metrics?.open_order_count || 0),
       trade_monitor_primary_trigger_id: compact(workbenchTradeMonitor(snapshot)?.alert_watch?.primary_trigger_id, 'none'),
       trade_monitor_exit_update_allowed: Boolean(workbenchTradeMonitor(snapshot)?.exit_update_allowed),
+      exit_management_status: compact(workbenchExitManagement(snapshot)?.status, 'unknown'),
+      exit_management_ticker: compact(workbenchExitManagement(snapshot)?.ticker, 'none'),
+      exit_management_stage: compact(workbenchExitManagement(snapshot)?.exit_stage, 'unlinked'),
+      exit_management_stop_status: compact(workbenchExitManagement(snapshot)?.exit_plan?.stop_status, 'none'),
+      exit_management_target_status: compact(workbenchExitManagement(snapshot)?.exit_plan?.target_status, 'none'),
+      exit_management_blocked_check_count: Number(workbenchExitManagement(snapshot)?.metrics?.blocked_check_count || 0),
+      exit_management_exit_update_allowed: Boolean(workbenchExitManagement(snapshot)?.exit_update_allowed),
+      exit_management_order_submission_allowed: Boolean(workbenchExitManagement(snapshot)?.order_submission_allowed),
       performance_attribution_status: compact(workbenchPerformanceAttribution(snapshot)?.status, 'unknown'),
       performance_attribution_ticker: compact(workbenchPerformanceAttribution(snapshot)?.ticker, 'none'),
       performance_attribution_stage: compact(workbenchPerformanceAttribution(snapshot)?.performance_stage, 'unlinked'),
@@ -1413,6 +1434,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchLearningLoop(snapshot, 'overview')}
     ${renderWorkbenchStrategyReview(snapshot, 'overview')}
     ${renderWorkbenchTradeMonitor(snapshot, 'overview')}
+    ${renderWorkbenchExitManagement(snapshot, 'overview')}
     ${renderWorkbenchPerformanceAttribution(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
@@ -2862,6 +2884,87 @@ function tradeMonitorSummary(monitor) {
   ].join('; ');
 }
 
+function renderWorkbenchExitManagement(snapshot, pageKey = 'overview') {
+  const exit = workbenchExitManagement(snapshot);
+  const checks = workbenchExitManagementForPage(pageKey, snapshot);
+  const plan = exit.exit_plan || {};
+  const evidence = exit.evidence || {};
+  const commands = exit.commands || {};
+  if (!checks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-exit-management"
+      data-testid="workbench-exit-management"
+      data-exit-management-status="${escapeHtml(exit.status || 'unknown')}"
+      data-exit-management-stage="${escapeHtml(exit.exit_stage || 'unlinked')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Exit Management</h2>
+          <p>${escapeHtml(exitManagementSummary(exit))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(exit.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Stage</span><b>${escapeHtml(catalogLabel(exit.exit_stage || 'unlinked'))}</b></div>
+        <div class="kv"><span>Paper</span><b>${escapeHtml(catalogLabel(exit.active_trade?.paper_state || '-'))}</b></div>
+        <div class="kv"><span>Stop</span><b>${escapeHtml(catalogLabel(plan.stop_status || '-'))}</b></div>
+        <div class="kv"><span>Target</span><b>${escapeHtml(catalogLabel(plan.target_status || '-'))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Stop dist.</span><b>${escapeHtml(text(plan.stop_distance_pct))}</b></div>
+        <div class="kv"><span>Target dist.</span><b>${escapeHtml(text(plan.target_distance_pct))}</b></div>
+        <div class="kv"><span>Reward/risk</span><b>${escapeHtml(text(plan.reward_risk))}</b></div>
+        <div class="kv"><span>Update</span><b>${escapeHtml(exit.exit_update_allowed ? 'allowed' : 'disabled')}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Outcome</span><b>${escapeHtml(compact(evidence.outcome_id, 'none'))}</b></div>
+        <div class="kv"><span>20D return</span><b>${escapeHtml(text(evidence.return_20d))}</b></div>
+        <div class="kv"><span>Trigger</span><b>${escapeHtml(compact(evidence.primary_trigger_id, 'none'))}</b></div>
+        <div class="kv"><span>Open orders</span><b>${escapeHtml(text(evidence.open_order_count || 0))}</b></div>
+      </div>
+      <div class="plan-command-list exit-management-commands">
+        <div><span>Paper</span><code>${escapeHtml(compact(commands.paper, 'paper'))}</code></div>
+        <div><span>Risk</span><code>${escapeHtml(compact(commands.risk, 'risk-desk'))}</code></div>
+        <div><span>Alerts</span><code>${escapeHtml(compact(commands.alerts, 'alerts'))}</code></div>
+        <div><span>Broker boundary</span><code>${escapeHtml(compact(commands.broker_boundary, 'broker'))}</code></div>
+      </div>
+      <div class="table-wrap exit-management-preview">
+        <table aria-label="Workbench exit management">
+          <thead><tr><th>Check</th><th>Scope</th><th>Status</th><th>Finding</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="exit-management-check"
+                data-exit-management-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-exit-management-check-scope="${escapeHtml(check.scope || 'unknown')}"
+              >
+                <td data-label="Check">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(check.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(check.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function exitManagementSummary(exit) {
+  const metrics = exit?.metrics || {};
+  return [
+    `${compact(exit?.ticker, 'No ticker')} ${catalogLabel(exit?.status || 'unknown')}`,
+    `${catalogLabel(exit?.exit_stage || 'unlinked')} stage`,
+    `${compact(metrics.ready_check_count, '0')} ready checks`,
+    `${compact(metrics.blocked_check_count, '0')} blocked`,
+    'broker exits disabled',
+  ].join('; ');
+}
+
 function renderWorkbenchPerformanceAttribution(snapshot, pageKey = 'overview') {
   const attribution = workbenchPerformanceAttribution(snapshot);
   const rows = workbenchPerformanceAttributionForPage(pageKey, snapshot);
@@ -3374,6 +3477,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchLearningLoop(snapshot, pageKey)}
     ${renderWorkbenchStrategyReview(snapshot, pageKey)}
     ${renderWorkbenchTradeMonitor(snapshot, pageKey)}
+    ${renderWorkbenchExitManagement(snapshot, pageKey)}
     ${renderWorkbenchPerformanceAttribution(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}

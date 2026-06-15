@@ -564,9 +564,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "execution_lane_id": "review-before-execution",
     }
     assert case_file["metrics"] == {
-        "linked_tool_count": 12,
+        "linked_tool_count": 13,
         "ready_tool_count": 1,
-        "blocked_tool_count": 9,
+        "blocked_tool_count": 10,
         "review_tool_count": 1,
         "disabled_tool_count": 1,
         "approval_required_count": 2,
@@ -587,6 +587,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "learning-validation",
         "performance-attribution",
         "trade-monitor",
+        "exit-management",
         "agent-handoff",
         "live-execution-boundary",
     ]
@@ -602,6 +603,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "review",
         "blocked",
         "blocked",
+        "blocked",
         "disabled",
     ]
     assert [row["tool_kind"] for row in case_file["tools"]] == [
@@ -615,6 +617,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "learning",
         "attribution",
         "monitoring",
+        "exit-management",
         "agent",
         "boundary",
     ]
@@ -646,6 +649,11 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert case_tools["trade-monitor"]["evidence"] == (
         "active_paper_trades=1; alerts=2; triggers=1"
     )
+    assert case_tools["exit-management"]["evidence"] == (
+        "exit_checks=6; blocked=1; disabled=1"
+    )
+    assert case_tools["exit-management"]["target_page"] == "broker"
+    assert case_tools["exit-management"]["status"] == "blocked"
     assert case_tools["live-execution-boundary"]["status"] == "disabled"
     assert all(row["external_calls_made"] == 0 for row in case_file["tools"])
     assert all(row["db_writes_made"] == 0 for row in case_file["tools"])
@@ -2487,6 +2495,118 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert trade_monitor["exit_update_allowed"] is False
     assert trade_monitor["live_trading_enabled"] is False
 
+    exit_management = workbench["exit_management"]
+    assert (
+        exit_management["schema_version"]
+        == "trading-workbench-exit-management-v1"
+    )
+    assert exit_management["status"] == "blocked"
+    assert exit_management["source_tool"] == "market-radar"
+    assert exit_management["ticker"] == "MSFT"
+    assert exit_management["decision_card_id"] == "card-msft-latest"
+    assert (
+        exit_management["exit_id"]
+        == "exit-management-msft-card-msft-latest"
+    )
+    assert exit_management["exit_mode"] == "supervised_exit_review"
+    assert exit_management["exit_stage"] == "outcome_computed"
+    assert (
+        exit_management["primary_blocker"]
+        == "action_state_not_manual_review_eligible"
+    )
+    assert exit_management["primary_next_action"] == (
+        "Review exit management before changing paper state or broker workflow."
+    )
+    assert exit_management["active_trade"] == trade_monitor["active_trade"]
+    assert exit_management["exit_plan"] == {
+        "entry_price": 101.0,
+        "invalidation_price": 94.0,
+        "target_price": 116.2,
+        "stop_status": "watch",
+        "target_status": "watch",
+        "stop_distance_pct": 0.0693,
+        "target_distance_pct": 0.1505,
+        "reward_risk": 2.1714,
+        "paper_state_update_allowed": False,
+        "exit_update_allowed": False,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "primary_command": "broker",
+    }
+    assert exit_management["evidence"] == {
+        "outcome_id": "value-outcome-msft",
+        "return_20d": 0.08,
+        "spy_relative_return_20d": 0.05,
+        "hit_rate_20d": 1.0,
+        "primary_trigger_id": trigger_id,
+        "open_order_count": 0,
+        "risk_block_count": 3,
+        "active_paper_trade_count": 1,
+    }
+    assert exit_management["commands"] == {
+        "paper": "paper",
+        "risk": "risk-desk",
+        "alerts": "alerts",
+        "journal": "outcome show value-outcome-msft",
+        "broker_boundary": "broker",
+        "exit_update_boundary": "broker",
+    }
+    assert [row["id"] for row in exit_management["exit_checks"]] == [
+        "active-paper-state",
+        "stop-target-plan",
+        "alert-trigger-coverage",
+        "performance-context",
+        "risk-blocker-gate",
+        "broker-exit-boundary",
+    ]
+    assert [row["status"] for row in exit_management["exit_checks"]] == [
+        "ready",
+        "ready",
+        "ready",
+        "review",
+        "blocked",
+        "disabled",
+    ]
+    assert [row["scope"] for row in exit_management["exit_checks"]] == [
+        "paper-trading",
+        "risk-desk",
+        "alerts",
+        "journal",
+        "risk-desk",
+        "broker",
+    ]
+    assert exit_management["exit_checks"][1]["evidence"] == (
+        "stop_distance=0.0693; target_distance=0.1505; reward_risk=2.1714"
+    )
+    assert exit_management["exit_checks"][2]["finding"] == trigger_id
+    assert (
+        exit_management["exit_checks"][4]["finding"]
+        == "action_state_not_manual_review_eligible"
+    )
+    assert exit_management["metrics"] == {
+        "check_count": 6,
+        "ready_check_count": 3,
+        "review_check_count": 1,
+        "blocked_check_count": 1,
+        "disabled_check_count": 1,
+        "active_paper_trade_count": 1,
+        "open_order_count": 0,
+        "risk_block_count": 3,
+        "stop_distance_pct": 0.0693,
+        "target_distance_pct": 0.1505,
+        "reward_risk": 2.1714,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert exit_management["external_calls_made"] == 0
+    assert exit_management["db_writes_made"] == 0
+    assert exit_management["broker_order_submitted"] is False
+    assert exit_management["order_submission_allowed"] is False
+    assert exit_management["paper_state_update_allowed"] is False
+    assert exit_management["exit_update_allowed"] is False
+    assert exit_management["live_trading_enabled"] is False
+
     performance_attribution = workbench["performance_attribution"]
     assert (
         performance_attribution["schema_version"]
@@ -3437,6 +3557,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     ]
     assert "broker.balances" in portfolio["source_keys"]
     assert "broker.open_orders" in portfolio["source_keys"]
+    assert "trading_workbench.exit_management" in portfolio["source_keys"]
 
     market_radar = modules["market-radar"]
     assert market_radar["metrics"]["queue_count"] == 2
@@ -3598,6 +3719,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "Open alert evidence or review saved local trigger rules."
     )
     assert "broker.triggers" in alerts_module["source_keys"]
+    assert "trading_workbench.exit_management" in alerts_module["source_keys"]
 
     ipo = modules["ipo"]
     assert ipo["status"] == "ready"
@@ -4017,6 +4139,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert "trading_workbench.active_plan.execution_controls" in risk_desk[
         "source_keys"
     ]
+    assert "trading_workbench.exit_management" in risk_desk["source_keys"]
 
     lifecycle_rows = [
         {
@@ -4089,6 +4212,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert paper_trading["execution_audit_rows"] == []
     assert "audit_events.paper_decision_recorded" in paper_trading["source_keys"]
     assert "trading_workbench.trade_lifecycle_rows" in paper_trading["source_keys"]
+    assert "trading_workbench.exit_management" in paper_trading["source_keys"]
 
     broker = modules["broker"]
     assert broker["status"] == "read_only"
@@ -4105,6 +4229,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "audit_events.telemetry.operator.order_ticket.preview_saved"
         in broker["source_keys"]
     )
+    assert "trading_workbench.exit_management" in broker["source_keys"]
 
     backtest = modules["backtest"]
     assert backtest["metrics"]["latest_validation_run"] == "validation-run-latest"
@@ -4213,6 +4338,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         }
     ]
     assert "trading_workbench.trade_lifecycle_rows" in journal["source_keys"]
+    assert "trading_workbench.exit_management" in journal["source_keys"]
     agent = modules["agent"]
     assert agent["metrics"]["external_calls_made"] == 0
     assert agent["status"] == "dry_run"
@@ -4245,6 +4371,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert agent["primary_command"] == "agent"
     assert "agent_brief.next_actions" in agent["source_keys"]
     assert "trading_workbench.performance_attribution" in agent["source_keys"]
+    assert "trading_workbench.exit_management" in agent["source_keys"]
     assert "trading_workbench.active_plan.capability_map" in agent["source_keys"]
     assert agent["next_action"] == (
         "Seed the ticker universe before calling this a full-market scan."

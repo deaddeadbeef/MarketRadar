@@ -671,6 +671,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 .workbench-learning-loop,
 .workbench-strategy-review,
 .workbench-trade-monitor,
+.workbench-exit-management,
 .workbench-performance-attribution,
 .workbench-risk-envelope,
 .workbench-trade-runbook {
@@ -902,6 +903,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 .learning-loop-preview table,
 .strategy-review-preview table,
 .trade-monitor-preview table,
+.exit-management-preview table,
 .performance-attribution-preview table,
 .risk-envelope-preview table,
 .execution-sandbox-preview table,
