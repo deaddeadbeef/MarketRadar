@@ -1198,6 +1198,13 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "broker_order_submitted": False,
             "order_submission_allowed": False,
             "no_execution": True,
+            "ledger_show_command": "ledger show value-ledger-msft",
+            "outcome_show_command": "outcome show value-outcome-msft",
+            "outcome_preview_command": "outcome update value-ledger-msft filter",
+            "outcome_update_command": (
+                "outcome update value-ledger-msft filter --execute"
+            ),
+            "primary_command": "outcome show value-outcome-msft",
             "next_action": "Compare realized outcome with the original paper decision.",
         }
     ]
@@ -1554,6 +1561,11 @@ def test_dashboard_paper_decision_command_previews_and_records_locally(
     assert lifecycle_row["db_writes_made"] == 2
     assert lifecycle_row["broker_order_submitted"] is False
     assert lifecycle_row["order_submission_allowed"] is False
+    assert lifecycle_row["ledger_show_command"] == "ledger show value-ledger-msft"
+    assert lifecycle_row["outcome_update_command"] == (
+        "outcome update value-ledger-msft filter --execute"
+    )
+    assert lifecycle_row["primary_command"] == "outcome show value-outcome-msft"
 
 
 def test_dashboard_order_ticket_command_previews_and_records_locally(

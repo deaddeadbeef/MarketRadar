@@ -818,7 +818,26 @@ tr[data-testid="queue-row"]:focus-visible td {
 }
 
 .trade-lifecycle-preview table {
-  min-width: 1120px;
+  min-width: 1240px;
+}
+
+.lifecycle-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 190px;
+}
+
+.lifecycle-action-button {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lifecycle-action-button[data-lifecycle-write="true"] {
+  border-color: rgba(245, 158, 11, .55);
+  color: var(--amber);
 }
 
 .paper-trade-preview table {

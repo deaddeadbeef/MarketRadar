@@ -42,3 +42,11 @@ engine, but it is not the whole product frame.
   `provider_calls=0` browsing.
 - Desktop/API config manifests expose the platform module map for automation.
 - Existing desktop frontend and Tauri tests pass.
+
+## Current Slice: Lifecycle Actions
+
+- Add local ledger/outcome command metadata to trade lifecycle rows.
+- Render guarded lifecycle row actions in the desktop workbench.
+- Route lifecycle actions through the existing dashboard backend command path.
+- Preserve the no-live-trading boundary: no broker order submission and no
+  provider calls from browsing.
