@@ -278,6 +278,19 @@ engine, but it is not the whole product frame.
   broker order, performs no autonomous exit/state update, and writes no
   database rows from browsing the dossier.
 
+## Current Slice: Exit Management
+
+- Add a supervised exit-management snapshot contract that joins active paper
+  state, stop/target context, alert triggers, risk blockers, broker boundaries,
+  and performance evidence into one exit-review board.
+- Render the board in the Tauri Command Center and relevant portfolio, risk,
+  paper-trading, broker, alerts, journal, and agent pages.
+- Expose exit status, ticker, stage, stop/target state, blocked-check count,
+  and exit/broker permissions in automation JSON.
+- Preserve the same boundary: the board makes no provider calls, submits no
+  broker order, performs no autonomous exit/state update, and writes no
+  database rows from browsing the board.
+
 ## Current Slice: Capital Allocation
 
 - Add a read-only capital-allocation snapshot contract that joins portfolio

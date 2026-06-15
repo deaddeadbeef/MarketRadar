@@ -785,6 +785,33 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchTradeMonitor(snapshot)?.alert_watch?.primary_trigger_id, 'none')",
         "trade_monitor_exit_update_allowed: Boolean("
         "workbenchTradeMonitor(snapshot)?.exit_update_allowed)",
+        "function workbenchExitManagement",
+        "function workbenchExitManagementForPage",
+        "function renderWorkbenchExitManagement",
+        "function exitManagementSummary",
+        "${renderWorkbenchExitManagement(snapshot, 'overview')}",
+        "${renderWorkbenchExitManagement(snapshot, pageKey)}",
+        'data-testid="workbench-exit-management"',
+        'data-testid="exit-management-check"',
+        "data-exit-management-status=\"${escapeHtml(exit.status || 'unknown')}\"",
+        "data-exit-management-check-status=\"${escapeHtml(check.status || 'unknown')}\"",
+        "data-exit-management-check-scope=\"${escapeHtml(check.scope || 'unknown')}\"",
+        "exit_management_status: compact("
+        "workbenchExitManagement(snapshot)?.status, 'unknown')",
+        "exit_management_ticker: compact("
+        "workbenchExitManagement(snapshot)?.ticker, 'none')",
+        "exit_management_stage: compact("
+        "workbenchExitManagement(snapshot)?.exit_stage, 'unlinked')",
+        "exit_management_stop_status: compact("
+        "workbenchExitManagement(snapshot)?.exit_plan?.stop_status, 'none')",
+        "exit_management_target_status: compact("
+        "workbenchExitManagement(snapshot)?.exit_plan?.target_status, 'none')",
+        "exit_management_blocked_check_count: Number("
+        "workbenchExitManagement(snapshot)?.metrics?.blocked_check_count || 0)",
+        "exit_management_exit_update_allowed: Boolean("
+        "workbenchExitManagement(snapshot)?.exit_update_allowed)",
+        "exit_management_order_submission_allowed: Boolean("
+        "workbenchExitManagement(snapshot)?.order_submission_allowed)",
         "function workbenchPerformanceAttribution",
         "function workbenchPerformanceAttributionForPage",
         "function renderWorkbenchPerformanceAttribution",
@@ -923,6 +950,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".strategy-review-preview" in styles
     assert ".workbench-trade-monitor" in styles
     assert ".trade-monitor-preview" in styles
+    assert ".workbench-exit-management" in styles
+    assert ".exit-management-preview" in styles
     assert ".workbench-performance-attribution" in styles
     assert ".performance-attribution-preview" in styles
     assert ".workbench-risk-envelope" in styles

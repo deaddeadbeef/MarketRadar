@@ -1232,6 +1232,12 @@ def _trading_workbench_snapshot_payload(
         journal_entry_rows=journal_entry_rows,
         journal_outcome_rows=journal_outcome_rows,
     )
+    exit_management = _workbench_exit_management_payload(
+        active_plan=active_plan,
+        risk_envelope=risk_envelope,
+        trade_monitor=trade_monitor,
+        performance_attribution=performance_attribution,
+    )
     trade_runbook = _workbench_trade_runbook_payload(
         decision_brief=decision_brief,
         scenario_matrix=scenario_matrix,
@@ -1300,6 +1306,7 @@ def _trading_workbench_snapshot_payload(
         strategy_review=strategy_review,
         trade_monitor=trade_monitor,
         performance_attribution=performance_attribution,
+        exit_management=exit_management,
         workflow_map=workflow_map,
         priority_queue=priority_queue,
         supervision_gates=supervision_gates,
@@ -1340,6 +1347,7 @@ def _trading_workbench_snapshot_payload(
         "strategy_review": strategy_review,
         "trade_monitor": trade_monitor,
         "performance_attribution": performance_attribution,
+        "exit_management": exit_management,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
@@ -1403,6 +1411,7 @@ def _trading_workbench_snapshot_payload(
                     "broker.positions",
                     "broker.balances",
                     "broker.open_orders",
+                    "trading_workbench.exit_management",
                 ],
             },
             "market-radar": {
@@ -1613,6 +1622,7 @@ def _trading_workbench_snapshot_payload(
                     "alerts.rows",
                     "broker.triggers",
                     "broker.opportunity_actions",
+                    "trading_workbench.exit_management",
                 ],
             },
             "ipo": {
@@ -1807,6 +1817,7 @@ def _trading_workbench_snapshot_payload(
                     "portfolio_impact",
                     "trading_workbench.active_plan.risk_approval",
                     "trading_workbench.active_plan.execution_controls",
+                    "trading_workbench.exit_management",
                 ],
             },
             "paper-trading": {
@@ -1849,6 +1860,7 @@ def _trading_workbench_snapshot_payload(
                     "validation.paper_trades",
                     f"audit_events.{PAPER_DECISION_RECORDED_EVENT}",
                     "trading_workbench.trade_lifecycle_rows",
+                    "trading_workbench.exit_management",
                 ],
             },
             "broker": {
@@ -1894,6 +1906,7 @@ def _trading_workbench_snapshot_payload(
                     "broker",
                     "broker.order_tickets",
                     f"audit_events.{ORDER_TICKET_PREVIEW_SAVED_EVENT}",
+                    "trading_workbench.exit_management",
                 ],
             },
             "backtest": {
@@ -1985,6 +1998,7 @@ def _trading_workbench_snapshot_payload(
                     "value_outcomes",
                     "value_report",
                     "trading_workbench.trade_lifecycle_rows",
+                    "trading_workbench.exit_management",
                 ],
             },
             "ops": {
@@ -2125,6 +2139,7 @@ def _trading_workbench_snapshot_payload(
                     "trading_workbench.case_file",
                     "trading_workbench.portfolio_guardrails",
                     "trading_workbench.performance_attribution",
+                    "trading_workbench.exit_management",
                     "trading_workbench.agent_playbook",
                     "trading_workbench.market_intelligence_dossier",
                     "trading_workbench.active_plan.capability_map",
@@ -2268,6 +2283,7 @@ def _workbench_agent_brief_module(
             "trading_workbench.case_file",
             "trading_workbench.portfolio_guardrails",
             "trading_workbench.performance_attribution",
+            "trading_workbench.exit_management",
             "trading_workbench.agent_playbook",
             "trading_workbench.market_intelligence_dossier",
             "trading_workbench.active_plan.capability_map",
@@ -7128,6 +7144,7 @@ def _workbench_case_file_payload(
     strategy_review: Mapping[str, object],
     trade_monitor: Mapping[str, object],
     performance_attribution: Mapping[str, object],
+    exit_management: Mapping[str, object],
     workflow_map: Mapping[str, object],
     priority_queue: Mapping[str, object],
     supervision_gates: Mapping[str, object],
@@ -7169,6 +7186,7 @@ def _workbench_case_file_payload(
     learning_metrics = _mapping(learning_loop.get("metrics"))
     monitor_metrics = _mapping(trade_monitor.get("metrics"))
     attribution_metrics = _mapping(performance_attribution.get("metrics"))
+    exit_metrics = _mapping(exit_management.get("metrics"))
     playbook_metrics = _mapping(agent_playbook.get("metrics"))
     supervision_metrics = _mapping(supervision_gates.get("metrics"))
     handoff = _mapping(agent_playbook.get("agent_handoff"))
@@ -7363,8 +7381,31 @@ def _workbench_case_file_payload(
             next_action="Review monitoring context before changing watch state.",
         ),
         _workbench_case_file_tool(
-            tool_id="agent-handoff",
+            tool_id="exit-management",
             rank=11,
+            module="broker",
+            label="Exit management",
+            status=str(exit_management.get("status") or "unknown"),
+            tool_kind="exit-management",
+            target_page="broker",
+            finding=exit_management.get("primary_blocker")
+            or exit_management.get("exit_stage"),
+            evidence=(
+                "exit_checks="
+                f"{exit_metrics.get('check_count')}; "
+                f"blocked={exit_metrics.get('blocked_check_count')}; "
+                f"disabled={exit_metrics.get('disabled_check_count')}"
+            ),
+            command=_mapping(exit_management.get("commands")).get(
+                "broker_boundary",
+                "broker",
+            ),
+            next_action=exit_management.get("primary_next_action")
+            or "Review exit management before changing paper state.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="agent-handoff",
+            rank=12,
             module="agent",
             label="Agent handoff",
             status=str(agent_playbook.get("status") or "unknown"),
@@ -7383,7 +7424,7 @@ def _workbench_case_file_payload(
         ),
         _workbench_case_file_tool(
             tool_id="live-execution-boundary",
-            rank=12,
+            rank=13,
             module="broker",
             label="Live execution boundary",
             status="disabled",
@@ -7477,6 +7518,7 @@ def _workbench_case_file_payload(
             "trading_workbench.strategy_review",
             "trading_workbench.trade_monitor",
             "trading_workbench.performance_attribution",
+            "trading_workbench.exit_management",
             "trading_workbench.agent_playbook",
         ],
         "metrics": {
@@ -8888,6 +8930,285 @@ def _workbench_trade_monitor_watch_item(
         "broker_order_submitted": False,
         "order_submission_allowed": False,
         "position_state_update_allowed": False,
+        "exit_update_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": next_action,
+    }
+
+
+def _workbench_exit_management_payload(
+    *,
+    active_plan: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    trade_monitor: Mapping[str, object],
+    performance_attribution: Mapping[str, object],
+) -> dict[str, object]:
+    ticker = _learning_loop_ticker(
+        _first_value(
+            trade_monitor.get("ticker"),
+            performance_attribution.get("ticker"),
+            risk_envelope.get("ticker"),
+            active_plan.get("ticker"),
+        )
+    )
+    decision_card_id = _first_value(
+        trade_monitor.get("decision_card_id"),
+        performance_attribution.get("decision_card_id"),
+        risk_envelope.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+    )
+    active_trade = _mapping(trade_monitor.get("active_trade"))
+    monitor_exit = _mapping(trade_monitor.get("exit_plan"))
+    alert_watch = _mapping(trade_monitor.get("alert_watch"))
+    risk_watch = _mapping(trade_monitor.get("risk_watch"))
+    attribution = _mapping(performance_attribution.get("attribution"))
+    attribution_metrics = _mapping(performance_attribution.get("metrics"))
+    risk_metrics = _mapping(risk_envelope.get("metrics"))
+    risk_blockers = _texts(risk_watch.get("blockers")) or _texts(
+        risk_envelope.get("blockers")
+    )
+    entry_price = _optional_float(monitor_exit.get("entry_price"))
+    invalidation_price = _optional_float(monitor_exit.get("invalidation_price"))
+    target_price = _optional_float(monitor_exit.get("target_price"))
+    stop_delta = (
+        abs(entry_price - invalidation_price)
+        if entry_price is not None and invalidation_price is not None
+        else None
+    )
+    target_delta = (
+        abs(target_price - entry_price)
+        if target_price is not None and entry_price is not None
+        else None
+    )
+    stop_distance_pct = _workbench_round_ratio(
+        _workbench_ratio(stop_delta, abs(entry_price) if entry_price else None)
+    )
+    target_distance_pct = _workbench_round_ratio(
+        _workbench_ratio(target_delta, abs(entry_price) if entry_price else None)
+    )
+    reward_risk = _workbench_round_ratio(_workbench_ratio(target_delta, stop_delta))
+    active_paper_count = _first_nonnegative_int(
+        _mapping(trade_monitor.get("metrics")).get("active_paper_trade_count")
+    )
+    open_order_count = _first_nonnegative_int(
+        _mapping(trade_monitor.get("metrics")).get("open_order_count")
+    )
+    risk_block_count = _first_nonnegative_int(
+        risk_watch.get("blocked_check_count"),
+        risk_metrics.get("blocked_check_count"),
+    )
+    primary_blocker = (
+        risk_blockers[0]
+        if risk_blockers
+        else performance_attribution.get("primary_blocker")
+    )
+    checks = [
+        _workbench_exit_management_check(
+            check_id="active-paper-state",
+            label="Active paper state",
+            status="ready" if active_paper_count else "blocked",
+            scope="paper-trading",
+            finding=active_trade.get("paper_state") or "missing_active_paper_trade",
+            evidence=(
+                f"{active_trade.get('paper_trade_id') or 'no paper trade'}; "
+                f"shares={active_trade.get('shares')}; "
+                f"notional={active_trade.get('notional')}"
+            ),
+            next_action=(
+                "Use the active paper trade as exit context."
+                if active_paper_count
+                else "Link an active paper trade before reviewing exits."
+            ),
+        ),
+        _workbench_exit_management_check(
+            check_id="stop-target-plan",
+            label="Stop and target plan",
+            status="ready"
+            if invalidation_price is not None and target_price is not None
+            else "blocked",
+            scope="risk-desk",
+            finding=(
+                f"stop={_workbench_round_float(invalidation_price)}; "
+                f"target={_workbench_round_float(target_price)}"
+            )
+            if invalidation_price is not None and target_price is not None
+            else "missing_stop_or_target",
+            evidence=(
+                f"stop_distance={stop_distance_pct}; "
+                f"target_distance={target_distance_pct}; "
+                f"reward_risk={reward_risk}"
+            ),
+            next_action="Review stop and target manually before changing state.",
+        ),
+        _workbench_exit_management_check(
+            check_id="alert-trigger-coverage",
+            label="Alert trigger coverage",
+            status="ready"
+            if _first_nonnegative_int(alert_watch.get("alert_count"))
+            or _first_nonnegative_int(alert_watch.get("trigger_count"))
+            else "review",
+            scope="alerts",
+            finding=alert_watch.get("primary_trigger_id")
+            or alert_watch.get("primary_alert_id")
+            or "no_alert_trigger",
+            evidence=(
+                f"alerts={_first_nonnegative_int(alert_watch.get('alert_count'))}; "
+                f"triggers={_first_nonnegative_int(alert_watch.get('trigger_count'))}; "
+                "active="
+                f"{_first_nonnegative_int(alert_watch.get('active_trigger_count'))}"
+            ),
+            next_action="Evaluate saved alert and trigger context before exit changes.",
+        ),
+        _workbench_exit_management_check(
+            check_id="performance-context",
+            label="Performance context",
+            status=str(performance_attribution.get("status") or "review"),
+            scope="journal",
+            finding=performance_attribution.get("primary_blocker")
+            or attribution.get("outcome_status")
+            or "performance_context",
+            evidence=(
+                f"return_20d={attribution.get('return_20d')}; "
+                f"spy_relative={attribution.get('spy_relative_return_20d')}"
+            ),
+            next_action="Review performance context before changing exit rules.",
+        ),
+        _workbench_exit_management_check(
+            check_id="risk-blocker-gate",
+            label="Risk blocker gate",
+            status="blocked" if risk_block_count else "ready",
+            scope="risk-desk",
+            finding=primary_blocker or "risk_checks_clear",
+            evidence=(
+                f"blocked_checks={risk_block_count}; "
+                f"open_orders={open_order_count}"
+            ),
+            next_action=(
+                "Resolve risk blockers before changing paper state."
+                if risk_block_count
+                else "Risk blockers are clear for supervised exit review."
+            ),
+        ),
+        _workbench_exit_management_check(
+            check_id="broker-exit-boundary",
+            label="Broker exit boundary",
+            status="disabled",
+            scope="broker",
+            finding="broker_exit_submission_disabled",
+            evidence="order_submission_allowed=false; live_trading_enabled=false",
+            next_action="No exit order is submitted from this workbench.",
+        ),
+    ]
+    ready_count = sum(1 for row in checks if row.get("status") == "ready")
+    review_count = sum(1 for row in checks if row.get("status") == "review")
+    blocked_count = sum(1 for row in checks if row.get("status") == "blocked")
+    disabled_count = sum(1 for row in checks if row.get("status") == "disabled")
+    return {
+        "schema_version": "trading-workbench-exit-management-v1",
+        "status": "blocked" if blocked_count else "review" if review_count else "ready",
+        "source_tool": "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "exit_id": (
+            f"exit-management-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "exit_mode": "supervised_exit_review",
+        "exit_stage": trade_monitor.get("monitor_stage")
+        or performance_attribution.get("performance_stage")
+        or "unlinked",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Review exit management before changing paper state or broker workflow."
+            if primary_blocker
+            else "Exit context is ready for supervised manual review."
+        ),
+        "active_trade": active_trade,
+        "exit_plan": {
+            "entry_price": _workbench_round_float(entry_price),
+            "invalidation_price": _workbench_round_float(invalidation_price),
+            "target_price": _workbench_round_float(target_price),
+            "stop_status": monitor_exit.get("stop_status"),
+            "target_status": monitor_exit.get("target_status"),
+            "stop_distance_pct": stop_distance_pct,
+            "target_distance_pct": target_distance_pct,
+            "reward_risk": reward_risk,
+            "paper_state_update_allowed": False,
+            "exit_update_allowed": False,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "live_trading_enabled": False,
+            "primary_command": monitor_exit.get("primary_command") or "broker",
+        },
+        "evidence": {
+            "outcome_id": attribution.get("outcome_id")
+            or active_trade.get("outcome_id"),
+            "return_20d": attribution.get("return_20d"),
+            "spy_relative_return_20d": attribution.get("spy_relative_return_20d"),
+            "hit_rate_20d": attribution_metrics.get("hit_rate_20d"),
+            "primary_trigger_id": alert_watch.get("primary_trigger_id"),
+            "open_order_count": open_order_count,
+            "risk_block_count": risk_block_count,
+            "active_paper_trade_count": active_paper_count,
+        },
+        "commands": {
+            "paper": "paper",
+            "risk": "risk-desk",
+            "alerts": "alerts",
+            "journal": attribution.get("primary_command")
+            or _mapping(trade_monitor.get("commands")).get("journal")
+            or "journal",
+            "broker_boundary": "broker",
+            "exit_update_boundary": "broker",
+        },
+        "exit_checks": checks,
+        "metrics": {
+            "check_count": len(checks),
+            "ready_check_count": ready_count,
+            "review_check_count": review_count,
+            "blocked_check_count": blocked_count,
+            "disabled_check_count": disabled_count,
+            "active_paper_trade_count": active_paper_count,
+            "open_order_count": open_order_count,
+            "risk_block_count": risk_block_count,
+            "stop_distance_pct": stop_distance_pct,
+            "target_distance_pct": target_distance_pct,
+            "reward_risk": reward_risk,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "paper_state_update_allowed": False,
+        "exit_update_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_exit_management_check(
+    *,
+    check_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: object,
+    evidence: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "label": label,
+        "scope": scope,
+        "status": status,
+        "finding": finding,
+        "evidence": evidence,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "paper_state_update_allowed": False,
         "exit_update_allowed": False,
         "live_trading_enabled": False,
         "next_action": next_action,
