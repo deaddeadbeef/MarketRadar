@@ -626,6 +626,7 @@ function renderSnapshot() {
   bindPlatformToolCards();
   bindWorkbenchPaperControls();
   bindWorkbenchTicketControls();
+  bindWorkbenchLifecycleControls();
   bindQueueRows();
 }
 
@@ -1825,7 +1826,7 @@ function renderWorkbenchTradeLifecycle(rows) {
   return `
     <div class="table-wrap trade-lifecycle-preview" data-testid="workbench-trade-lifecycle">
       <table aria-label="Trade lifecycle">
-        <thead><tr><th>Ticker</th><th>Stage</th><th>Decision Card</th><th>Paper Trade</th><th>Audit</th><th>Validation</th><th>Journal</th><th>Outcome</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <thead><tr><th>Ticker</th><th>Stage</th><th>Decision Card</th><th>Paper Trade</th><th>Audit</th><th>Validation</th><th>Journal</th><th>Outcome</th><th>Commands</th><th>Broker Order</th><th>Next</th></tr></thead>
         <tbody>
           ${rows.slice(0, 8).map((row) => `
             <tr data-testid="workbench-trade-lifecycle-row">
@@ -1837,6 +1838,7 @@ function renderWorkbenchTradeLifecycle(rows) {
               <td data-label="Validation">${escapeHtml(compact(row.validation_result_id, '-'))}</td>
               <td data-label="Journal">${escapeHtml(compact(row.ledger_entry_id, '-'))}</td>
               <td data-label="Outcome">${escapeHtml(compact(row.outcome_status || row.outcome_id, '-'))}</td>
+              <td data-label="Commands">${renderWorkbenchLifecycleActions(row)}</td>
               <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
@@ -1844,6 +1846,33 @@ function renderWorkbenchTradeLifecycle(rows) {
         </tbody>
       </table>
     </div>
+  `;
+}
+
+function renderWorkbenchLifecycleActions(row) {
+  const buttons = [
+    lifecycleActionButton(row, 'ledger_show_command', 'Ledger', 'workbench-lifecycle-show-ledger'),
+    lifecycleActionButton(row, 'outcome_show_command', 'Outcome', 'workbench-lifecycle-show-outcome'),
+    lifecycleActionButton(row, 'outcome_preview_command', 'Preview', 'workbench-lifecycle-preview-outcome'),
+    lifecycleActionButton(row, 'outcome_update_command', 'Update', 'workbench-lifecycle-update-outcome', true),
+  ].filter(Boolean);
+  return buttons.length
+    ? `<div class="lifecycle-action-row">${buttons.join('')}</div>`
+    : `<code>${escapeHtml(compact(row.primary_command, 'ledger coverage'))}</code>`;
+}
+
+function lifecycleActionButton(row, commandKey, label, testId, writes = false) {
+  const command = compact(row?.[commandKey], '');
+  if (!command) return '';
+  return `
+    <button
+      class="lifecycle-action-button"
+      type="button"
+      data-testid="${escapeHtml(testId)}"
+      data-lifecycle-command="${escapeHtml(command)}"
+      title="${escapeHtml(command)}"
+      ${writes ? 'data-lifecycle-write="true"' : ''}
+    >${escapeHtml(label)}</button>
   `;
 }
 
@@ -2196,6 +2225,19 @@ async function runWorkbenchOrderTicket(mode) {
   const command = `order-ticket ${resolvedMode}`;
   state.lastCommand = command;
   await handleBackendDashboardCommand(command);
+}
+
+function bindWorkbenchLifecycleControls() {
+  document.querySelectorAll('[data-lifecycle-command]').forEach((button) => {
+    button.addEventListener('click', () => runWorkbenchLifecycleCommand(button.dataset.lifecycleCommand));
+  });
+}
+
+async function runWorkbenchLifecycleCommand(command) {
+  const resolved = compact(command, '');
+  if (!resolved) return;
+  state.lastCommand = resolved;
+  await handleBackendDashboardCommand(resolved);
 }
 
 function renderTutorial() {

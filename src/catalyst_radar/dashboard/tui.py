@@ -3207,6 +3207,11 @@ def _workbench_trade_lifecycle_rows(
                 "broker_order_submitted": False,
                 "order_submission_allowed": False,
                 "no_execution": True,
+                "ledger_show_command": None,
+                "outcome_show_command": None,
+                "outcome_preview_command": None,
+                "outcome_update_command": None,
+                "primary_command": "ledger coverage",
                 "next_action": "Link this lifecycle row to local validation evidence.",
             }
         row = rows[key]
@@ -3311,6 +3316,7 @@ def _workbench_trade_lifecycle_rows(
     for row in rows.values():
         row["current_stage"] = _workbench_lifecycle_stage(row)
         row["next_action"] = _workbench_lifecycle_next_action(row)
+        _workbench_apply_lifecycle_commands(row)
 
     return sorted(
         rows.values(),
@@ -3375,6 +3381,29 @@ def _workbench_lifecycle_next_action(row: Mapping[str, object]) -> str:
     if stage == "planned":
         return "Record a local paper decision only after approval gates."
     return "Link this lifecycle row to local validation evidence."
+
+
+def _workbench_apply_lifecycle_commands(row: dict[str, object]) -> None:
+    ledger_id = str(row.get("ledger_entry_id") or "").strip()
+    outcome_id = str(row.get("outcome_id") or "").strip()
+    ledger_arg = shlex.quote(ledger_id) if ledger_id else ""
+    outcome_arg = shlex.quote(outcome_id) if outcome_id else ""
+    row["ledger_show_command"] = f"ledger show {ledger_arg}" if ledger_arg else None
+    row["outcome_show_command"] = (
+        f"outcome show {outcome_arg}" if outcome_arg else None
+    )
+    row["outcome_preview_command"] = (
+        f"outcome update {ledger_arg} filter" if ledger_arg else None
+    )
+    row["outcome_update_command"] = (
+        f"outcome update {ledger_arg} filter --execute" if ledger_arg else None
+    )
+    row["primary_command"] = (
+        row.get("outcome_show_command")
+        or row.get("outcome_preview_command")
+        or row.get("ledger_show_command")
+        or "ledger coverage"
+    )
 
 
 def _workbench_useful_label_row(row: Mapping[str, object]) -> dict[str, object]:
