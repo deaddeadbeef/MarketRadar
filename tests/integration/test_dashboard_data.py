@@ -972,6 +972,118 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert trade_runbook["order_submission_allowed"] is False
     assert trade_runbook["live_trading_enabled"] is False
 
+    operator_state = workbench["operator_state"]
+    assert operator_state["schema_version"] == "trading-workbench-operator-state-v1"
+    assert operator_state["status"] == "blocked"
+    assert operator_state["operating_mode"] == "supervised_decision_support"
+    assert operator_state["source_tool"] == "market-radar"
+    assert operator_state["ticker"] == "MSFT"
+    assert operator_state["decision_card_id"] == "card-msft-latest"
+    assert operator_state["headline"] == "MSFT: MSFT guidance raised"
+    assert operator_state["active_module"] == "review"
+    assert operator_state["active_stage_id"] == "decision-review"
+    assert operator_state["active_step_id"] == "decision-review"
+    assert operator_state["primary_blocker"] == "Decision readiness"
+    assert operator_state["primary_next_action"] == {
+        "label": "Decision readiness",
+        "action_kind": "page",
+        "command": "review",
+        "target_page": "review",
+        "safety": "zero_call_navigation",
+        "source": "trade_runbook",
+        "local_write_allowed": False,
+        "requires_arm_before_run": False,
+    }
+    assert operator_state["readiness"] == {
+        "decision_brief_status": "blocked",
+        "scenario_matrix_status": "blocked",
+        "risk_envelope_status": "blocked",
+        "runbook_status": "blocked",
+        "supervision_status": "approval_required",
+        "approval_required": True,
+        "local_write_armed": False,
+    }
+    assert operator_state["risk"] == {
+        "sizing_status": "blocked",
+        "blocked_check_count": 3,
+        "paper_block_count": 2,
+        "live_block_count": 3,
+        "estimated_max_loss": 200.0,
+        "max_loss_pct_of_equity": 0.0008,
+    }
+    assert operator_state["agent_handoff"] == {
+        "next_page": "review",
+        "next_command": "review",
+        "control_kind": "page",
+        "safety": "zero_call_navigation",
+        "can_execute_without_approval": True,
+        "local_write_requires_arm": False,
+        "disabled_reason": None,
+    }
+    assert operator_state["state_cards"] == [
+        {
+            "id": "decision",
+            "module": "review",
+            "label": "Decision",
+            "status": "blocked",
+            "evidence": "card-msft-latest",
+            "next_action": "Review decision readiness before continuing.",
+        },
+        {
+            "id": "scenario",
+            "module": "trade-planner",
+            "label": "Scenario",
+            "status": "blocked",
+            "evidence": "3 scenarios",
+            "next_action": "Compare downside, entry, and reward target before sizing.",
+        },
+        {
+            "id": "risk",
+            "module": "risk-desk",
+            "label": "Risk",
+            "status": "blocked",
+            "evidence": "3 blocked checks",
+            "next_action": "Resolve risk-envelope blockers before local writes.",
+        },
+        {
+            "id": "supervision",
+            "module": "platform",
+            "label": "Supervision",
+            "status": "approval_required",
+            "evidence": "guarded-local-write",
+            "next_action": "Arm local writes only after manual approval.",
+        },
+        {
+            "id": "boundary",
+            "module": "broker",
+            "label": "Live boundary",
+            "status": "disabled",
+            "evidence": "live trading disabled",
+            "next_action": "Live broker submission remains disabled.",
+        },
+    ]
+    assert operator_state["boundaries"] == {
+        "provider_calls_for_browsing": 0,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "autonomous_execution": "disabled",
+    }
+    assert operator_state["metrics"]["state_card_count"] == 5
+    assert operator_state["metrics"]["runbook_step_count"] == 8
+    assert operator_state["metrics"]["blocked_step_count"] == 2
+    assert operator_state["metrics"]["approval_required_count"] == 1
+    assert operator_state["metrics"]["disabled_boundary_count"] >= 1
+    assert operator_state["metrics"]["action_count"] >= 8
+    assert operator_state["metrics"]["external_calls_made"] == 0
+    assert operator_state["external_calls_made"] == 0
+    assert operator_state["db_writes_made"] == 0
+    assert operator_state["broker_order_submitted"] is False
+    assert operator_state["order_submission_allowed"] is False
+    assert operator_state["live_trading_enabled"] is False
+
     action_bus = workbench["action_bus"]
     assert action_bus["schema_version"] == "trading-workbench-action-bus-v1"
     assert action_bus["status"] == "ready"

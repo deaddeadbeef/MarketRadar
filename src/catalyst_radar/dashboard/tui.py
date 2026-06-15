@@ -1147,6 +1147,16 @@ def _trading_workbench_snapshot_payload(
         risk_envelope=risk_envelope,
         action_bus=action_bus,
     )
+    operator_state = _workbench_operator_state_payload(
+        decision_brief=decision_brief,
+        scenario_matrix=scenario_matrix,
+        risk_envelope=risk_envelope,
+        trade_runbook=trade_runbook,
+        action_bus=action_bus,
+        workflow_map=workflow_map,
+        priority_queue=priority_queue,
+        supervision_gates=supervision_gates,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1167,6 +1177,7 @@ def _trading_workbench_snapshot_payload(
         "scenario_matrix": scenario_matrix,
         "risk_envelope": risk_envelope,
         "trade_runbook": trade_runbook,
+        "operator_state": operator_state,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -4269,6 +4280,220 @@ def _workbench_runbook_step(
         "source": source,
         "evidence": evidence,
         "next_action": next_action,
+    }
+
+
+def _workbench_operator_state_payload(
+    *,
+    decision_brief: Mapping[str, object],
+    scenario_matrix: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    trade_runbook: Mapping[str, object],
+    action_bus: Mapping[str, object],
+    workflow_map: Mapping[str, object],
+    priority_queue: Mapping[str, object],
+    supervision_gates: Mapping[str, object],
+) -> dict[str, object]:
+    steps = _rows(trade_runbook.get("steps"))
+    active_step_id = str(trade_runbook.get("active_step_id") or "")
+    active_step = next(
+        (
+            row
+            for row in steps
+            if str(row.get("id") or "") == active_step_id
+        ),
+        steps[0] if steps else {},
+    )
+    supervision_metrics = _mapping(supervision_gates.get("metrics"))
+    runbook_metrics = _mapping(trade_runbook.get("metrics"))
+    action_metrics = _mapping(action_bus.get("metrics"))
+    priority_metrics = _mapping(priority_queue.get("metrics"))
+    scenario_metrics = _mapping(scenario_matrix.get("metrics"))
+    risk_metrics = _mapping(risk_envelope.get("metrics"))
+    sizing_context = _mapping(risk_envelope.get("sizing_context"))
+    primary_next_action = _workbench_operator_next_action(active_step)
+    state_cards = [
+        _workbench_operator_state_card(
+            card_id="decision",
+            module="review",
+            label="Decision",
+            status=decision_brief.get("status") or "unknown",
+            evidence=decision_brief.get("decision_card_id") or "no decision card",
+            next_action=trade_runbook.get("primary_next_action")
+            or "Review decision readiness before continuing.",
+        ),
+        _workbench_operator_state_card(
+            card_id="scenario",
+            module="trade-planner",
+            label="Scenario",
+            status=scenario_matrix.get("status") or "unknown",
+            evidence=(
+                f"{_first_nonnegative_int(scenario_metrics.get('scenario_count'))} scenarios"
+            ),
+            next_action="Compare downside, entry, and reward target before sizing.",
+        ),
+        _workbench_operator_state_card(
+            card_id="risk",
+            module="risk-desk",
+            label="Risk",
+            status=risk_envelope.get("status") or "unknown",
+            evidence=(
+                f"{_first_nonnegative_int(risk_metrics.get('blocked_check_count'))} "
+                "blocked checks"
+            ),
+            next_action="Resolve risk-envelope blockers before local writes.",
+        ),
+        _workbench_operator_state_card(
+            card_id="supervision",
+            module="platform",
+            label="Supervision",
+            status=supervision_gates.get("status") or "unknown",
+            evidence=supervision_gates.get("primary_gate_id") or "no active gate",
+            next_action="Arm local writes only after manual approval.",
+        ),
+        _workbench_operator_state_card(
+            card_id="boundary",
+            module="broker",
+            label="Live boundary",
+            status="disabled",
+            evidence="live trading disabled",
+            next_action="Live broker submission remains disabled.",
+        ),
+    ]
+    boundaries = {
+        "provider_calls_for_browsing": 0,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "autonomous_execution": "disabled",
+    }
+    return {
+        "schema_version": "trading-workbench-operator-state-v1",
+        "status": trade_runbook.get("status") or decision_brief.get("status") or "unknown",
+        "operating_mode": "supervised_decision_support",
+        "source_tool": decision_brief.get("source_tool") or "market-radar",
+        "ticker": _first_value(
+            decision_brief.get("ticker"),
+            scenario_matrix.get("ticker"),
+            risk_envelope.get("ticker"),
+            trade_runbook.get("ticker"),
+        ),
+        "decision_card_id": _first_value(
+            decision_brief.get("decision_card_id"),
+            scenario_matrix.get("decision_card_id"),
+            risk_envelope.get("decision_card_id"),
+            trade_runbook.get("decision_card_id"),
+        ),
+        "headline": decision_brief.get("headline"),
+        "active_module": active_step.get("module") or "platform",
+        "active_stage_id": workflow_map.get("active_stage_id"),
+        "active_step_id": active_step.get("id"),
+        "primary_blocker": active_step.get("label") or "Review operator state",
+        "primary_next_action": primary_next_action,
+        "readiness": {
+            "decision_brief_status": decision_brief.get("status") or "unknown",
+            "scenario_matrix_status": scenario_matrix.get("status") or "unknown",
+            "risk_envelope_status": risk_envelope.get("status") or "unknown",
+            "runbook_status": trade_runbook.get("status") or "unknown",
+            "supervision_status": supervision_gates.get("status") or "unknown",
+            "approval_required": _first_nonnegative_int(
+                supervision_metrics.get("approval_required_count")
+            )
+            > 0,
+            "local_write_armed": False,
+        },
+        "risk": {
+            "sizing_status": sizing_context.get("sizing_status") or "unknown",
+            "blocked_check_count": _first_nonnegative_int(
+                risk_metrics.get("blocked_check_count")
+            ),
+            "paper_block_count": _first_nonnegative_int(
+                risk_metrics.get("paper_block_count")
+            ),
+            "live_block_count": _first_nonnegative_int(
+                risk_metrics.get("live_block_count")
+            ),
+            "estimated_max_loss": sizing_context.get("estimated_max_loss"),
+            "max_loss_pct_of_equity": sizing_context.get("max_loss_pct_of_equity"),
+        },
+        "agent_handoff": {
+            "next_page": primary_next_action.get("target_page"),
+            "next_command": primary_next_action.get("command"),
+            "control_kind": primary_next_action.get("action_kind"),
+            "safety": primary_next_action.get("safety"),
+            "can_execute_without_approval": (
+                primary_next_action.get("action_kind") == "page"
+                and not primary_next_action.get("local_write_allowed")
+                and not primary_next_action.get("requires_arm_before_run")
+            ),
+            "local_write_requires_arm": bool(
+                primary_next_action.get("requires_arm_before_run")
+            ),
+            "disabled_reason": None
+            if primary_next_action.get("action_kind") != "boundary"
+            else "disabled_boundary",
+        },
+        "state_cards": state_cards,
+        "boundaries": boundaries,
+        "metrics": {
+            "state_card_count": len(state_cards),
+            "runbook_step_count": _first_nonnegative_int(
+                runbook_metrics.get("step_count")
+            ),
+            "blocked_step_count": _first_nonnegative_int(
+                runbook_metrics.get("blocked_step_count")
+            ),
+            "approval_required_count": _first_nonnegative_int(
+                supervision_metrics.get("approval_required_count"),
+                runbook_metrics.get("approval_required_count"),
+            ),
+            "disabled_boundary_count": _first_nonnegative_int(
+                supervision_metrics.get("disabled_gate_count"),
+                runbook_metrics.get("disabled_step_count"),
+            ),
+            "action_count": _first_nonnegative_int(action_metrics.get("action_count")),
+            "priority_item_count": _first_nonnegative_int(
+                priority_metrics.get("item_count")
+            ),
+            "external_calls_made": 0,
+        },
+        **boundaries,
+    }
+
+
+def _workbench_operator_next_action(
+    step: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "label": step.get("label") or "Review operator state",
+        "action_kind": step.get("action_kind") or "page",
+        "command": step.get("command") or step.get("target_page") or "overview",
+        "target_page": step.get("target_page") or step.get("module") or "overview",
+        "safety": step.get("safety") or "zero_call_navigation",
+        "source": "trade_runbook",
+        "local_write_allowed": bool(step.get("local_write_allowed")),
+        "requires_arm_before_run": bool(step.get("requires_arm_before_run")),
+    }
+
+
+def _workbench_operator_state_card(
+    *,
+    card_id: str,
+    module: str,
+    label: str,
+    status: object,
+    evidence: object,
+    next_action: object,
+) -> dict[str, object]:
+    return {
+        "id": card_id,
+        "module": module,
+        "label": label,
+        "status": str(status or "unknown"),
+        "evidence": str(evidence or "-"),
+        "next_action": str(next_action or "-"),
     }
 
 
