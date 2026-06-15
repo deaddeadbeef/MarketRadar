@@ -83,6 +83,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function workbenchActionBus",
         "function workbenchWorkflowMap",
         "function workbenchWorkflowStagesForPage",
+        "function workbenchPriorityQueue",
+        "function workbenchPriorityItemsForPage",
         "function workbenchActionsForPage",
         "function tradingWorkbenchModule",
         "trading_workbench",
@@ -95,6 +97,14 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "data-workflow-status",
         "data-active-stage",
         "data-stage-status",
+        "function renderWorkbenchPriorityQueue",
+        "function priorityItemControl",
+        "function priorityQueueSummary",
+        'data-testid="workbench-priority-queue"',
+        'data-testid="workbench-priority-item"',
+        "data-priority-queue-status",
+        "data-priority-item-status",
+        "data-priority-item-kind",
         "function renderWorkbenchActionBus",
         "function actionBusSummary",
         "function renderWorkbenchActionControl",
@@ -386,6 +396,10 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workflow_status: compact(workbenchWorkflowMap(snapshot)?.status, 'unknown')",
         "active_stage_id: compact(workbenchWorkflowMap(snapshot)?.active_stage_id, 'none')",
         "stage_count: Number(workbenchWorkflowMap(snapshot)?.stage_count || 0)",
+        "priority_queue_status: compact(workbenchPriorityQueue(snapshot)?.status, 'unknown')",
+        "primary_priority_item_id: compact("
+        "workbenchPriorityQueue(snapshot)?.primary_item_id, 'none')",
+        "priority_item_count: Number(workbenchPriorityQueue(snapshot)?.metrics?.item_count || 0)",
     ):
         assert text in source
 
@@ -441,6 +455,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".platform-tool-card" in styles
     assert ".workbench-workflow-map" in styles
     assert ".workflow-map-preview" in styles
+    assert ".workbench-priority-queue" in styles
+    assert ".priority-queue-preview" in styles
     assert ".workbench-action-bus" in styles
     assert ".action-bus-preview" in styles
     assert ".workbench-action-button" in styles

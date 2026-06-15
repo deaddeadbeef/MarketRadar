@@ -385,6 +385,22 @@ function workbenchWorkflowStagesForPage(pageKey, snapshot = state.snapshot || {}
   return stages.filter((stage) => keys.has(stage?.module));
 }
 
+function workbenchPriorityQueue(snapshot = state.snapshot || {}) {
+  const queue = tradingWorkbenchSnapshot(snapshot)?.priority_queue;
+  return queue && typeof queue === 'object' ? queue : { items: [] };
+}
+
+function workbenchPriorityItemsForPage(pageKey, snapshot = state.snapshot || {}) {
+  const queue = workbenchPriorityQueue(snapshot);
+  const items = Array.isArray(queue.items) ? queue.items : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return items;
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return items.filter((item) => (
+    keys.has(item?.module) || keys.has(item?.target_page)
+  ));
+}
+
 function workbenchActionsForPage(pageKey, snapshot = state.snapshot || {}) {
   const bus = workbenchActionBus(snapshot);
   const actions = Array.isArray(bus.actions) ? bus.actions : [];
@@ -822,6 +838,9 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       workflow_status: compact(workbenchWorkflowMap(snapshot)?.status, 'unknown'),
       active_stage_id: compact(workbenchWorkflowMap(snapshot)?.active_stage_id, 'none'),
       stage_count: Number(workbenchWorkflowMap(snapshot)?.stage_count || 0),
+      priority_queue_status: compact(workbenchPriorityQueue(snapshot)?.status, 'unknown'),
+      primary_priority_item_id: compact(workbenchPriorityQueue(snapshot)?.primary_item_id, 'none'),
+      priority_item_count: Number(workbenchPriorityQueue(snapshot)?.metrics?.item_count || 0),
     },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
@@ -920,6 +939,7 @@ function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
+    ${renderWorkbenchPriorityQueue(snapshot, 'overview')}
     ${renderWorkbenchActionBus(snapshot, 'overview')}
     ${renderLiveTradingBoundary()}
     <section class="panel" data-testid="first-blocker">
@@ -1042,6 +1062,68 @@ function workflowMapSummary(workflow) {
   ].join('; ');
 }
 
+function renderWorkbenchPriorityQueue(snapshot, pageKey = 'overview') {
+  const queue = workbenchPriorityQueue(snapshot);
+  const items = workbenchPriorityItemsForPage(pageKey, snapshot).slice(0, 12);
+  if (!items.length) return '';
+  return `
+    <section
+      class="panel wide workbench-priority-queue"
+      data-testid="workbench-priority-queue"
+      data-priority-queue-status="${escapeHtml(queue.status || 'empty')}"
+      data-primary-priority-item="${escapeHtml(queue.primary_item_id || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Priority Queue</h2>
+          <p>${escapeHtml(priorityQueueSummary(queue))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(queue.status || 'empty'))}</span>
+      </div>
+      <div class="table-wrap priority-queue-preview">
+        <table aria-label="Workbench priority queue">
+          <thead><tr><th>Rank</th><th>Module</th><th>Item</th><th>Status</th><th>Reason</th><th>Control</th><th>Next</th></tr></thead>
+          <tbody>
+            ${items.map((item) => `
+              <tr
+                data-testid="workbench-priority-item"
+                data-priority-item-status="${escapeHtml(item.status || 'unknown')}"
+                data-priority-item-kind="${escapeHtml(item.item_kind || 'unknown')}"
+              >
+                <td data-label="Rank">${escapeHtml(compact(item.rank, '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(item.module || '-'))}</td>
+                <td data-label="Item">${escapeHtml(compact(item.label, '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(item.status || '-'))}</td>
+                <td data-label="Reason">${escapeHtml(compact(item.reason, '-'))}</td>
+                <td data-label="Control">${renderWorkbenchActionControl(priorityItemControl(item))}</td>
+                <td data-label="Next">${escapeHtml(compact(item.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function priorityItemControl(item) {
+  const safeStagePage = item?.item_kind === 'workflow_stage' && item?.action_kind === 'page';
+  return {
+    ...item,
+    status: safeStagePage ? 'enabled' : item?.status,
+  };
+}
+
+function priorityQueueSummary(queue) {
+  const metrics = queue?.metrics || {};
+  return [
+    `${compact(metrics.item_count, '0')} prioritized items`,
+    `${compact(metrics.blocked_item_count, '0')} blockers`,
+    `${compact(metrics.local_write_count, '0')} guarded local writes`,
+    'live trading disabled',
+  ].join('; ');
+}
+
 function renderWorkbenchActionBus(snapshot, pageKey = 'overview') {
   const bus = workbenchActionBus(snapshot);
   const actions = workbenchActionsForPage(pageKey, snapshot).slice(0, 10);
@@ -1158,6 +1240,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
       </div>
     </section>
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
+    ${renderWorkbenchPriorityQueue(snapshot, pageKey)}
     ${renderWorkbenchActionBus(snapshot, pageKey)}
     ${renderWorkbenchModuleData(moduleData)}
     ${renderLiveTradingBoundary()}

@@ -592,6 +592,70 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     }
     assert workflow_map["transitions"][5]["status"] == "disabled"
 
+    priority_queue = workbench["priority_queue"]
+    assert priority_queue["schema_version"] == "trading-workbench-priority-queue-v1"
+    assert priority_queue["status"] == "blocked"
+    assert priority_queue["active_stage_id"] == "decision-review"
+    assert priority_queue["primary_item_id"] == "priority-stage-decision-review"
+    assert priority_queue["metrics"]["item_count"] == len(priority_queue["items"])
+    assert priority_queue["metrics"]["blocked_item_count"] >= 3
+    assert priority_queue["metrics"]["backend_command_count"] >= 5
+    assert priority_queue["metrics"]["local_write_count"] >= 2
+    assert priority_queue["metrics"]["boundary_count"] == 1
+    assert priority_queue["external_calls_made"] == 0
+    assert priority_queue["db_writes_made"] == 0
+    assert priority_queue["broker_order_submitted"] is False
+    assert priority_queue["order_submission_allowed"] is False
+    assert priority_queue["live_trading_enabled"] is False
+    priority_items = priority_queue["items"]
+    priced_next = workflow_stages["decision-review"]["next_action"]
+    assert priority_items[0] == {
+        "id": "priority-stage-decision-review",
+        "rank": 1,
+        "priority": 100,
+        "item_kind": "workflow_stage",
+        "module": "review",
+        "label": "Decision Review",
+        "status": "blocked",
+        "reason": "Active workflow blocker",
+        "source_stage_id": "decision-review",
+        "source_action_id": "review-workflow-page",
+        "action_kind": "page",
+        "command": "review",
+        "target_page": "review",
+        "safety": "zero_call_navigation",
+        "local_write_allowed": False,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_required": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": priced_next,
+    }
+    assert priced_next
+    assert priority_items[1]["id"] == "priority-stage-trade-planning"
+    assert priority_items[1]["target_page"] == "trade-planner"
+    assert priority_items[2]["id"] == "priority-stage-risk-approval"
+    assert priority_items[2]["target_page"] == "risk-desk"
+    priority_by_source_action = {
+        row["source_action_id"]: row
+        for row in priority_items
+        if row.get("source_action_id")
+    }
+    assert priority_by_source_action["agent-preview"]["command"] == "agent"
+    assert priority_by_source_action["paper-decision-preview"]["command"] == (
+        "paper-decision preview"
+    )
+    assert priority_by_source_action["paper-decision-record"][
+        "local_write_allowed"
+    ] is True
+    assert priority_by_source_action["agent-execute-boundary"]["status"] == "disabled"
+    assert all(row["external_calls_made"] == 0 for row in priority_items)
+    assert all(row["broker_order_submitted"] is False for row in priority_items)
+    assert all(row["order_submission_allowed"] is False for row in priority_items)
+
     modules = workbench["modules"]
     assert {
         "portfolio",

@@ -87,3 +87,15 @@ engine, but it is not the whole product frame.
 - Reuse the shared action dispatcher for workflow stage controls.
 - Preserve the same decision-support boundary: zero provider calls from
   browsing, no live broker submission, and no autonomous execution.
+
+## Current Slice: Priority Queue
+
+- Add a supervised priority-queue snapshot contract that ranks the current
+  workflow blocker, safe module handoffs, local preview commands, guarded local
+  writes, and disabled execution boundaries.
+- Render the priority queue in the Tauri Command Center and module-filtered
+  platform pages, reusing the shared action dispatcher.
+- Expose queue status, primary item, and item count in automation JSON for
+  agentic desktop control.
+- Preserve the same decision-support boundary: zero provider calls from
+  browsing, no live broker submission, and no autonomous execution.
