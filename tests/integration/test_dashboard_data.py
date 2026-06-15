@@ -1533,6 +1533,129 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert pretrade_compliance["order_submission_allowed"] is False
     assert pretrade_compliance["live_trading_enabled"] is False
 
+    trade_readiness_brief = workbench["trade_readiness_brief"]
+    assert (
+        trade_readiness_brief["schema_version"]
+        == "trading-workbench-readiness-brief-v1"
+    )
+    assert trade_readiness_brief["status"] == "blocked"
+    assert trade_readiness_brief["source_tool"] == "market-radar"
+    assert trade_readiness_brief["ticker"] == "MSFT"
+    assert trade_readiness_brief["decision_card_id"] == "card-msft-latest"
+    assert (
+        trade_readiness_brief["readiness_id"]
+        == "readiness-brief-msft-card-msft-latest"
+    )
+    assert trade_readiness_brief["operating_mode"] == "agentic_decision_support"
+    assert (
+        trade_readiness_brief["primary_blocker"]
+        == "action_state_not_manual_review_eligible"
+    )
+    assert trade_readiness_brief["primary_next_action"] == (
+        "Resolve trade-readiness blockers before paper record, broker handoff, "
+        "or strategy update."
+    )
+    assert trade_readiness_brief["agent_handoff"] == {
+        "next_page": "review",
+        "next_command": "review",
+        "safety": "zero_call_navigation",
+        "can_execute_without_approval": True,
+        "local_write_requires_arm": False,
+    }
+    assert [row["id"] for row in trade_readiness_brief["checks"]] == [
+        "market-radar-scout",
+        "decision-readiness",
+        "risk-readiness",
+        "capital-readiness",
+        "pretrade-compliance",
+        "paper-record-readiness",
+        "learning-readiness",
+        "strategy-update-boundary",
+        "monitoring-readiness",
+        "broker-handoff-boundary",
+    ]
+    assert [row["status"] for row in trade_readiness_brief["checks"]] == [
+        "ready",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "disabled",
+        "blocked",
+        "disabled",
+    ]
+    assert [row["gate_kind"] for row in trade_readiness_brief["checks"]] == [
+        "source",
+        "decision",
+        "risk",
+        "allocation",
+        "compliance",
+        "paper-record",
+        "learning-loop",
+        "strategy-update",
+        "monitor",
+        "broker-boundary",
+    ]
+    assert trade_readiness_brief["checks"][0]["evidence"] == (
+        "source_tool=market-radar; ticker=MSFT; decision_card=card-msft-latest"
+    )
+    assert trade_readiness_brief["checks"][4]["evidence"] == (
+        "blocked_checks=5; approval_required=1"
+    )
+    assert trade_readiness_brief["checks"][5]["evidence"] == (
+        "decision=deferred; record_allowed=False; requires_arm=True"
+    )
+    assert trade_readiness_brief["checks"][7]["finding"] == (
+        "autonomous_strategy_update_disabled"
+    )
+    assert trade_readiness_brief["readiness_modes"] == {
+        "paper_record": {
+            "status": "blocked",
+            "allowed": False,
+            "approval_required": False,
+            "record_db_writes_required": 2,
+        },
+        "broker_handoff": {
+            "status": "disabled",
+            "allowed": False,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+        },
+        "strategy_update": {
+            "status": "disabled",
+            "allowed": False,
+            "autonomous_update_allowed": False,
+        },
+        "monitoring": {
+            "status": "blocked",
+            "ready": False,
+            "active_paper_trade_count": 1,
+        },
+    }
+    assert trade_readiness_brief["metrics"] == {
+        "check_count": 10,
+        "ready_check_count": 1,
+        "blocked_check_count": 7,
+        "approval_required_count": 0,
+        "disabled_check_count": 2,
+        "runbook_blocked_step_count": 2,
+        "pretrade_blocked_check_count": 5,
+        "sandbox_disabled_lane_count": 2,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert trade_readiness_brief["external_calls_made"] == 0
+    assert trade_readiness_brief["db_writes_made"] == 0
+    assert trade_readiness_brief["broker_order_submitted"] is False
+    assert trade_readiness_brief["order_submission_allowed"] is False
+    assert trade_readiness_brief["live_trading_enabled"] is False
+    assert trade_readiness_brief["paper_record_allowed"] is False
+    assert trade_readiness_brief["broker_handoff_allowed"] is False
+    assert trade_readiness_brief["strategy_update_allowed"] is False
+    assert trade_readiness_brief["monitoring_ready"] is False
+
     learning_loop = workbench["learning_loop"]
     assert learning_loop["schema_version"] == "trading-workbench-learning-loop-v1"
     assert learning_loop["status"] == "blocked"
