@@ -406,6 +406,19 @@ function workbenchScenarioMatrixForPage(pageKey, snapshot = state.snapshot || {}
   return pages.has(pageKey) ? rows : [];
 }
 
+function workbenchPortfolioImpact(snapshot = state.snapshot || {}) {
+  const impact = tradingWorkbenchSnapshot(snapshot)?.portfolio_impact_preview;
+  return impact && typeof impact === 'object' ? impact : { checks: [], exposures: [] };
+}
+
+function workbenchPortfolioImpactForPage(pageKey, snapshot = state.snapshot || {}) {
+  const impact = workbenchPortfolioImpact(snapshot);
+  const checks = Array.isArray(impact.checks) ? impact.checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return checks;
+  const pages = new Set(['portfolio', 'trade-planner', 'risk-desk', 'paper-trading', 'broker']);
+  return pages.has(pageKey) ? checks : [];
+}
+
 function workbenchPositionSizing(snapshot = state.snapshot || {}) {
   const sizing = tradingWorkbenchSnapshot(snapshot)?.position_sizing;
   return sizing && typeof sizing === 'object' ? sizing : { checks: [] };
@@ -972,6 +985,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       scenario_matrix_ticker: compact(workbenchScenarioMatrix(snapshot)?.ticker, 'none'),
       scenario_count: Number(workbenchScenarioMatrix(snapshot)?.metrics?.scenario_count || 0),
       scenario_reward_risk: compact(workbenchScenarioMatrix(snapshot)?.metrics?.risk_reward, 'none'),
+      portfolio_impact_status: compact(workbenchPortfolioImpact(snapshot)?.status, 'unknown'),
+      portfolio_impact_ticker: compact(workbenchPortfolioImpact(snapshot)?.ticker, 'none'),
+      portfolio_impact_proposed_notional: compact(workbenchPortfolioImpact(snapshot)?.impact?.proposed_notional, 'none'),
+      portfolio_impact_block_count: Number(workbenchPortfolioImpact(snapshot)?.blockers?.length || 0),
       position_sizing_status: compact(workbenchPositionSizing(snapshot)?.status, 'unknown'),
       position_sizing_ticker: compact(workbenchPositionSizing(snapshot)?.ticker, 'none'),
       position_sizing_suggested_shares: Number(workbenchPositionSizing(snapshot)?.recommendation?.suggested_quantity || 0),
@@ -1090,6 +1107,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchExecutionSandbox(snapshot, 'overview')}
     ${renderWorkbenchDecisionBrief(snapshot)}
     ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
+    ${renderWorkbenchPortfolioImpact(snapshot, 'overview')}
     ${renderWorkbenchPositionSizing(snapshot, 'overview')}
     ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
@@ -1476,6 +1494,96 @@ function scenarioMatrixSummary(matrix) {
     `R/R ${compact(metrics.risk_reward, 'n/a')}`,
     `sizing ${catalogLabel(assumptions.sizing_status || 'unknown')}`,
     'zero provider calls',
+  ].join('; ');
+}
+
+function renderWorkbenchPortfolioImpact(snapshot, pageKey = 'overview') {
+  const preview = workbenchPortfolioImpact(snapshot);
+  const checks = workbenchPortfolioImpactForPage(pageKey, snapshot);
+  const impact = preview.impact || {};
+  const exposures = Array.isArray(preview.exposures) ? preview.exposures : [];
+  if (!checks.length && !exposures.length) return '';
+  return `
+    <section
+      class="panel wide workbench-portfolio-impact-preview"
+      data-testid="workbench-portfolio-impact-preview"
+      data-portfolio-impact-status="${escapeHtml(preview.status || 'unknown')}"
+      data-portfolio-impact-ticker="${escapeHtml(preview.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Portfolio Impact Preview</h2>
+          <p>${escapeHtml(portfolioImpactSummary(preview))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(preview.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Proposed notional</span><b>${escapeHtml(text(impact.proposed_notional))}</b></div>
+        <div class="kv"><span>Max loss</span><b>${escapeHtml(text(impact.max_loss))}</b></div>
+        <div class="kv"><span>Gross exposure</span><b>${escapeHtml(text(impact.current_gross_exposure_pct))}</b></div>
+        <div class="kv"><span>Broker data</span><b>${escapeHtml(impact.broker_data_stale ? 'stale' : 'current')}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Notional/equity</span><b>${escapeHtml(text(impact.proposed_notional_pct_of_equity))}</b></div>
+        <div class="kv"><span>Loss/equity</span><b>${escapeHtml(text(impact.max_loss_pct_of_equity))}</b></div>
+        <div class="kv"><span>Hard blocks</span><b>${escapeHtml(compact(impact.hard_block_count, '0'))}</b></div>
+        <div class="kv"><span>Live</span><b>${escapeHtml(impact.live_trading_enabled ? 'enabled' : 'disabled')}</b></div>
+      </div>
+      <div class="table-wrap portfolio-impact-preview">
+        <table aria-label="Workbench portfolio impact exposure scopes">
+          <thead><tr><th>Scope</th><th>Status</th><th>Before</th><th>After</th><th>Delta</th><th>Finding</th><th>Next</th></tr></thead>
+          <tbody>
+            ${exposures.map((row) => `
+              <tr
+                data-testid="portfolio-impact-exposure"
+                data-portfolio-impact-exposure-status="${escapeHtml(row.status || 'unknown')}"
+                data-portfolio-impact-exposure-scope="${escapeHtml(row.scope || 'unknown')}"
+              >
+                <td data-label="Scope">${escapeHtml(compact(row.label, row.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+                <td data-label="Before">${escapeHtml(text(row.before_pct))}</td>
+                <td data-label="After">${escapeHtml(text(row.after_pct))}</td>
+                <td data-label="Delta">${escapeHtml(text(row.delta_pct))}</td>
+                <td data-label="Finding">${escapeHtml(compact(row.finding, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap portfolio-impact-check-preview">
+        <table aria-label="Workbench portfolio impact checks">
+          <thead><tr><th>Check</th><th>Scope</th><th>Status</th><th>Finding</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="portfolio-impact-check"
+                data-portfolio-impact-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-portfolio-impact-check-scope="${escapeHtml(check.scope || 'unknown')}"
+              >
+                <td data-label="Check">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(check.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function portfolioImpactSummary(preview) {
+  const impact = preview?.impact || {};
+  const metrics = preview?.metrics || {};
+  return [
+    `${compact(preview?.ticker, 'No ticker')} ${catalogLabel(preview?.status || 'unknown')}`,
+    `notional ${compact(impact.proposed_notional, 'n/a')}`,
+    `max loss ${compact(impact.max_loss, 'n/a')}`,
+    `${compact(metrics.blocked_check_count, '0')} blocked checks`,
+    'live submission disabled',
   ].join('; ');
 }
 
@@ -2043,6 +2151,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchOperatorState(snapshot)}
     ${renderWorkbenchExecutionSandbox(snapshot, pageKey)}
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
+    ${renderWorkbenchPortfolioImpact(snapshot, pageKey)}
     ${renderWorkbenchPositionSizing(snapshot, pageKey)}
     ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}

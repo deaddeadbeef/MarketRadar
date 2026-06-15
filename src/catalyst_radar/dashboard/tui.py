@@ -1141,6 +1141,11 @@ def _trading_workbench_snapshot_payload(
             len(broker_open_orders),
         ),
     )
+    portfolio_impact_preview = _workbench_portfolio_impact_preview_payload(
+        active_plan=active_plan,
+        risk_envelope=risk_envelope,
+        broker_connected=broker_connected,
+    )
     position_sizing = _workbench_position_sizing_payload(
         active_plan=active_plan,
         scenario_matrix=scenario_matrix,
@@ -1193,6 +1198,7 @@ def _trading_workbench_snapshot_payload(
         "decision_brief": decision_brief,
         "scenario_matrix": scenario_matrix,
         "risk_envelope": risk_envelope,
+        "portfolio_impact_preview": portfolio_impact_preview,
         "position_sizing": position_sizing,
         "order_ticket_draft": order_ticket_draft,
         "trade_runbook": trade_runbook,
@@ -2144,7 +2150,9 @@ def _workbench_active_plan_payload(
         config=config,
         broker_data_stale=bool(broker_exposure.get("broker_data_stale")),
     ).to_payload()
-    return _compact_workbench_active_plan(plan)
+    compact_plan = _compact_workbench_active_plan(plan)
+    compact_plan["portfolio_impact"] = _workbench_active_plan_portfolio_impact(card)
+    return compact_plan
 
 
 def _missing_workbench_active_plan(
@@ -2296,6 +2304,88 @@ def _compact_workbench_active_plan(plan: Mapping[str, object]) -> dict[str, obje
         },
         "capability_map": _rows(plan.get("capability_map")),
         "next_action": plan.get("next_action"),
+    }
+
+
+def _workbench_active_plan_portfolio_impact(card: Mapping[str, object]) -> dict[str, object]:
+    card_payload = _mapping(card.get("payload"))
+    identity = _mapping(card_payload.get("identity"))
+    impact = _mapping(card_payload.get("portfolio_impact"))
+    if not impact:
+        return {
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+        }
+    return {
+        "ticker": _first_value(identity.get("ticker"), card.get("ticker")),
+        "proposed_notional": _workbench_round_float(
+            _optional_float(impact.get("proposed_notional"))
+        ),
+        "max_loss": _workbench_round_float(_optional_float(impact.get("max_loss"))),
+        "portfolio_penalty": _workbench_round_float(
+            _optional_float(impact.get("portfolio_penalty"))
+        ),
+        "hard_blocks": _texts(impact.get("hard_blocks")),
+        "exposures": {
+            "single_name": _workbench_portfolio_impact_exposure(
+                impact,
+                flat_prefix="single_name",
+                nested_key="single_name",
+            ),
+            "sector": _workbench_portfolio_impact_exposure(
+                impact,
+                flat_prefix="sector",
+                nested_key="sector",
+            ),
+            "theme": _workbench_portfolio_impact_exposure(
+                impact,
+                flat_prefix="theme",
+                nested_key="theme",
+            ),
+            "correlated_basket": _workbench_portfolio_impact_exposure(
+                impact,
+                flat_prefix="correlated",
+                nested_key="correlated_basket",
+            ),
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+    }
+
+
+def _workbench_portfolio_impact_exposure(
+    source: Mapping[str, object],
+    *,
+    flat_prefix: str,
+    nested_key: str,
+) -> dict[str, object]:
+    nested = _mapping(source.get(nested_key))
+    before = _optional_float(
+        _first_value(
+            nested.get("before_pct"),
+            nested.get("before"),
+            source.get(f"{flat_prefix}_before_pct"),
+            source.get(f"{nested_key}_before_pct"),
+        )
+    )
+    after = _optional_float(
+        _first_value(
+            nested.get("after_pct"),
+            nested.get("after"),
+            source.get(f"{flat_prefix}_after_pct"),
+            source.get(f"{nested_key}_after_pct"),
+        )
+    )
+    return {
+        "before_pct": _workbench_round_ratio(before),
+        "after_pct": _workbench_round_ratio(after),
+        "delta_pct": _workbench_round_ratio(
+            after - before if before is not None and after is not None else None
+        ),
     }
 
 
@@ -4021,6 +4111,272 @@ def _workbench_risk_envelope_payload(
 
 
 def _workbench_risk_envelope_check(
+    *,
+    check_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "next_action": next_action,
+    }
+
+
+def _workbench_portfolio_impact_preview_payload(
+    *,
+    active_plan: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    broker_connected: bool,
+) -> dict[str, object]:
+    impact = _mapping(active_plan.get("portfolio_impact"))
+    risk = _mapping(active_plan.get("risk_approval"))
+    portfolio = _mapping(risk_envelope.get("portfolio_context"))
+    proposed_notional = _optional_float(impact.get("proposed_notional"))
+    max_loss = _optional_float(
+        _first_value(impact.get("max_loss"), risk.get("estimated_max_loss"))
+    )
+    portfolio_equity = _optional_float(portfolio.get("portfolio_equity"))
+    portfolio_hard_blocks = _texts(impact.get("hard_blocks")) or _texts(
+        risk.get("portfolio_hard_blocks")
+    )
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    broker_data_stale = bool(portfolio.get("broker_data_stale"))
+    exposure_rows = _workbench_portfolio_impact_exposure_rows(impact)
+    exposure_delta_ready = any(row.get("status") == "ready" for row in exposure_rows)
+    has_impact_source = proposed_notional is not None or max_loss is not None
+    blockers = list(
+        dict.fromkeys(
+            [
+                *portfolio_hard_blocks,
+                *(["missing_portfolio_impact"] if not has_impact_source else []),
+                *(["stale_broker_data"] if broker_data_stale else []),
+                *(
+                    ["missing_portfolio_impact:exposure_deltas"]
+                    if not exposure_delta_ready
+                    else []
+                ),
+                *paper_blocks,
+                *live_blocks,
+            ]
+        )
+    )
+    primary_blocker = blockers[0] if blockers else None
+    checks = [
+        _workbench_portfolio_impact_check(
+            check_id="impact-source",
+            label="Impact source",
+            status="ready" if has_impact_source else "blocked",
+            scope="market-radar",
+            finding="portfolio_impact_available"
+            if has_impact_source
+            else "missing_portfolio_impact",
+            next_action="Use stored decision-card impact as a risk-desk input."
+            if has_impact_source
+            else "Review or rebuild the decision card before sizing impact.",
+        ),
+        _workbench_portfolio_impact_check(
+            check_id="broker-data-freshness",
+            label="Broker data freshness",
+            status="blocked" if broker_data_stale else "ready",
+            scope="portfolio",
+            finding="stale_broker_data" if broker_data_stale else "broker_data_current",
+            next_action="Refresh read-only broker context before relying on impact."
+            if broker_data_stale
+            else "Broker context is current enough for impact review.",
+        ),
+        _workbench_portfolio_impact_check(
+            check_id="exposure-deltas",
+            label="Exposure deltas",
+            status="ready" if exposure_delta_ready else "blocked",
+            scope="risk-desk",
+            finding=(
+                "exposure_deltas_available"
+                if exposure_delta_ready
+                else "missing_portfolio_impact:exposure_deltas"
+            ),
+            next_action=(
+                "Review before/after concentration deltas before paper review."
+                if exposure_delta_ready
+                else "Rebuild portfolio impact before relying on concentration deltas."
+            ),
+        ),
+        _workbench_portfolio_impact_check(
+            check_id="portfolio-hard-blocks",
+            label="Portfolio hard blocks",
+            status="blocked" if portfolio_hard_blocks else "ready",
+            scope="risk-desk",
+            finding=portfolio_hard_blocks[0]
+            if portfolio_hard_blocks
+            else "no_portfolio_hard_blocks",
+            next_action=(
+                "Resolve portfolio hard blocks before paper review."
+                if portfolio_hard_blocks
+                else "No portfolio hard blocks are attached to the decision card."
+            ),
+        ),
+        _workbench_portfolio_impact_check(
+            check_id="paper-trade-gate",
+            label="Paper trade gate",
+            status="blocked" if paper_blocks else "ready",
+            scope="paper-trading",
+            finding=paper_blocks[0] if paper_blocks else "paper_trade_gate_clear",
+            next_action="Resolve paper blocks before recording a local decision."
+            if paper_blocks
+            else "Paper gate is ready for supervised local review.",
+        ),
+        _workbench_portfolio_impact_check(
+            check_id="live-submission-gate",
+            label="Live submission gate",
+            status="disabled",
+            scope="broker",
+            finding=(
+                "broker_submission_disabled"
+                if "broker_submission_disabled" in live_blocks
+                else "live_submission_disabled"
+            ),
+            next_action="Live broker submission remains disabled.",
+        ),
+    ]
+    ready_check_count = sum(1 for row in checks if row.get("status") == "ready")
+    blocked_check_count = sum(1 for row in checks if row.get("status") == "blocked")
+    disabled_check_count = sum(1 for row in checks if row.get("status") == "disabled")
+    ticker = _first_value(impact.get("ticker"), active_plan.get("ticker"))
+    decision_card_id = active_plan.get("decision_card_id")
+    return {
+        "schema_version": "trading-workbench-portfolio-impact-preview-v1",
+        "status": "blocked" if blocked_check_count else "ready",
+        "source_tool": "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "preview_id": f"impact-{str(ticker or 'unknown').lower()}-{decision_card_id or 'no-card'}",
+        "impact_mode": "read_only_preview",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Refresh read-only broker context and rebuild impact before paper review."
+            if primary_blocker
+            else "Review portfolio impact before paper review."
+        ),
+        "impact": {
+            "ticker": ticker,
+            "proposed_notional": _workbench_round_float(proposed_notional),
+            "proposed_notional_pct_of_equity": _workbench_round_ratio(
+                _workbench_ratio(proposed_notional, portfolio_equity)
+            ),
+            "max_loss": _workbench_round_float(max_loss),
+            "max_loss_pct_of_equity": _workbench_round_ratio(
+                _workbench_ratio(max_loss, portfolio_equity)
+            ),
+            "portfolio_penalty": impact.get("portfolio_penalty"),
+            "hard_blocks": portfolio_hard_blocks,
+            "hard_block_count": len(portfolio_hard_blocks),
+            "broker_connected": broker_connected,
+            "broker_data_stale": broker_data_stale,
+            "portfolio_equity": _workbench_round_float(portfolio_equity),
+            "cash": _workbench_round_float(_optional_float(portfolio.get("cash"))),
+            "buying_power": _workbench_round_float(
+                _optional_float(portfolio.get("buying_power"))
+            ),
+            "current_gross_exposure_pct": portfolio.get("gross_exposure_pct"),
+            "single_name_exposure_count": portfolio.get("single_name_exposure_count"),
+            "submission_allowed": False,
+            "broker_order_submitted": False,
+            "live_trading_enabled": False,
+        },
+        "exposures": exposure_rows,
+        "checks": checks,
+        "blockers": blockers,
+        "metrics": {
+            "check_count": len(checks),
+            "ready_check_count": ready_check_count,
+            "blocked_check_count": blocked_check_count,
+            "disabled_check_count": disabled_check_count,
+            "exposure_scope_count": len(exposure_rows),
+            "ready_exposure_scope_count": sum(
+                1 for row in exposure_rows if row.get("status") == "ready"
+            ),
+            "hard_block_count": len(portfolio_hard_blocks),
+            "proposed_notional": _workbench_round_float(proposed_notional),
+            "max_loss": _workbench_round_float(max_loss),
+            "current_gross_exposure_pct": portfolio.get("gross_exposure_pct"),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_portfolio_impact_exposure_rows(
+    impact: Mapping[str, object],
+) -> list[dict[str, object]]:
+    exposures = _mapping(impact.get("exposures"))
+    return [
+        _workbench_portfolio_impact_exposure_row(
+            exposures,
+            scope="single_name",
+            label="Single name",
+        ),
+        _workbench_portfolio_impact_exposure_row(
+            exposures,
+            scope="sector",
+            label="Sector",
+        ),
+        _workbench_portfolio_impact_exposure_row(
+            exposures,
+            scope="theme",
+            label="Theme",
+        ),
+        _workbench_portfolio_impact_exposure_row(
+            exposures,
+            scope="correlated_basket",
+            label="Correlated basket",
+        ),
+    ]
+
+
+def _workbench_portfolio_impact_exposure_row(
+    exposures: Mapping[str, object],
+    *,
+    scope: str,
+    label: str,
+) -> dict[str, object]:
+    exposure = _mapping(exposures.get(scope))
+    before = _optional_float(exposure.get("before_pct"))
+    after = _optional_float(exposure.get("after_pct"))
+    delta = _optional_float(exposure.get("delta_pct"))
+    ready = before is not None and after is not None
+    return {
+        "scope": scope,
+        "label": label,
+        "status": "ready" if ready else "blocked",
+        "before_pct": _workbench_round_ratio(before),
+        "after_pct": _workbench_round_ratio(after),
+        "delta_pct": _workbench_round_ratio(delta),
+        "finding": "exposure_delta_available"
+        if ready
+        else f"missing_{scope}_exposure_delta",
+        "next_action": "Review concentration change before paper review."
+        if ready
+        else "Refresh or rebuild portfolio impact for this exposure scope.",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+    }
+
+
+def _workbench_portfolio_impact_check(
     *,
     check_id: str,
     label: str,
