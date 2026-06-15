@@ -1173,6 +1173,12 @@ def _trading_workbench_snapshot_payload(
         journal_outcome_rows=journal_outcome_rows,
         useful_label_rows=validation_useful_label_rows,
     )
+    strategy_review = _workbench_strategy_review_payload(
+        active_plan=active_plan,
+        scenario_matrix=scenario_matrix,
+        risk_envelope=risk_envelope,
+        learning_loop=learning_loop,
+    )
     trade_runbook = _workbench_trade_runbook_payload(
         decision_brief=decision_brief,
         scenario_matrix=scenario_matrix,
@@ -1219,6 +1225,7 @@ def _trading_workbench_snapshot_payload(
         "order_ticket_draft": order_ticket_draft,
         "paper_trade_preview": paper_trade_preview,
         "learning_loop": learning_loop,
+        "strategy_review": strategy_review,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
@@ -5537,6 +5544,207 @@ def _workbench_learning_loop_card(
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": next_action,
+    }
+
+
+def _workbench_strategy_review_payload(
+    *,
+    active_plan: Mapping[str, object],
+    scenario_matrix: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    learning_loop: Mapping[str, object],
+) -> dict[str, object]:
+    signal = _mapping(learning_loop.get("primary_signal"))
+    validation = _mapping(learning_loop.get("validation_state"))
+    journal = _mapping(learning_loop.get("journal_state"))
+    risk_sizing = _mapping(risk_envelope.get("sizing_context"))
+    gate_context = _mapping(risk_envelope.get("gate_context"))
+    assumptions = _mapping(scenario_matrix.get("assumptions"))
+    risk_blockers = _texts(risk_envelope.get("blockers"))
+    validation_result_id = validation.get("validation_result_id")
+    outcome_id = journal.get("outcome_id")
+    leakage_flags = _texts(validation.get("leakage_flags"))
+    positive_labels = _texts(validation.get("positive_labels"))
+    return_20d = _optional_float(journal.get("return_20d"))
+    spy_relative = _optional_float(journal.get("spy_relative_return_20d"))
+    paper_block_count = _first_nonnegative_int(gate_context.get("paper_block_count"))
+    primary_blocker = risk_blockers[0] if risk_blockers else None
+    hypotheses = [
+        _workbench_strategy_review_hypothesis(
+            hypothesis_id="thesis-validation",
+            label="Thesis validation",
+            driver="validation_replay",
+            status="blocked"
+            if leakage_flags
+            else "ready"
+            if validation_result_id
+            else "review",
+            evidence=(
+                f"score={validation.get('final_score')}; "
+                f"labels={len(positive_labels)}; leakage={len(leakage_flags)}"
+            ),
+            next_action=(
+                "Investigate leakage flags before changing thesis rules."
+                if leakage_flags
+                else "Use replay evidence as one input to manual strategy review."
+                if validation_result_id
+                else "Attach validation replay evidence before strategy review."
+            ),
+        ),
+        _workbench_strategy_review_hypothesis(
+            hypothesis_id="outcome-attribution",
+            label="Outcome attribution",
+            driver="value_outcome",
+            status="ready" if outcome_id else "blocked",
+            evidence=(
+                f"return_20d={_workbench_round_ratio(return_20d)}; "
+                f"spy_relative={_workbench_round_ratio(spy_relative)}"
+            )
+            if outcome_id
+            else "missing_outcome",
+            next_action=(
+                "Compare realized outcome with the original paper decision."
+                if outcome_id
+                else "Compute or link outcome evidence before adjusting strategy."
+            ),
+        ),
+        _workbench_strategy_review_hypothesis(
+            hypothesis_id="risk-calibration",
+            label="Risk calibration",
+            driver="risk_envelope",
+            status="blocked" if paper_block_count else "review",
+            evidence=(
+                f"paper_blocks={paper_block_count}; "
+                f"max_loss={risk_sizing.get('estimated_max_loss')}; "
+                f"reward_risk={assumptions.get('reward_risk')}"
+            ),
+            next_action=(
+                "Resolve paper risk blockers before promoting any rule change."
+                if paper_block_count
+                else "Review risk/reward assumptions before changing sizing rules."
+            ),
+        ),
+        _workbench_strategy_review_hypothesis(
+            hypothesis_id="strategy-update-boundary",
+            label="Strategy update boundary",
+            driver="agent_boundary",
+            status="disabled",
+            evidence="autonomous_strategy_update_disabled",
+            next_action="Use this dossier for review; do not auto-change strategy.",
+        ),
+    ]
+    blocked_count = sum(1 for row in hypotheses if row.get("status") == "blocked")
+    ready_count = sum(1 for row in hypotheses if row.get("status") == "ready")
+    review_count = sum(1 for row in hypotheses if row.get("status") == "review")
+    disabled_count = sum(1 for row in hypotheses if row.get("status") == "disabled")
+    return {
+        "schema_version": "trading-workbench-strategy-review-v1",
+        "status": "blocked"
+        if blocked_count
+        else "review"
+        if review_count
+        else "ready",
+        "source_tool": learning_loop.get("source_tool") or "market-radar",
+        "ticker": _first_value(learning_loop.get("ticker"), active_plan.get("ticker")),
+        "decision_card_id": _first_value(
+            learning_loop.get("decision_card_id"),
+            active_plan.get("decision_card_id"),
+        ),
+        "review_id": (
+            f"strategy-review-"
+            f"{str(_first_value(learning_loop.get('ticker'), 'unknown')).lower()}-"
+            f"{_first_value(learning_loop.get('decision_card_id'), 'no-card')}"
+        ),
+        "strategy_stage": learning_loop.get("learning_stage") or "unlinked",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Resolve risk and paper blockers before using this as a rule-change input."
+            if primary_blocker
+            else "Review strategy hypotheses manually before changing rules."
+        ),
+        "strategy_context": {
+            "plan_status": active_plan.get("status"),
+            "recommended_paper_decision": signal.get("recommended_paper_decision"),
+            "paper_decision": signal.get("paper_decision"),
+            "entry_price": assumptions.get("entry_price"),
+            "invalidation_price": assumptions.get("invalidation_price"),
+            "target_price": assumptions.get("target_price"),
+            "reward_risk": assumptions.get("reward_risk"),
+            "estimated_max_loss": risk_sizing.get("estimated_max_loss"),
+        },
+        "evidence": {
+            "validation_result_id": validation_result_id,
+            "validation_state": validation.get("state"),
+            "final_score": validation.get("final_score"),
+            "positive_labels": positive_labels,
+            "leakage_flags": leakage_flags,
+            "ledger_entry_id": journal.get("ledger_entry_id"),
+            "outcome_id": outcome_id,
+            "outcome_status": journal.get("outcome_status"),
+            "return_20d": _workbench_round_ratio(return_20d),
+            "spy_relative_return_20d": _workbench_round_ratio(spy_relative),
+            "invalidation_touched": bool(journal.get("invalidation_touched")),
+        },
+        "recommendation": {
+            "decision": "manual_review_required",
+            "strategy_update_allowed": False,
+            "autonomous_update_allowed": False,
+            "requires_human_approval": True,
+            "agent_execute_boundary": "agent execute",
+            "next_action": "Review strategy hypotheses; do not auto-change rules.",
+        },
+        "commands": {
+            "review": "agent",
+            "validation": "validation",
+            "journal": journal.get("primary_command") or "journal",
+            "strategy_update": "agent execute",
+        },
+        "hypotheses": hypotheses,
+        "metrics": {
+            "hypothesis_count": len(hypotheses),
+            "ready_hypothesis_count": ready_count,
+            "review_hypothesis_count": review_count,
+            "blocked_hypothesis_count": blocked_count,
+            "disabled_hypothesis_count": disabled_count,
+            "positive_label_count": len(positive_labels),
+            "leakage_flag_count": len(leakage_flags),
+            "paper_block_count": paper_block_count,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "strategy_update_allowed": False,
+        "autonomous_update_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_strategy_review_hypothesis(
+    *,
+    hypothesis_id: str,
+    label: str,
+    driver: str,
+    status: str,
+    evidence: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": hypothesis_id,
+        "label": label,
+        "driver": driver,
+        "status": status,
+        "evidence": evidence,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "strategy_update_allowed": False,
+        "autonomous_update_allowed": False,
         "live_trading_enabled": False,
         "next_action": next_action,
     }

@@ -250,3 +250,17 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the loop makes no provider calls, submits no
   broker order, performs no autonomous strategy update, and writes no database
   rows from browsing the dossier.
+
+## Current Slice: Strategy Review
+
+- Add a read-only strategy-review snapshot contract that turns learning-loop,
+  validation, outcome, scenario, and risk-envelope evidence into supervised
+  strategy hypotheses.
+- Render the review in the Tauri Command Center and relevant trade planner,
+  backtest, validation, journal, and agent pages so agents and operators can
+  inspect rule-change evidence without mutating strategy.
+- Expose review status, ticker, stage, hypothesis counts, blocked hypothesis
+  count, and update permission in automation JSON.
+- Preserve the same boundary: the review makes no provider calls, submits no
+  broker order, performs no autonomous strategy update, and writes no database
+  rows from browsing the dossier.
