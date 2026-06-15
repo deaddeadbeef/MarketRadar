@@ -1173,6 +1173,15 @@ def _trading_workbench_snapshot_payload(
         risk_envelope=risk_envelope,
         action_bus=action_bus,
     )
+    pretrade_compliance = _workbench_pretrade_compliance_payload(
+        active_plan=active_plan,
+        decision_brief=decision_brief,
+        risk_envelope=risk_envelope,
+        capital_allocation=capital_allocation,
+        order_ticket_draft=order_ticket_draft,
+        paper_trade_preview=paper_trade_preview,
+        supervision_gates=supervision_gates,
+    )
     learning_loop = _workbench_learning_loop_payload(
         active_plan=active_plan,
         paper_trade_preview=paper_trade_preview,
@@ -1246,6 +1255,7 @@ def _trading_workbench_snapshot_payload(
         "capital_allocation": capital_allocation,
         "order_ticket_draft": order_ticket_draft,
         "paper_trade_preview": paper_trade_preview,
+        "pretrade_compliance": pretrade_compliance,
         "learning_loop": learning_loop,
         "strategy_review": strategy_review,
         "trade_monitor": trade_monitor,
@@ -5527,6 +5537,290 @@ def _workbench_paper_trade_preview_check(
         "status": status,
         "scope": scope,
         "finding": finding,
+        "next_action": next_action,
+    }
+
+
+def _workbench_pretrade_compliance_payload(
+    *,
+    active_plan: Mapping[str, object],
+    decision_brief: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    capital_allocation: Mapping[str, object],
+    order_ticket_draft: Mapping[str, object],
+    paper_trade_preview: Mapping[str, object],
+    supervision_gates: Mapping[str, object],
+) -> dict[str, object]:
+    risk = _mapping(active_plan.get("risk_approval"))
+    setup = _mapping(decision_brief.get("setup"))
+    risk_gate = _mapping(risk_envelope.get("gate_context"))
+    risk_sizing = _mapping(risk_envelope.get("sizing_context"))
+    allocation_plan = _mapping(capital_allocation.get("allocation_plan"))
+    ticket = _mapping(order_ticket_draft.get("ticket"))
+    paper_decision = _mapping(paper_trade_preview.get("paper_decision"))
+    supervision_metrics = _mapping(supervision_gates.get("metrics"))
+    allocation_metrics = _mapping(capital_allocation.get("metrics"))
+    paper_metrics = _mapping(paper_trade_preview.get("metrics"))
+    risk_metrics = _mapping(risk_envelope.get("metrics"))
+    ticker = _learning_loop_ticker(
+        _first_value(
+            paper_trade_preview.get("ticker"),
+            order_ticket_draft.get("ticker"),
+            capital_allocation.get("ticker"),
+            risk_envelope.get("ticker"),
+            decision_brief.get("ticker"),
+            active_plan.get("ticker"),
+        )
+    )
+    decision_card_id = _first_value(
+        paper_trade_preview.get("decision_card_id"),
+        order_ticket_draft.get("decision_card_id"),
+        capital_allocation.get("decision_card_id"),
+        risk_envelope.get("decision_card_id"),
+        decision_brief.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+    )
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    blockers = list(
+        dict.fromkeys(
+            [
+                *_texts(risk_envelope.get("blockers")),
+                *_texts(capital_allocation.get("blockers")),
+                *_texts(order_ticket_draft.get("blockers")),
+                *_texts(paper_trade_preview.get("blockers")),
+            ]
+        )
+    )
+    active_status = str(active_plan.get("status") or "missing")
+    approval_required_count = _first_nonnegative_int(
+        supervision_metrics.get("approval_required_count")
+    )
+    checks = [
+        _workbench_pretrade_compliance_check(
+            check_id="decision-state",
+            label="Decision state",
+            status="blocked" if active_status == "blocked" or paper_blocks else "ready",
+            scope="decision-review",
+            finding=paper_blocks[0] if paper_blocks else "decision_state_ready",
+            evidence=(
+                f"action_state={setup.get('action_state')}; "
+                f"decision_card={decision_card_id or 'none'}"
+            ),
+            next_action=(
+                "Resolve decision-state blockers before any local trade record."
+                if paper_blocks or active_status == "blocked"
+                else "Decision state is ready for supervised pre-trade review."
+            ),
+        ),
+        _workbench_pretrade_compliance_check(
+            check_id="risk-envelope",
+            label="Risk envelope",
+            status="blocked"
+            if str(risk_envelope.get("status") or "") == "blocked"
+            else "ready",
+            scope="risk-desk",
+            finding=_texts(risk_envelope.get("blockers"))[0]
+            if _texts(risk_envelope.get("blockers"))
+            else "risk_envelope_ready",
+            evidence=(
+                f"risk_blocks={_first_nonnegative_int(risk_metrics.get('blocked_check_count'))}; "
+                f"max_loss={risk_sizing.get('estimated_max_loss')}"
+            ),
+            next_action="Resolve risk envelope checks before proceeding.",
+        ),
+        _workbench_pretrade_compliance_check(
+            check_id="capital-allocation",
+            label="Capital allocation",
+            status=str(capital_allocation.get("status") or "unknown"),
+            scope="portfolio",
+            finding=capital_allocation.get("primary_blocker")
+            or capital_allocation.get("status")
+            or "allocation_review",
+            evidence=(
+                f"suggested_notional={allocation_plan.get('suggested_notional')}; "
+                f"buying_power_usage={allocation_plan.get('buying_power_usage_pct')}; "
+                f"allocation_allowed={allocation_plan.get('allocation_allowed')}"
+            ),
+            next_action=capital_allocation.get("primary_next_action")
+            or "Review capital allocation before ticketing.",
+        ),
+        _workbench_pretrade_compliance_check(
+            check_id="order-ticket-draft",
+            label="Order ticket draft",
+            status=str(order_ticket_draft.get("status") or "unknown"),
+            scope="broker",
+            finding=order_ticket_draft.get("primary_blocker")
+            or order_ticket_draft.get("status")
+            or "ticket_review",
+            evidence=(
+                f"suggested_quantity={ticket.get('suggested_quantity')}; "
+                f"submission_allowed={ticket.get('submission_allowed')}"
+            ),
+            next_action=order_ticket_draft.get("primary_next_action")
+            or "Review blocked local ticket before any broker handoff.",
+        ),
+        _workbench_pretrade_compliance_check(
+            check_id="paper-trade-preview",
+            label="Paper trade preview",
+            status=str(paper_trade_preview.get("status") or "unknown"),
+            scope="paper-trading",
+            finding=paper_trade_preview.get("primary_blocker")
+            or paper_trade_preview.get("status")
+            or "paper_preview",
+            evidence=(
+                f"decision={paper_decision.get('decision')}; "
+                f"paper_blocks={_first_nonnegative_int(paper_metrics.get('paper_block_count'))}; "
+                f"record_allowed={paper_decision.get('record_allowed')}"
+            ),
+            next_action=paper_trade_preview.get("primary_next_action")
+            or "Preview paper trade before any local record.",
+        ),
+        _workbench_pretrade_compliance_check(
+            check_id="supervision-approval",
+            label="Supervision approval",
+            status="approval_required" if approval_required_count else "ready",
+            scope="supervision",
+            finding=supervision_gates.get("primary_gate_id") or "supervision_ready",
+            evidence=f"approval_required_count={approval_required_count}",
+            next_action=(
+                "Require manual approval before guarded local writes."
+                if approval_required_count
+                else "No supervision approval gate is pending."
+            ),
+        ),
+        _workbench_pretrade_compliance_check(
+            check_id="live-execution-boundary",
+            label="Live execution boundary",
+            status="disabled",
+            scope="broker",
+            finding="live_trading_disabled",
+            evidence="broker_submission_disabled; autonomous_execution_disabled",
+            next_action="Do not submit broker orders or run autonomous execution.",
+        ),
+    ]
+    ready_count = sum(1 for row in checks if row.get("status") == "ready")
+    blocked_count = sum(1 for row in checks if row.get("status") == "blocked")
+    approval_count = sum(
+        1 for row in checks if row.get("status") == "approval_required"
+    )
+    disabled_count = sum(1 for row in checks if row.get("status") == "disabled")
+    primary_blocker = blockers[0] if blockers else None
+    if primary_blocker is None:
+        primary_blocker = next(
+            (
+                str(row.get("finding"))
+                for row in checks
+                if row.get("status") == "blocked" and row.get("finding")
+            ),
+            None,
+        )
+    return {
+        "schema_version": "trading-workbench-pretrade-compliance-v1",
+        "status": "blocked"
+        if blocked_count
+        else "approval_required"
+        if approval_count
+        else "ready",
+        "source_tool": "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "compliance_id": (
+            f"pretrade-compliance-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "review_mode": "read_only_pretrade_compliance",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Resolve pre-trade compliance blockers before any local trade record or broker handoff."
+            if primary_blocker
+            else "Review manual approval state before any local trade record."
+        ),
+        "trade_context": {
+            "active_plan_status": active_plan.get("status"),
+            "action_state": setup.get("action_state"),
+            "recommended_paper_decision": active_plan.get(
+                "recommended_paper_decision"
+            ),
+            "side": ticket.get("side") or _mapping(active_plan.get("order_intent")).get(
+                "side"
+            ),
+            "suggested_quantity": ticket.get("suggested_quantity"),
+            "suggested_notional": allocation_plan.get("suggested_notional")
+            or ticket.get("estimated_notional"),
+            "estimated_max_loss": ticket.get("estimated_max_loss")
+            or risk_sizing.get("estimated_max_loss"),
+            "paper_approved": bool(risk_gate.get("paper_approved")),
+            "live_approved": bool(risk_gate.get("live_approved")),
+            "allocation_allowed": bool(allocation_plan.get("allocation_allowed")),
+            "order_submission_allowed": False,
+        },
+        "boundary_context": {
+            "requires_manual_approval": bool(
+                risk_gate.get("requires_manual_approval")
+                or approval_required_count
+                or risk.get("requires_manual_approval")
+            ),
+            "approval_required_count": approval_required_count,
+            "broker_order_submission": "disabled",
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+            "live_trading_enabled": False,
+            "autonomous_execution": "disabled",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "no_execution": True,
+        },
+        "checks": checks,
+        "blockers": blockers,
+        "metrics": {
+            "check_count": len(checks),
+            "ready_check_count": ready_count,
+            "blocked_check_count": blocked_count,
+            "approval_required_count": approval_count,
+            "disabled_check_count": disabled_count,
+            "compliance_blocker_count": len(blockers),
+            "risk_block_count": _first_nonnegative_int(
+                risk_metrics.get("blocked_check_count")
+            ),
+            "allocation_blocked_check_count": _first_nonnegative_int(
+                allocation_metrics.get("blocked_check_count")
+            ),
+            "paper_block_count": len(paper_blocks),
+            "live_block_count": len(live_blocks),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_pretrade_compliance_check(
+    *,
+    check_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: object,
+    evidence: str,
+    next_action: object,
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "evidence": evidence,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
         "next_action": next_action,
     }
 

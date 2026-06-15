@@ -471,6 +471,19 @@ function workbenchPaperTradePreviewForPage(pageKey, snapshot = state.snapshot ||
   return pages.has(pageKey) ? checks : [];
 }
 
+function workbenchPretradeCompliance(snapshot = state.snapshot || {}) {
+  const compliance = tradingWorkbenchSnapshot(snapshot)?.pretrade_compliance;
+  return compliance && typeof compliance === 'object' ? compliance : { checks: [] };
+}
+
+function workbenchPretradeComplianceForPage(pageKey, snapshot = state.snapshot || {}) {
+  const compliance = workbenchPretradeCompliance(snapshot);
+  const checks = Array.isArray(compliance.checks) ? compliance.checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return checks;
+  const pages = new Set(['portfolio', 'trade-planner', 'risk-desk', 'paper-trading', 'broker', 'agent']);
+  return pages.has(pageKey) ? checks : [];
+}
+
 function workbenchLearningLoop(snapshot = state.snapshot || {}) {
   const loop = tradingWorkbenchSnapshot(snapshot)?.learning_loop;
   return loop && typeof loop === 'object' ? loop : { cards: [] };
@@ -1073,6 +1086,12 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       paper_trade_preview_decision: compact(workbenchPaperTradePreview(snapshot)?.paper_decision?.decision, 'none'),
       paper_trade_preview_suggested_quantity: Number(workbenchPaperTradePreview(snapshot)?.paper_decision?.suggested_quantity || 0),
       paper_trade_preview_block_count: Number(workbenchPaperTradePreview(snapshot)?.blockers?.length || 0),
+      pretrade_compliance_status: compact(workbenchPretradeCompliance(snapshot)?.status, 'unknown'),
+      pretrade_compliance_ticker: compact(workbenchPretradeCompliance(snapshot)?.ticker, 'none'),
+      pretrade_compliance_primary_blocker: compact(workbenchPretradeCompliance(snapshot)?.primary_blocker, 'none'),
+      pretrade_compliance_blocked_check_count: Number(workbenchPretradeCompliance(snapshot)?.metrics?.blocked_check_count || 0),
+      pretrade_compliance_approval_required_count: Number(workbenchPretradeCompliance(snapshot)?.metrics?.approval_required_count || 0),
+      pretrade_compliance_ready: Boolean(workbenchPretradeCompliance(snapshot)?.status === 'ready'),
       learning_loop_status: compact(workbenchLearningLoop(snapshot)?.status, 'unknown'),
       learning_loop_ticker: compact(workbenchLearningLoop(snapshot)?.ticker, 'none'),
       learning_loop_stage: compact(workbenchLearningLoop(snapshot)?.learning_stage, 'unlinked'),
@@ -1208,6 +1227,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchCapitalAllocation(snapshot, 'overview')}
     ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
     ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
+    ${renderWorkbenchPretradeCompliance(snapshot, 'overview')}
     ${renderWorkbenchLearningLoop(snapshot, 'overview')}
     ${renderWorkbenchStrategyReview(snapshot, 'overview')}
     ${renderWorkbenchTradeMonitor(snapshot, 'overview')}
@@ -1978,6 +1998,81 @@ function paperTradePreviewSummary(preview) {
   ].join('; ');
 }
 
+function renderWorkbenchPretradeCompliance(snapshot, pageKey = 'overview') {
+  const compliance = workbenchPretradeCompliance(snapshot);
+  const checks = workbenchPretradeComplianceForPage(pageKey, snapshot);
+  const trade = compliance.trade_context || {};
+  const boundary = compliance.boundary_context || {};
+  const metrics = compliance.metrics || {};
+  if (!checks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-pretrade-compliance"
+      data-testid="workbench-pretrade-compliance"
+      data-pretrade-compliance-status="${escapeHtml(compliance.status || 'unknown')}"
+      data-pretrade-compliance-ticker="${escapeHtml(compliance.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Pre-Trade Compliance</h2>
+          <p>${escapeHtml(pretradeComplianceSummary(compliance))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(compliance.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Plan</span><b>${escapeHtml(catalogLabel(trade.active_plan_status || '-'))}</b></div>
+        <div class="kv"><span>Action state</span><b>${escapeHtml(catalogLabel(trade.action_state || '-'))}</b></div>
+        <div class="kv"><span>Paper approved</span><b>${escapeHtml(trade.paper_approved ? 'yes' : 'no')}</b></div>
+        <div class="kv"><span>Live approved</span><b>${escapeHtml(trade.live_approved ? 'yes' : 'no')}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Suggested notional</span><b>${escapeHtml(text(trade.suggested_notional))}</b></div>
+        <div class="kv"><span>Suggested qty</span><b>${escapeHtml(compact(trade.suggested_quantity, '-'))}</b></div>
+        <div class="kv"><span>Max loss</span><b>${escapeHtml(text(trade.estimated_max_loss))}</b></div>
+        <div class="kv"><span>Allocation</span><b>${escapeHtml(trade.allocation_allowed ? 'allowed' : 'blocked')}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Manual approval</span><b>${escapeHtml(boundary.requires_manual_approval ? 'required' : 'clear')}</b></div>
+        <div class="kv"><span>Approval gates</span><b>${escapeHtml(compact(boundary.approval_required_count, '0'))}</b></div>
+        <div class="kv"><span>Broker orders</span><b>${escapeHtml(boundary.broker_order_submission || 'disabled')}</b></div>
+        <div class="kv"><span>Autonomous</span><b>${escapeHtml(boundary.autonomous_execution || 'disabled')}</b></div>
+      </div>
+      <div class="table-wrap pretrade-compliance-preview">
+        <table aria-label="Workbench pre-trade compliance">
+          <thead><tr><th>Check</th><th>Scope</th><th>Status</th><th>Finding</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="pretrade-compliance-check"
+                data-pretrade-compliance-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-pretrade-compliance-check-scope="${escapeHtml(check.scope || 'unknown')}"
+              >
+                <td data-label="Check">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(check.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(check.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function pretradeComplianceSummary(compliance) {
+  const metrics = compliance?.metrics || {};
+  return [
+    `${compact(compliance?.ticker, 'No ticker')} ${catalogLabel(compliance?.status || 'unknown')}`,
+    `primary ${compact(compliance?.primary_blocker, 'none')}`,
+    `${compact(metrics.blocked_check_count, '0')} blocked checks`,
+    `${compact(metrics.approval_required_count, '0')} approval gates`,
+    'live execution disabled',
+  ].join('; ');
+}
+
 function renderWorkbenchLearningLoop(snapshot, pageKey = 'overview') {
   const loop = workbenchLearningLoop(snapshot);
   const cards = workbenchLearningLoopForPage(pageKey, snapshot);
@@ -2633,6 +2728,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchCapitalAllocation(snapshot, pageKey)}
     ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
     ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
+    ${renderWorkbenchPretradeCompliance(snapshot, pageKey)}
     ${renderWorkbenchLearningLoop(snapshot, pageKey)}
     ${renderWorkbenchStrategyReview(snapshot, pageKey)}
     ${renderWorkbenchTradeMonitor(snapshot, pageKey)}

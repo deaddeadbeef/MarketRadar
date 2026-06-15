@@ -1431,6 +1431,108 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert paper_trade_preview["order_submission_allowed"] is False
     assert paper_trade_preview["live_trading_enabled"] is False
 
+    pretrade_compliance = workbench["pretrade_compliance"]
+    assert (
+        pretrade_compliance["schema_version"]
+        == "trading-workbench-pretrade-compliance-v1"
+    )
+    assert pretrade_compliance["status"] == "blocked"
+    assert pretrade_compliance["source_tool"] == "market-radar"
+    assert pretrade_compliance["ticker"] == "MSFT"
+    assert pretrade_compliance["decision_card_id"] == "card-msft-latest"
+    assert (
+        pretrade_compliance["compliance_id"]
+        == "pretrade-compliance-msft-card-msft-latest"
+    )
+    assert pretrade_compliance["review_mode"] == "read_only_pretrade_compliance"
+    assert pretrade_compliance["primary_blocker"] == (
+        "action_state_not_manual_review_eligible"
+    )
+    assert pretrade_compliance["primary_next_action"] == (
+        "Resolve pre-trade compliance blockers before any local trade record "
+        "or broker handoff."
+    )
+    assert pretrade_compliance["trade_context"] == {
+        "active_plan_status": "blocked",
+        "action_state": "Warning",
+        "recommended_paper_decision": "deferred",
+        "side": "buy",
+        "suggested_quantity": 208,
+        "suggested_notional": 20800.0,
+        "estimated_max_loss": 1248.0,
+        "paper_approved": False,
+        "live_approved": False,
+        "allocation_allowed": False,
+        "order_submission_allowed": False,
+    }
+    assert pretrade_compliance["boundary_context"] == {
+        "requires_manual_approval": True,
+        "approval_required_count": 1,
+        "broker_order_submission": "disabled",
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "autonomous_execution": "disabled",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "no_execution": True,
+    }
+    assert [row["id"] for row in pretrade_compliance["checks"]] == [
+        "decision-state",
+        "risk-envelope",
+        "capital-allocation",
+        "order-ticket-draft",
+        "paper-trade-preview",
+        "supervision-approval",
+        "live-execution-boundary",
+    ]
+    assert [row["status"] for row in pretrade_compliance["checks"]] == [
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "approval_required",
+        "disabled",
+    ]
+    assert pretrade_compliance["checks"][0]["evidence"] == (
+        "action_state=Warning; decision_card=card-msft-latest"
+    )
+    assert pretrade_compliance["checks"][2]["finding"] == "stale_broker_data"
+    assert pretrade_compliance["checks"][2]["evidence"] == (
+        "suggested_notional=20800.0; buying_power_usage=0.208; "
+        "allocation_allowed=False"
+    )
+    assert pretrade_compliance["checks"][5]["finding"] == "guarded-local-write"
+    assert pretrade_compliance["checks"][6]["finding"] == "live_trading_disabled"
+    assert pretrade_compliance["blockers"] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "stale_broker_data",
+        "zero_preview_size",
+        "missing_portfolio_impact:exposure_deltas",
+    ]
+    assert pretrade_compliance["metrics"] == {
+        "check_count": 7,
+        "ready_check_count": 0,
+        "blocked_check_count": 5,
+        "approval_required_count": 1,
+        "disabled_check_count": 1,
+        "compliance_blocker_count": 6,
+        "risk_block_count": 3,
+        "allocation_blocked_check_count": 2,
+        "paper_block_count": 2,
+        "live_block_count": 3,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert pretrade_compliance["external_calls_made"] == 0
+    assert pretrade_compliance["db_writes_made"] == 0
+    assert pretrade_compliance["broker_order_submitted"] is False
+    assert pretrade_compliance["order_submission_allowed"] is False
+    assert pretrade_compliance["live_trading_enabled"] is False
+
     learning_loop = workbench["learning_loop"]
     assert learning_loop["schema_version"] == "trading-workbench-learning-loop-v1"
     assert learning_loop["status"] == "blocked"

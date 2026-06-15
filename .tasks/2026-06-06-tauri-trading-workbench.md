@@ -291,3 +291,16 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the allocation review makes no provider calls,
   submits no broker order, performs no autonomous allocation change, and writes
   no database rows from browsing the dossier.
+
+## Current Slice: Pre-Trade Compliance
+
+- Add a read-only pre-trade compliance snapshot contract that joins decision
+  state, risk envelope, capital allocation, order-ticket draft, paper preview,
+  supervision gates, and live-execution boundaries into one compliance dossier.
+- Render the compliance dossier in the Tauri Command Center and relevant
+  portfolio, trade-planner, risk, paper-trading, broker, and agent pages.
+- Expose compliance status, ticker, primary blocker, blocked-check count,
+  approval-required count, and ready state in automation JSON.
+- Preserve the same boundary: the compliance review makes no provider calls,
+  submits no broker order, performs no autonomous execution, and writes no
+  database rows from browsing the dossier.
