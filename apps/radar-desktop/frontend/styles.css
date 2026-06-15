@@ -660,6 +660,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 .workbench-portfolio-impact-preview,
 .workbench-position-sizing,
 .workbench-order-ticket-draft,
+.workbench-paper-trade-preview,
 .workbench-risk-envelope,
 .workbench-trade-runbook {
   margin-top: 12px;
@@ -879,6 +880,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 .portfolio-impact-check-preview table,
 .position-sizing-preview table,
 .order-ticket-draft-preview table,
+.paper-trade-preview-checks table,
 .risk-envelope-preview table,
 .execution-sandbox-preview table,
 .trade-runbook-preview table,

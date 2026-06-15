@@ -1200,6 +1200,126 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert order_ticket_draft["order_submission_allowed"] is False
     assert order_ticket_draft["live_trading_enabled"] is False
 
+    paper_trade_preview = workbench["paper_trade_preview"]
+    assert (
+        paper_trade_preview["schema_version"]
+        == "trading-workbench-paper-trade-preview-v1"
+    )
+    assert paper_trade_preview["status"] == "blocked"
+    assert paper_trade_preview["source_tool"] == "market-radar"
+    assert paper_trade_preview["ticker"] == "MSFT"
+    assert paper_trade_preview["decision_card_id"] == "card-msft-latest"
+    assert paper_trade_preview["preview_id"] == "paper-preview-msft-card-msft-latest"
+    assert paper_trade_preview["preview_mode"] == "supervised_paper_preview"
+    assert paper_trade_preview["primary_blocker"] == (
+        "action_state_not_manual_review_eligible"
+    )
+    assert paper_trade_preview["primary_next_action"] == (
+        "Resolve paper-trade blockers before recording locally."
+    )
+    assert paper_trade_preview["paper_decision"] == {
+        "decision": "deferred",
+        "available_at": AVAILABLE_AT.isoformat(),
+        "entry_price": 100.0,
+        "entry_at": AVAILABLE_AT.isoformat(),
+        "confirmed_quantity": None,
+        "suggested_quantity": 208,
+        "confirmed_notional": None,
+        "suggested_notional": 20800.0,
+        "estimated_max_loss": 1248.0,
+        "paper_approved": False,
+        "record_allowed": False,
+        "requires_arm_before_record": True,
+        "record_db_writes_required": 2,
+        "no_execution": True,
+    }
+    assert paper_trade_preview["commands"] == {
+        "preview": "paper-decision preview",
+        "record": "paper-decision execute",
+        "live_submit": "broker live submission",
+    }
+    assert paper_trade_preview["checks"] == [
+        {
+            "id": "paper-intent-source",
+            "label": "Paper intent source",
+            "status": "ready",
+            "scope": "market-radar",
+            "finding": "paper_intent_available",
+            "next_action": "Use the stored agentic paper intent for preview.",
+        },
+        {
+            "id": "paper-risk-gate",
+            "label": "Paper risk gate",
+            "status": "blocked",
+            "scope": "risk-desk",
+            "finding": "action_state_not_manual_review_eligible",
+            "next_action": (
+                "Resolve paper-trade blockers before recording locally."
+            ),
+        },
+        {
+            "id": "confirmed-size",
+            "label": "Confirmed size",
+            "status": "blocked",
+            "scope": "trade-planner",
+            "finding": "missing_position_sizing:shares",
+            "next_action": (
+                "Confirm share quantity before recording a paper decision."
+            ),
+        },
+        {
+            "id": "preview-command",
+            "label": "Preview command",
+            "status": "ready",
+            "scope": "paper-trading",
+            "finding": "local_preview_available",
+            "next_action": "Preview through the backend without writing rows.",
+        },
+        {
+            "id": "record-command",
+            "label": "Record command",
+            "status": "approval_required",
+            "scope": "paper-trading",
+            "finding": "manual_arm_required",
+            "next_action": "Arm and record only after manual approval.",
+        },
+        {
+            "id": "live-submission-gate",
+            "label": "Live submission gate",
+            "status": "disabled",
+            "scope": "broker",
+            "finding": "broker_submission_disabled",
+            "next_action": "Live broker submission remains disabled.",
+        },
+    ]
+    assert paper_trade_preview["blockers"] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "stale_broker_data",
+        "zero_preview_size",
+    ]
+    assert paper_trade_preview["metrics"] == {
+        "check_count": 6,
+        "ready_check_count": 2,
+        "blocked_check_count": 2,
+        "approval_required_count": 1,
+        "disabled_check_count": 1,
+        "paper_block_count": 2,
+        "confirmed_quantity": None,
+        "suggested_quantity": 208,
+        "confirmed_notional": None,
+        "suggested_notional": 20800.0,
+        "estimated_max_loss": 1248.0,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert paper_trade_preview["external_calls_made"] == 0
+    assert paper_trade_preview["db_writes_made"] == 0
+    assert paper_trade_preview["broker_order_submitted"] is False
+    assert paper_trade_preview["order_submission_allowed"] is False
+    assert paper_trade_preview["live_trading_enabled"] is False
+
     trade_runbook = workbench["trade_runbook"]
     assert trade_runbook["schema_version"] == "trading-workbench-runbook-v1"
     assert trade_runbook["status"] == "blocked"

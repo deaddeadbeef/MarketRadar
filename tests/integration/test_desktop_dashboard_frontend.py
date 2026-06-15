@@ -548,6 +548,25 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchOrderTicketDraft(snapshot)?.ticket?.suggested_quantity || 0)",
         "order_ticket_draft_preview_command: compact("
         "workbenchOrderTicketDraft(snapshot)?.commands?.preview, 'none')",
+        "function workbenchPaperTradePreview",
+        "function workbenchPaperTradePreviewForPage",
+        "function renderWorkbenchPaperTradePreview",
+        "function paperTradePreviewSummary",
+        'data-testid="workbench-paper-trade-preview"',
+        'data-testid="paper-trade-preview-check"',
+        "data-paper-trade-preview-status=\"${escapeHtml(preview.status || 'unknown')}\"",
+        "data-paper-trade-check-status=\"${escapeHtml(check.status || 'unknown')}\"",
+        "data-paper-trade-check-scope=\"${escapeHtml(check.scope || 'unknown')}\"",
+        "paper_trade_preview_status: compact("
+        "workbenchPaperTradePreview(snapshot)?.status, 'unknown')",
+        "paper_trade_preview_ticker: compact("
+        "workbenchPaperTradePreview(snapshot)?.ticker, 'none')",
+        "paper_trade_preview_decision: compact("
+        "workbenchPaperTradePreview(snapshot)?.paper_decision?.decision, 'none')",
+        "paper_trade_preview_suggested_quantity: Number("
+        "workbenchPaperTradePreview(snapshot)?.paper_decision?.suggested_quantity || 0)",
+        "paper_trade_preview_block_count: Number("
+        "workbenchPaperTradePreview(snapshot)?.blockers?.length || 0)",
         "risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown')",
         "risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none')",
         "risk_sizing_status: compact("
@@ -637,6 +656,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".position-sizing-preview" in styles
     assert ".workbench-order-ticket-draft" in styles
     assert ".order-ticket-draft-preview" in styles
+    assert ".workbench-paper-trade-preview" in styles
+    assert ".paper-trade-preview-checks" in styles
     assert ".workbench-risk-envelope" in styles
     assert ".risk-envelope-preview" in styles
     assert ".workbench-trade-runbook" in styles

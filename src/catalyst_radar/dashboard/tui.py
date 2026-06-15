@@ -1157,6 +1157,13 @@ def _trading_workbench_snapshot_payload(
         risk_envelope=risk_envelope,
         action_bus=action_bus,
     )
+    paper_trade_preview = _workbench_paper_trade_preview_payload(
+        active_plan=active_plan,
+        position_sizing=position_sizing,
+        order_ticket_draft=order_ticket_draft,
+        risk_envelope=risk_envelope,
+        action_bus=action_bus,
+    )
     trade_runbook = _workbench_trade_runbook_payload(
         decision_brief=decision_brief,
         scenario_matrix=scenario_matrix,
@@ -1201,6 +1208,7 @@ def _trading_workbench_snapshot_payload(
         "portfolio_impact_preview": portfolio_impact_preview,
         "position_sizing": position_sizing,
         "order_ticket_draft": order_ticket_draft,
+        "paper_trade_preview": paper_trade_preview,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
@@ -4866,6 +4874,278 @@ def _workbench_order_ticket_draft_payload(
 
 
 def _workbench_order_ticket_draft_check(
+    *,
+    check_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "next_action": next_action,
+    }
+
+
+def _workbench_paper_trade_preview_payload(
+    *,
+    active_plan: Mapping[str, object],
+    position_sizing: Mapping[str, object],
+    order_ticket_draft: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    action_bus: Mapping[str, object],
+) -> dict[str, object]:
+    paper = _mapping(active_plan.get("paper_decision"))
+    risk = _mapping(active_plan.get("risk_approval"))
+    ticket = _mapping(order_ticket_draft.get("ticket"))
+    sizing_recommendation = _mapping(position_sizing.get("recommendation"))
+    sizing_inputs = _mapping(position_sizing.get("inputs"))
+    actions = {
+        str(row.get("id")): row
+        for row in _rows(action_bus.get("actions"))
+        if row.get("id")
+    }
+    preview_action = _mapping(actions.get("paper-decision-preview"))
+    record_action = _mapping(actions.get("paper-decision-record"))
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    blockers = list(
+        dict.fromkeys(
+            [
+                *paper_blocks,
+                *_texts(position_sizing.get("blockers")),
+                *_texts(risk_envelope.get("blockers")),
+                *live_blocks,
+            ]
+        )
+    )
+    decision_card_id = _first_value(
+        paper.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+        order_ticket_draft.get("decision_card_id"),
+    )
+    ticker = _first_value(
+        order_ticket_draft.get("ticker"),
+        position_sizing.get("ticker"),
+        risk_envelope.get("ticker"),
+        active_plan.get("ticker"),
+    )
+    decision = paper.get("decision")
+    entry_price = _optional_float(
+        _first_value(
+            paper.get("entry_price"),
+            ticket.get("entry_price"),
+            sizing_inputs.get("entry_price"),
+        )
+    )
+    confirmed_quantity = _optional_int(ticket.get("quantity"))
+    if confirmed_quantity is not None and confirmed_quantity <= 0:
+        confirmed_quantity = None
+    suggested_quantity = _optional_int(
+        _first_value(
+            ticket.get("suggested_quantity"),
+            sizing_recommendation.get("suggested_quantity"),
+        )
+    )
+    if suggested_quantity is not None and suggested_quantity <= 0:
+        suggested_quantity = None
+    confirmed_notional = (
+        _optional_float(ticket.get("estimated_notional"))
+        if confirmed_quantity is not None
+        else None
+    )
+    if (
+        confirmed_notional is None
+        and confirmed_quantity is not None
+        and entry_price is not None
+    ):
+        confirmed_notional = confirmed_quantity * entry_price
+    suggested_notional = _optional_float(
+        _first_value(
+            sizing_recommendation.get("estimated_notional"),
+            ticket.get("estimated_notional"),
+        )
+    )
+    max_loss = _optional_float(
+        _first_value(
+            ticket.get("estimated_max_loss"),
+            sizing_recommendation.get("estimated_max_loss"),
+            risk.get("estimated_max_loss"),
+        )
+    )
+    has_paper_intent = bool(decision_card_id and decision and paper.get("available_at"))
+    preview_command = (
+        preview_action.get("command")
+        or paper.get("preview_command")
+        or "paper-decision preview"
+    )
+    record_command = (
+        record_action.get("command")
+        or paper.get("execute_command")
+        or "paper-decision execute"
+    )
+    record_local_write = bool(record_action.get("local_write_allowed"))
+    record_db_writes_required = _first_nonnegative_int(
+        record_action.get("db_writes_required")
+    )
+    if record_local_write and record_db_writes_required <= 0:
+        record_db_writes_required = 2
+    primary_blocker = (
+        paper_blocks[0]
+        if paper_blocks
+        else "missing_position_sizing:shares"
+        if confirmed_quantity is None
+        else blockers[0]
+        if blockers
+        else None
+    )
+    checks = [
+        _workbench_paper_trade_preview_check(
+            check_id="paper-intent-source",
+            label="Paper intent source",
+            status="ready" if has_paper_intent else "blocked",
+            scope="market-radar",
+            finding="paper_intent_available"
+            if has_paper_intent
+            else "missing_paper_intent",
+            next_action="Use the stored agentic paper intent for preview."
+            if has_paper_intent
+            else "Review or rebuild the decision card before paper preview.",
+        ),
+        _workbench_paper_trade_preview_check(
+            check_id="paper-risk-gate",
+            label="Paper risk gate",
+            status="blocked" if paper_blocks else "ready",
+            scope="risk-desk",
+            finding=paper_blocks[0] if paper_blocks else "paper_trade_gate_clear",
+            next_action="Resolve paper-trade blockers before recording locally."
+            if paper_blocks
+            else "Paper risk gate is clear for supervised preview.",
+        ),
+        _workbench_paper_trade_preview_check(
+            check_id="confirmed-size",
+            label="Confirmed size",
+            status="blocked" if confirmed_quantity is None else "ready",
+            scope="trade-planner",
+            finding="missing_position_sizing:shares"
+            if confirmed_quantity is None
+            else "shares_confirmed",
+            next_action="Confirm share quantity before recording a paper decision."
+            if confirmed_quantity is None
+            else "Use confirmed size for the paper decision.",
+        ),
+        _workbench_paper_trade_preview_check(
+            check_id="preview-command",
+            label="Preview command",
+            status="ready" if preview_command else "blocked",
+            scope="paper-trading",
+            finding="local_preview_available"
+            if preview_command
+            else "missing_preview_command",
+            next_action="Preview through the backend without writing rows."
+            if preview_command
+            else "Rebuild paper intent command metadata.",
+        ),
+        _workbench_paper_trade_preview_check(
+            check_id="record-command",
+            label="Record command",
+            status="approval_required" if record_local_write else "disabled",
+            scope="paper-trading",
+            finding="manual_arm_required"
+            if record_local_write
+            else "local_record_disabled",
+            next_action="Arm and record only after manual approval."
+            if record_local_write
+            else "Local record is disabled for this preview.",
+        ),
+        _workbench_paper_trade_preview_check(
+            check_id="live-submission-gate",
+            label="Live submission gate",
+            status="disabled",
+            scope="broker",
+            finding=(
+                "broker_submission_disabled"
+                if "broker_submission_disabled" in live_blocks
+                else "live_submission_disabled"
+            ),
+            next_action="Live broker submission remains disabled.",
+        ),
+    ]
+    ready_check_count = sum(1 for row in checks if row.get("status") == "ready")
+    blocked_check_count = sum(1 for row in checks if row.get("status") == "blocked")
+    approval_required_count = sum(
+        1 for row in checks if row.get("status") == "approval_required"
+    )
+    disabled_check_count = sum(1 for row in checks if row.get("status") == "disabled")
+    return {
+        "schema_version": "trading-workbench-paper-trade-preview-v1",
+        "status": "blocked" if blocked_check_count else "ready",
+        "source_tool": "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "preview_id": (
+            f"paper-preview-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "preview_mode": "supervised_paper_preview",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Resolve paper-trade blockers before recording locally."
+            if primary_blocker
+            else "Preview the paper decision before any guarded record step."
+        ),
+        "paper_decision": {
+            "decision": decision,
+            "available_at": paper.get("available_at"),
+            "entry_price": _workbench_round_float(entry_price),
+            "entry_at": paper.get("entry_at"),
+            "confirmed_quantity": confirmed_quantity,
+            "suggested_quantity": suggested_quantity,
+            "confirmed_notional": _workbench_round_float(confirmed_notional),
+            "suggested_notional": _workbench_round_float(suggested_notional),
+            "estimated_max_loss": _workbench_round_float(max_loss),
+            "paper_approved": bool(risk.get("approved_for_paper_trade")),
+            "record_allowed": False,
+            "requires_arm_before_record": record_local_write,
+            "record_db_writes_required": record_db_writes_required,
+            "no_execution": True,
+        },
+        "commands": {
+            "preview": preview_command,
+            "record": record_command,
+            "live_submit": "broker live submission",
+        },
+        "checks": checks,
+        "blockers": blockers,
+        "metrics": {
+            "check_count": len(checks),
+            "ready_check_count": ready_check_count,
+            "blocked_check_count": blocked_check_count,
+            "approval_required_count": approval_required_count,
+            "disabled_check_count": disabled_check_count,
+            "paper_block_count": len(paper_blocks),
+            "confirmed_quantity": confirmed_quantity,
+            "suggested_quantity": suggested_quantity,
+            "confirmed_notional": _workbench_round_float(confirmed_notional),
+            "suggested_notional": _workbench_round_float(suggested_notional),
+            "estimated_max_loss": _workbench_round_float(max_loss),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_paper_trade_preview_check(
     *,
     check_id: str,
     label: str,

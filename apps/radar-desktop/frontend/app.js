@@ -445,6 +445,19 @@ function workbenchOrderTicketDraftForPage(pageKey, snapshot = state.snapshot || 
   return pages.has(pageKey) ? checks : [];
 }
 
+function workbenchPaperTradePreview(snapshot = state.snapshot || {}) {
+  const preview = tradingWorkbenchSnapshot(snapshot)?.paper_trade_preview;
+  return preview && typeof preview === 'object' ? preview : { checks: [] };
+}
+
+function workbenchPaperTradePreviewForPage(pageKey, snapshot = state.snapshot || {}) {
+  const preview = workbenchPaperTradePreview(snapshot);
+  const checks = Array.isArray(preview.checks) ? preview.checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return checks;
+  const pages = new Set(['trade-planner', 'risk-desk', 'paper-trading', 'broker']);
+  return pages.has(pageKey) ? checks : [];
+}
+
 function workbenchRiskEnvelope(snapshot = state.snapshot || {}) {
   const envelope = tradingWorkbenchSnapshot(snapshot)?.risk_envelope;
   return envelope && typeof envelope === 'object' ? envelope : { checks: [] };
@@ -997,6 +1010,11 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       order_ticket_draft_ticker: compact(workbenchOrderTicketDraft(snapshot)?.ticker, 'none'),
       order_ticket_draft_suggested_shares: Number(workbenchOrderTicketDraft(snapshot)?.ticket?.suggested_quantity || 0),
       order_ticket_draft_preview_command: compact(workbenchOrderTicketDraft(snapshot)?.commands?.preview, 'none'),
+      paper_trade_preview_status: compact(workbenchPaperTradePreview(snapshot)?.status, 'unknown'),
+      paper_trade_preview_ticker: compact(workbenchPaperTradePreview(snapshot)?.ticker, 'none'),
+      paper_trade_preview_decision: compact(workbenchPaperTradePreview(snapshot)?.paper_decision?.decision, 'none'),
+      paper_trade_preview_suggested_quantity: Number(workbenchPaperTradePreview(snapshot)?.paper_decision?.suggested_quantity || 0),
+      paper_trade_preview_block_count: Number(workbenchPaperTradePreview(snapshot)?.blockers?.length || 0),
       risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown'),
       risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none'),
       risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
@@ -1110,6 +1128,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchPortfolioImpact(snapshot, 'overview')}
     ${renderWorkbenchPositionSizing(snapshot, 'overview')}
     ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
+    ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
@@ -1728,6 +1747,79 @@ function orderTicketDraftSummary(draft) {
   ].join('; ');
 }
 
+function renderWorkbenchPaperTradePreview(snapshot, pageKey = 'overview') {
+  const preview = workbenchPaperTradePreview(snapshot);
+  const checks = workbenchPaperTradePreviewForPage(pageKey, snapshot);
+  const decision = preview.paper_decision || {};
+  const commands = preview.commands || {};
+  if (!checks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-paper-trade-preview"
+      data-testid="workbench-paper-trade-preview"
+      data-paper-trade-preview-status="${escapeHtml(preview.status || 'unknown')}"
+      data-paper-trade-preview-ticker="${escapeHtml(preview.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Paper Trade Preview</h2>
+          <p>${escapeHtml(paperTradePreviewSummary(preview))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(preview.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Decision</span><b>${escapeHtml(catalogLabel(decision.decision || '-'))}</b></div>
+        <div class="kv"><span>Suggested qty</span><b>${escapeHtml(compact(decision.suggested_quantity, '-'))}</b></div>
+        <div class="kv"><span>Confirmed qty</span><b>${escapeHtml(compact(decision.confirmed_quantity, '-'))}</b></div>
+        <div class="kv"><span>Max loss</span><b>${escapeHtml(text(decision.estimated_max_loss))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Entry</span><b>${escapeHtml(text(decision.entry_price))}</b></div>
+        <div class="kv"><span>Suggested notional</span><b>${escapeHtml(text(decision.suggested_notional))}</b></div>
+        <div class="kv"><span>Record writes</span><b>${escapeHtml(compact(decision.record_db_writes_required, '0'))}</b></div>
+        <div class="kv"><span>Live</span><b>${escapeHtml(preview.live_trading_enabled ? 'enabled' : 'disabled')}</b></div>
+      </div>
+      <div class="plan-command-list paper-trade-preview-commands">
+        <div><span>Preview</span><code>${escapeHtml(compact(commands.preview, 'paper-decision preview'))}</code></div>
+        <div><span>Record</span><code>${escapeHtml(compact(commands.record, 'paper-decision execute'))}</code></div>
+        <div><span>Live boundary</span><code>${escapeHtml(compact(commands.live_submit, 'broker live submission'))}</code></div>
+      </div>
+      <div class="table-wrap paper-trade-preview-checks">
+        <table aria-label="Workbench paper trade preview">
+          <thead><tr><th>Check</th><th>Scope</th><th>Status</th><th>Finding</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="paper-trade-preview-check"
+                data-paper-trade-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-paper-trade-check-scope="${escapeHtml(check.scope || 'unknown')}"
+              >
+                <td data-label="Check">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(check.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function paperTradePreviewSummary(preview) {
+  const metrics = preview?.metrics || {};
+  const decision = preview?.paper_decision || {};
+  return [
+    `${compact(preview?.ticker, 'No ticker')} ${catalogLabel(preview?.status || 'unknown')}`,
+    `decision ${catalogLabel(decision.decision || 'n/a')}`,
+    `${compact(decision.suggested_quantity, '0')} suggested shares`,
+    `${compact(metrics.blocked_check_count, '0')} blocked checks`,
+    'record requires approval',
+  ].join('; ');
+}
+
 function renderWorkbenchRiskEnvelope(snapshot, pageKey = 'overview') {
   const envelope = workbenchRiskEnvelope(snapshot);
   const checks = workbenchRiskEnvelopeForPage(pageKey, snapshot);
@@ -2154,6 +2246,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchPortfolioImpact(snapshot, pageKey)}
     ${renderWorkbenchPositionSizing(snapshot, pageKey)}
     ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
+    ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
