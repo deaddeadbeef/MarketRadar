@@ -443,6 +443,39 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert order_ticket["no_execution"] is True
     assert order_ticket["preview_command"] == "order-ticket preview"
     assert order_ticket["record_command"] == "order-ticket record"
+    assert active_plan["portfolio_impact"] == {
+        "ticker": "MSFT",
+        "proposed_notional": 2080.0,
+        "max_loss": 200.0,
+        "portfolio_penalty": None,
+        "hard_blocks": [],
+        "exposures": {
+            "single_name": {
+                "before_pct": None,
+                "after_pct": None,
+                "delta_pct": None,
+            },
+            "sector": {
+                "before_pct": None,
+                "after_pct": None,
+                "delta_pct": None,
+            },
+            "theme": {
+                "before_pct": None,
+                "after_pct": None,
+                "delta_pct": None,
+            },
+            "correlated_basket": {
+                "before_pct": None,
+                "after_pct": None,
+                "delta_pct": None,
+            },
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+    }
     assert active_plan["supervision"]["no_autonomous_execution"] is True
     assert "--preview" in active_plan["supervision"]["paper_decision_preview_command"]
     assert "--execute" in active_plan["supervision"]["paper_decision_execute_command"]
@@ -752,6 +785,193 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert risk_envelope["broker_order_submitted"] is False
     assert risk_envelope["order_submission_allowed"] is False
     assert risk_envelope["live_trading_enabled"] is False
+
+    portfolio_impact = workbench["portfolio_impact_preview"]
+    assert (
+        portfolio_impact["schema_version"]
+        == "trading-workbench-portfolio-impact-preview-v1"
+    )
+    assert portfolio_impact["status"] == "blocked"
+    assert portfolio_impact["source_tool"] == "market-radar"
+    assert portfolio_impact["ticker"] == "MSFT"
+    assert portfolio_impact["decision_card_id"] == "card-msft-latest"
+    assert portfolio_impact["preview_id"] == "impact-msft-card-msft-latest"
+    assert portfolio_impact["impact_mode"] == "read_only_preview"
+    assert portfolio_impact["primary_blocker"] == "stale_broker_data"
+    assert portfolio_impact["primary_next_action"] == (
+        "Refresh read-only broker context and rebuild impact before paper review."
+    )
+    assert portfolio_impact["impact"] == {
+        "ticker": "MSFT",
+        "proposed_notional": 2080.0,
+        "proposed_notional_pct_of_equity": 0.0083,
+        "max_loss": 200.0,
+        "max_loss_pct_of_equity": 0.0008,
+        "portfolio_penalty": None,
+        "hard_blocks": [],
+        "hard_block_count": 0,
+        "broker_connected": True,
+        "broker_data_stale": True,
+        "portfolio_equity": 250000.0,
+        "cash": 50000.0,
+        "buying_power": 100000.0,
+        "current_gross_exposure_pct": 0.038,
+        "single_name_exposure_count": 1,
+        "submission_allowed": False,
+        "broker_order_submitted": False,
+        "live_trading_enabled": False,
+    }
+    assert portfolio_impact["exposures"] == [
+        {
+            "scope": "single_name",
+            "label": "Single name",
+            "status": "blocked",
+            "before_pct": None,
+            "after_pct": None,
+            "delta_pct": None,
+            "finding": "missing_single_name_exposure_delta",
+            "next_action": (
+                "Refresh or rebuild portfolio impact for this exposure scope."
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+        },
+        {
+            "scope": "sector",
+            "label": "Sector",
+            "status": "blocked",
+            "before_pct": None,
+            "after_pct": None,
+            "delta_pct": None,
+            "finding": "missing_sector_exposure_delta",
+            "next_action": (
+                "Refresh or rebuild portfolio impact for this exposure scope."
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+        },
+        {
+            "scope": "theme",
+            "label": "Theme",
+            "status": "blocked",
+            "before_pct": None,
+            "after_pct": None,
+            "delta_pct": None,
+            "finding": "missing_theme_exposure_delta",
+            "next_action": (
+                "Refresh or rebuild portfolio impact for this exposure scope."
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+        },
+        {
+            "scope": "correlated_basket",
+            "label": "Correlated basket",
+            "status": "blocked",
+            "before_pct": None,
+            "after_pct": None,
+            "delta_pct": None,
+            "finding": "missing_correlated_basket_exposure_delta",
+            "next_action": (
+                "Refresh or rebuild portfolio impact for this exposure scope."
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "broker_order_submitted": False,
+            "order_submission_allowed": False,
+        },
+    ]
+    assert portfolio_impact["checks"] == [
+        {
+            "id": "impact-source",
+            "label": "Impact source",
+            "status": "ready",
+            "scope": "market-radar",
+            "finding": "portfolio_impact_available",
+            "next_action": "Use stored decision-card impact as a risk-desk input.",
+        },
+        {
+            "id": "broker-data-freshness",
+            "label": "Broker data freshness",
+            "status": "blocked",
+            "scope": "portfolio",
+            "finding": "stale_broker_data",
+            "next_action": (
+                "Refresh read-only broker context before relying on impact."
+            ),
+        },
+        {
+            "id": "exposure-deltas",
+            "label": "Exposure deltas",
+            "status": "blocked",
+            "scope": "risk-desk",
+            "finding": "missing_portfolio_impact:exposure_deltas",
+            "next_action": (
+                "Rebuild portfolio impact before relying on concentration deltas."
+            ),
+        },
+        {
+            "id": "portfolio-hard-blocks",
+            "label": "Portfolio hard blocks",
+            "status": "ready",
+            "scope": "risk-desk",
+            "finding": "no_portfolio_hard_blocks",
+            "next_action": (
+                "No portfolio hard blocks are attached to the decision card."
+            ),
+        },
+        {
+            "id": "paper-trade-gate",
+            "label": "Paper trade gate",
+            "status": "blocked",
+            "scope": "paper-trading",
+            "finding": "action_state_not_manual_review_eligible",
+            "next_action": (
+                "Resolve paper blocks before recording a local decision."
+            ),
+        },
+        {
+            "id": "live-submission-gate",
+            "label": "Live submission gate",
+            "status": "disabled",
+            "scope": "broker",
+            "finding": "broker_submission_disabled",
+            "next_action": "Live broker submission remains disabled.",
+        },
+    ]
+    assert portfolio_impact["blockers"] == [
+        "stale_broker_data",
+        "missing_portfolio_impact:exposure_deltas",
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "zero_preview_size",
+    ]
+    assert portfolio_impact["metrics"] == {
+        "check_count": 6,
+        "ready_check_count": 2,
+        "blocked_check_count": 3,
+        "disabled_check_count": 1,
+        "exposure_scope_count": 4,
+        "ready_exposure_scope_count": 0,
+        "hard_block_count": 0,
+        "proposed_notional": 2080.0,
+        "max_loss": 200.0,
+        "current_gross_exposure_pct": 0.038,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert portfolio_impact["external_calls_made"] == 0
+    assert portfolio_impact["db_writes_made"] == 0
+    assert portfolio_impact["broker_order_submitted"] is False
+    assert portfolio_impact["order_submission_allowed"] is False
+    assert portfolio_impact["live_trading_enabled"] is False
 
     position_sizing = workbench["position_sizing"]
     assert position_sizing["schema_version"] == "trading-workbench-position-sizing-v1"

@@ -212,3 +212,15 @@ engine, but it is not the whole product frame.
   automation JSON for agentic desktop review.
 - Preserve the same boundary: no provider calls, no broker order submission,
   no shell execution, and no database writes from browsing the draft.
+
+## Current Slice: Portfolio Impact Preview
+
+- Add a read-only portfolio-impact-preview snapshot contract that preserves the
+  decision card's proposed notional, max loss, hard blocks, and exposure-scope
+  availability alongside current broker portfolio context.
+- Render the preview in the Tauri Command Center and relevant portfolio,
+  planning, risk, paper, and broker pages before sizing and ticket controls.
+- Expose impact status, ticker, proposed notional, and blocker count in
+  automation JSON for agentic risk review.
+- Preserve the same boundary: no provider calls, no broker order submission,
+  no shell execution, and no database writes from browsing the preview.

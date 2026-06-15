@@ -496,6 +496,24 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "scenario_count: Number(workbenchScenarioMatrix(snapshot)?.metrics?.scenario_count || 0)",
         "scenario_reward_risk: compact("
         "workbenchScenarioMatrix(snapshot)?.metrics?.risk_reward, 'none')",
+        "function workbenchPortfolioImpact",
+        "function workbenchPortfolioImpactForPage",
+        "function renderWorkbenchPortfolioImpact",
+        "function portfolioImpactSummary",
+        'data-testid="workbench-portfolio-impact-preview"',
+        'data-testid="portfolio-impact-exposure"',
+        'data-testid="portfolio-impact-check"',
+        "data-portfolio-impact-status=\"${escapeHtml(preview.status || 'unknown')}\"",
+        "data-portfolio-impact-exposure-status=\"${escapeHtml(row.status || 'unknown')}\"",
+        "data-portfolio-impact-check-status=\"${escapeHtml(check.status || 'unknown')}\"",
+        "portfolio_impact_status: compact("
+        "workbenchPortfolioImpact(snapshot)?.status, 'unknown')",
+        "portfolio_impact_ticker: compact("
+        "workbenchPortfolioImpact(snapshot)?.ticker, 'none')",
+        "portfolio_impact_proposed_notional: compact("
+        "workbenchPortfolioImpact(snapshot)?.impact?.proposed_notional, 'none')",
+        "portfolio_impact_block_count: Number("
+        "workbenchPortfolioImpact(snapshot)?.blockers?.length || 0)",
         "function workbenchPositionSizing",
         "function workbenchPositionSizingForPage",
         "function renderWorkbenchPositionSizing",
@@ -612,6 +630,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".decision-brief-evidence" in styles
     assert ".workbench-scenario-matrix" in styles
     assert ".scenario-matrix-preview" in styles
+    assert ".workbench-portfolio-impact-preview" in styles
+    assert ".portfolio-impact-preview" in styles
+    assert ".portfolio-impact-check-preview" in styles
     assert ".workbench-position-sizing" in styles
     assert ".position-sizing-preview" in styles
     assert ".workbench-order-ticket-draft" in styles
