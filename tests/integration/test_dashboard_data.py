@@ -753,6 +753,120 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert risk_envelope["order_submission_allowed"] is False
     assert risk_envelope["live_trading_enabled"] is False
 
+    position_sizing = workbench["position_sizing"]
+    assert position_sizing["schema_version"] == "trading-workbench-position-sizing-v1"
+    assert position_sizing["status"] == "blocked"
+    assert position_sizing["source_tool"] == "market-radar"
+    assert position_sizing["ticker"] == "MSFT"
+    assert position_sizing["decision_card_id"] == "card-msft-latest"
+    assert position_sizing["sizing_mode"] == "risk_budget_preview"
+    assert position_sizing["primary_blocker"] == "missing_position_sizing:shares"
+    assert position_sizing["primary_next_action"] == (
+        "Select or confirm shares before paper review."
+    )
+    assert position_sizing["inputs"] == {
+        "side": "buy",
+        "entry_price": 100.0,
+        "invalidation_price": 94.0,
+        "target_price": 116.2,
+        "risk_per_share": 6.0,
+        "reward_risk": 2.7,
+        "portfolio_equity": 250000.0,
+        "cash": 50000.0,
+        "buying_power": 100000.0,
+        "risk_per_trade_pct": 0.005,
+        "current_quantity": None,
+        "current_estimated_notional": 0.0,
+        "current_estimated_max_loss": 200.0,
+    }
+    assert position_sizing["recommendation"] == {
+        "status": "blocked",
+        "label": "Risk-budget preview",
+        "suggested_quantity": 208,
+        "risk_budget": 1250.0,
+        "estimated_notional": 20800.0,
+        "estimated_max_loss": 1248.0,
+        "estimated_notional_pct_of_equity": 0.0832,
+        "estimated_max_loss_pct_of_equity": 0.005,
+        "buying_power_usage_pct": 0.208,
+        "no_execution": True,
+        "next_action": "Resolve sizing blockers before recording a local paper decision.",
+    }
+    assert position_sizing["checks"] == [
+        {
+            "id": "entry-stop-inputs",
+            "label": "Entry and stop",
+            "status": "ready",
+            "scope": "trade-planner",
+            "finding": "entry_stop_available",
+            "next_action": "Use entry and invalidation as risk-per-share inputs.",
+        },
+        {
+            "id": "risk-budget",
+            "label": "Risk budget",
+            "status": "ready",
+            "scope": "portfolio",
+            "finding": "risk_budget=1250.0",
+            "next_action": "Use the risk budget as a sizing ceiling.",
+        },
+        {
+            "id": "share-sizing",
+            "label": "Share sizing",
+            "status": "blocked",
+            "scope": "trade-planner",
+            "finding": "missing_position_sizing:shares",
+            "next_action": "Select or confirm shares before paper review.",
+        },
+        {
+            "id": "broker-data-freshness",
+            "label": "Broker data freshness",
+            "status": "blocked",
+            "scope": "portfolio",
+            "finding": "stale_broker_data",
+            "next_action": "Refresh read-only broker context before relying on sizing.",
+        },
+        {
+            "id": "paper-trade-gate",
+            "label": "Paper trade gate",
+            "status": "blocked",
+            "scope": "paper-trading",
+            "finding": "action_state_not_manual_review_eligible",
+            "next_action": "Resolve paper blocks before recording a local decision.",
+        },
+        {
+            "id": "live-submission-gate",
+            "label": "Live submission gate",
+            "status": "disabled",
+            "scope": "broker",
+            "finding": "broker_submission_disabled",
+            "next_action": "Live broker submission remains disabled.",
+        },
+    ]
+    assert position_sizing["blockers"] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "stale_broker_data",
+        "zero_preview_size",
+    ]
+    assert position_sizing["metrics"] == {
+        "check_count": 6,
+        "ready_check_count": 2,
+        "blocked_check_count": 3,
+        "disabled_check_count": 1,
+        "suggested_quantity": 208,
+        "risk_budget": 1250.0,
+        "estimated_notional": 20800.0,
+        "estimated_max_loss": 1248.0,
+        "risk_per_share": 6.0,
+        "external_calls_made": 0,
+    }
+    assert position_sizing["external_calls_made"] == 0
+    assert position_sizing["db_writes_made"] == 0
+    assert position_sizing["broker_order_submitted"] is False
+    assert position_sizing["order_submission_allowed"] is False
+    assert position_sizing["live_trading_enabled"] is False
+
     trade_runbook = workbench["trade_runbook"]
     assert trade_runbook["schema_version"] == "trading-workbench-runbook-v1"
     assert trade_runbook["status"] == "blocked"

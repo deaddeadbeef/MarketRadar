@@ -496,6 +496,23 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "scenario_count: Number(workbenchScenarioMatrix(snapshot)?.metrics?.scenario_count || 0)",
         "scenario_reward_risk: compact("
         "workbenchScenarioMatrix(snapshot)?.metrics?.risk_reward, 'none')",
+        "function workbenchPositionSizing",
+        "function workbenchPositionSizingForPage",
+        "function renderWorkbenchPositionSizing",
+        "function positionSizingSummary",
+        'data-testid="workbench-position-sizing"',
+        'data-testid="position-sizing-check"',
+        'data-position-sizing-status="${escapeHtml(sizing.status || \'unknown\')}"',
+        'data-position-sizing-check-status="${escapeHtml(check.status || \'unknown\')}"',
+        'data-position-sizing-check-scope="${escapeHtml(check.scope || \'unknown\')}"',
+        "position_sizing_status: compact("
+        "workbenchPositionSizing(snapshot)?.status, 'unknown')",
+        "position_sizing_ticker: compact("
+        "workbenchPositionSizing(snapshot)?.ticker, 'none')",
+        "position_sizing_suggested_shares: Number("
+        "workbenchPositionSizing(snapshot)?.recommendation?.suggested_quantity || 0)",
+        "position_sizing_risk_budget: compact("
+        "workbenchPositionSizing(snapshot)?.recommendation?.risk_budget, 'none')",
         "risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown')",
         "risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none')",
         "risk_sizing_status: compact("
@@ -578,6 +595,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".decision-brief-evidence" in styles
     assert ".workbench-scenario-matrix" in styles
     assert ".scenario-matrix-preview" in styles
+    assert ".workbench-position-sizing" in styles
+    assert ".position-sizing-preview" in styles
     assert ".workbench-risk-envelope" in styles
     assert ".risk-envelope-preview" in styles
     assert ".workbench-trade-runbook" in styles

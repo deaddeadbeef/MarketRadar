@@ -1141,6 +1141,11 @@ def _trading_workbench_snapshot_payload(
             len(broker_open_orders),
         ),
     )
+    position_sizing = _workbench_position_sizing_payload(
+        active_plan=active_plan,
+        scenario_matrix=scenario_matrix,
+        risk_envelope=risk_envelope,
+    )
     trade_runbook = _workbench_trade_runbook_payload(
         decision_brief=decision_brief,
         scenario_matrix=scenario_matrix,
@@ -1182,6 +1187,7 @@ def _trading_workbench_snapshot_payload(
         "decision_brief": decision_brief,
         "scenario_matrix": scenario_matrix,
         "risk_envelope": risk_envelope,
+        "position_sizing": position_sizing,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
@@ -4008,6 +4014,243 @@ def _workbench_risk_envelope_payload(
 
 
 def _workbench_risk_envelope_check(
+    *,
+    check_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "next_action": next_action,
+    }
+
+
+def _workbench_position_sizing_payload(
+    *,
+    active_plan: Mapping[str, object],
+    scenario_matrix: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+) -> dict[str, object]:
+    portfolio = _mapping(risk_envelope.get("portfolio_context"))
+    sizing = _mapping(risk_envelope.get("sizing_context"))
+    gate = _mapping(risk_envelope.get("gate_context"))
+    risk = _mapping(active_plan.get("risk_approval"))
+    order = _mapping(active_plan.get("order_intent"))
+    assumptions = _mapping(scenario_matrix.get("assumptions"))
+    entry_price = _optional_float(
+        _first_value(sizing.get("entry_price"), assumptions.get("entry_price"))
+    )
+    invalidation_price = _optional_float(
+        _first_value(
+            sizing.get("invalidation_price"),
+            assumptions.get("invalidation_price"),
+        )
+    )
+    target_price = _optional_float(
+        _first_value(sizing.get("target_price"), assumptions.get("target_price"))
+    )
+    risk_per_share = _optional_float(
+        _first_value(sizing.get("risk_per_share"), assumptions.get("risk_per_share"))
+    )
+    if risk_per_share is None and entry_price is not None and invalidation_price is not None:
+        risk_per_share = abs(entry_price - invalidation_price)
+    portfolio_equity = _optional_float(portfolio.get("portfolio_equity"))
+    buying_power = _optional_float(portfolio.get("buying_power"))
+    risk_per_trade_pct = _optional_float(sizing.get("risk_per_trade_pct"))
+    risk_budget = (
+        portfolio_equity * risk_per_trade_pct
+        if portfolio_equity is not None and risk_per_trade_pct is not None
+        else None
+    )
+    suggested_quantity = None
+    if risk_budget is not None and risk_per_share not in (None, 0):
+        suggested_quantity = max(0, int(risk_budget // risk_per_share))
+    estimated_notional = (
+        suggested_quantity * entry_price
+        if suggested_quantity is not None and entry_price is not None
+        else None
+    )
+    estimated_max_loss = (
+        suggested_quantity * risk_per_share
+        if suggested_quantity is not None and risk_per_share is not None
+        else None
+    )
+    current_quantity = _optional_int(order.get("quantity"))
+    if current_quantity is not None and current_quantity <= 0:
+        current_quantity = None
+    blockers = list(dict.fromkeys(_texts(risk_envelope.get("blockers"))))
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    primary_blocker = next(
+        (
+            blocker
+            for blocker in blockers
+            if blocker == "missing_position_sizing:shares"
+        ),
+        blockers[0] if blockers else None,
+    )
+    status = "blocked" if primary_blocker else "ready"
+    checks = [
+        _workbench_position_sizing_check(
+            check_id="entry-stop-inputs",
+            label="Entry and stop",
+            status="ready"
+            if entry_price is not None and invalidation_price is not None
+            else "blocked",
+            scope="trade-planner",
+            finding="entry_stop_available"
+            if entry_price is not None and invalidation_price is not None
+            else "missing_entry_stop",
+            next_action="Use entry and invalidation as risk-per-share inputs.",
+        ),
+        _workbench_position_sizing_check(
+            check_id="risk-budget",
+            label="Risk budget",
+            status="ready" if risk_budget is not None else "blocked",
+            scope="portfolio",
+            finding=f"risk_budget={_workbench_round_float(risk_budget)}"
+            if risk_budget is not None
+            else "risk_budget_missing",
+            next_action="Use the risk budget as a sizing ceiling.",
+        ),
+        _workbench_position_sizing_check(
+            check_id="share-sizing",
+            label="Share sizing",
+            status="blocked" if current_quantity is None else "ready",
+            scope="trade-planner",
+            finding=(
+                "missing_position_sizing:shares"
+                if current_quantity is None
+                else "shares_sized"
+            ),
+            next_action=(
+                "Select or confirm shares before paper review."
+                if current_quantity is None
+                else "Use confirmed shares as paper-review input."
+            ),
+        ),
+        _workbench_position_sizing_check(
+            check_id="broker-data-freshness",
+            label="Broker data freshness",
+            status="blocked" if portfolio.get("broker_data_stale") else "ready",
+            scope="portfolio",
+            finding=(
+                "stale_broker_data"
+                if portfolio.get("broker_data_stale")
+                else "broker_data_current"
+            ),
+            next_action=(
+                "Refresh read-only broker context before relying on sizing."
+                if portfolio.get("broker_data_stale")
+                else "Broker context is current enough for sizing review."
+            ),
+        ),
+        _workbench_position_sizing_check(
+            check_id="paper-trade-gate",
+            label="Paper trade gate",
+            status="blocked" if paper_blocks else "ready",
+            scope="paper-trading",
+            finding=paper_blocks[0] if paper_blocks else "paper_trade_gate_clear",
+            next_action=(
+                "Resolve paper blocks before recording a local decision."
+                if paper_blocks
+                else "Paper gate is ready for supervised local review."
+            ),
+        ),
+        _workbench_position_sizing_check(
+            check_id="live-submission-gate",
+            label="Live submission gate",
+            status="disabled",
+            scope="broker",
+            finding=(
+                "broker_submission_disabled"
+                if "broker_submission_disabled" in live_blocks
+                else "live_submission_disabled"
+            ),
+            next_action="Live broker submission remains disabled.",
+        ),
+    ]
+    ready_check_count = sum(1 for row in checks if row.get("status") == "ready")
+    blocked_check_count = sum(1 for row in checks if row.get("status") == "blocked")
+    disabled_check_count = sum(1 for row in checks if row.get("status") == "disabled")
+    return {
+        "schema_version": "trading-workbench-position-sizing-v1",
+        "status": status,
+        "source_tool": risk_envelope.get("source_tool") or "market-radar",
+        "ticker": _first_value(risk_envelope.get("ticker"), active_plan.get("ticker")),
+        "decision_card_id": _first_value(
+            risk_envelope.get("decision_card_id"),
+            active_plan.get("decision_card_id"),
+        ),
+        "sizing_mode": "risk_budget_preview",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": "Select or confirm shares before paper review."
+        if primary_blocker
+        else "Review sized shares before paper review.",
+        "inputs": {
+            "side": sizing.get("side"),
+            "entry_price": _workbench_round_float(entry_price),
+            "invalidation_price": _workbench_round_float(invalidation_price),
+            "target_price": _workbench_round_float(target_price),
+            "risk_per_share": _workbench_round_float(risk_per_share),
+            "reward_risk": sizing.get("reward_risk"),
+            "portfolio_equity": _workbench_round_float(portfolio_equity),
+            "cash": _workbench_round_float(_optional_float(portfolio.get("cash"))),
+            "buying_power": _workbench_round_float(buying_power),
+            "risk_per_trade_pct": risk_per_trade_pct,
+            "current_quantity": current_quantity,
+            "current_estimated_notional": sizing.get("estimated_notional"),
+            "current_estimated_max_loss": sizing.get("estimated_max_loss"),
+        },
+        "recommendation": {
+            "status": status,
+            "label": "Risk-budget preview",
+            "suggested_quantity": suggested_quantity,
+            "risk_budget": _workbench_round_float(risk_budget),
+            "estimated_notional": _workbench_round_float(estimated_notional),
+            "estimated_max_loss": _workbench_round_float(estimated_max_loss),
+            "estimated_notional_pct_of_equity": _workbench_round_ratio(
+                _workbench_ratio(estimated_notional, portfolio_equity)
+            ),
+            "estimated_max_loss_pct_of_equity": _workbench_round_ratio(
+                _workbench_ratio(estimated_max_loss, portfolio_equity)
+            ),
+            "buying_power_usage_pct": _workbench_round_ratio(
+                _workbench_ratio(estimated_notional, buying_power)
+            ),
+            "no_execution": True,
+            "next_action": "Resolve sizing blockers before recording a local paper decision.",
+        },
+        "checks": checks,
+        "blockers": blockers,
+        "metrics": {
+            "check_count": len(checks),
+            "ready_check_count": ready_check_count,
+            "blocked_check_count": blocked_check_count,
+            "disabled_check_count": disabled_check_count,
+            "suggested_quantity": suggested_quantity,
+            "risk_budget": _workbench_round_float(risk_budget),
+            "estimated_notional": _workbench_round_float(estimated_notional),
+            "estimated_max_loss": _workbench_round_float(estimated_max_loss),
+            "risk_per_share": _workbench_round_float(risk_per_share),
+            "external_calls_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": bool(gate.get("order_submission_allowed", False)),
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_position_sizing_check(
     *,
     check_id: str,
     label: str,

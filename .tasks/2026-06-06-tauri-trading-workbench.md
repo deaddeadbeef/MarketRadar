@@ -175,3 +175,28 @@ engine, but it is not the whole product frame.
   automation JSON for agentic desktop control.
 - Preserve the same boundary: no provider calls, no broker order submission,
   no shell execution, and no database writes from browsing operator state.
+
+## Current Slice: Execution Sandbox
+
+- Add a top-level execution-sandbox snapshot contract that separates local
+  previews, guarded local writes, live broker submission, and agent execution
+  boundaries.
+- Render execution lanes in the Tauri Command Center and relevant module pages
+  before local write controls.
+- Expose sandbox status, active lane, preview count, and disabled-boundary
+  count in automation JSON.
+- Preserve the same boundary: no provider calls, no broker order submission,
+  no autonomous execution, and no database writes from browsing the sandbox.
+
+## Current Slice: Position Sizing
+
+- Add a read-only position-sizing snapshot contract that turns portfolio
+  equity, risk-per-trade, entry/stop, buying power, and current blockers into
+  a risk-budget sizing worksheet.
+- Render the sizing worksheet in the Tauri Command Center and relevant
+  portfolio, planning, risk, paper, and broker pages before risk and execution
+  controls.
+- Expose sizing status, ticker, suggested shares, and risk budget in
+  automation JSON for agentic desktop review.
+- Preserve the same boundary: no provider calls, no broker order submission,
+  no shell execution, and no database writes from browsing the worksheet.
