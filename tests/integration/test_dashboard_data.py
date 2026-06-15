@@ -564,9 +564,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "execution_lane_id": "review-before-execution",
     }
     assert case_file["metrics"] == {
-        "linked_tool_count": 10,
+        "linked_tool_count": 11,
         "ready_tool_count": 1,
-        "blocked_tool_count": 8,
+        "blocked_tool_count": 9,
         "review_tool_count": 0,
         "disabled_tool_count": 1,
         "approval_required_count": 2,
@@ -582,6 +582,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "trade-planner",
         "risk-envelope",
         "capital-allocation",
+        "portfolio-guardrails",
         "paper-broker-boundary",
         "learning-validation",
         "trade-monitor",
@@ -598,6 +599,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "blocked",
         "blocked",
         "blocked",
+        "blocked",
         "disabled",
     ]
     assert [row["tool_kind"] for row in case_file["tools"]] == [
@@ -606,6 +608,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "planning",
         "risk",
         "capital",
+        "guardrails",
         "execution-boundary",
         "learning",
         "monitoring",
@@ -622,6 +625,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     )
     assert case_tools["paper-broker-boundary"]["command"] == (
         "paper-decision preview"
+    )
+    assert case_tools["portfolio-guardrails"]["evidence"] == (
+        "guardrails=8; blocked=3; single_name_after=0.0832"
     )
     assert case_tools["paper-broker-boundary"]["evidence"] == (
         "paper_allowed=false; broker_handoff=false; paper_blocks=2"
@@ -1327,6 +1333,131 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert capital_allocation["order_submission_allowed"] is False
     assert capital_allocation["allocation_update_allowed"] is False
     assert capital_allocation["live_trading_enabled"] is False
+
+    portfolio_guardrails = workbench["portfolio_guardrails"]
+    assert (
+        portfolio_guardrails["schema_version"]
+        == "trading-workbench-portfolio-guardrails-v1"
+    )
+    assert portfolio_guardrails["status"] == "blocked"
+    assert portfolio_guardrails["source_tool"] == "market-radar"
+    assert portfolio_guardrails["ticker"] == "MSFT"
+    assert portfolio_guardrails["decision_card_id"] == "card-msft-latest"
+    assert (
+        portfolio_guardrails["guardrail_id"]
+        == "guardrails-msft-card-msft-latest"
+    )
+    assert (
+        portfolio_guardrails["guardrail_mode"]
+        == "read_only_portfolio_governance"
+    )
+    assert portfolio_guardrails["primary_blocker"] == "stale_broker_data"
+    assert portfolio_guardrails["primary_next_action"] == (
+        "Resolve portfolio guardrails before adding exposure."
+    )
+    assert portfolio_guardrails["account_context"] == {
+        "broker_connected": True,
+        "broker_data_stale": True,
+        "portfolio_equity": 250000.0,
+        "cash": 50000.0,
+        "buying_power": 100000.0,
+        "gross_exposure_pct": 0.038,
+        "projected_gross_exposure_pct": 0.1212,
+        "position_count": 1,
+        "open_order_count": 0,
+        "active_paper_trade_count": 1,
+    }
+    assert portfolio_guardrails["policy_limits"] == {
+        "risk_per_trade_pct": 0.005,
+        "max_single_name_pct": 0.08,
+        "max_sector_pct": 0.3,
+        "max_theme_pct": 0.35,
+        "max_buying_power_usage_pct": 1.0,
+        "max_gross_exposure_pct": 1.0,
+    }
+    assert portfolio_guardrails["exposure_plan"] == {
+        "proposed_notional": 2080.0,
+        "suggested_notional": 20800.0,
+        "effective_notional": 20800.0,
+        "effective_notional_pct_of_equity": 0.0832,
+        "risk_budget": 1250.0,
+        "estimated_max_loss": 1248.0,
+        "estimated_max_loss_pct_of_equity": 0.005,
+        "buying_power_usage_pct": 0.208,
+        "single_name_before_pct": 0.0,
+        "single_name_after_pct": 0.0832,
+        "gross_before_pct": 0.038,
+        "gross_after_pct": 0.1212,
+        "allocation_allowed": False,
+        "requires_manual_approval": True,
+        "no_execution": True,
+    }
+    assert [row["id"] for row in portfolio_guardrails["guardrails"]] == [
+        "account-freshness",
+        "buying-power-limit",
+        "risk-budget-limit",
+        "single-name-limit",
+        "exposure-delta-coverage",
+        "paper-exposure-overlap",
+        "open-order-overlap",
+        "broker-execution-boundary",
+    ]
+    assert [row["status"] for row in portfolio_guardrails["guardrails"]] == [
+        "blocked",
+        "ready",
+        "ready",
+        "blocked",
+        "blocked",
+        "review",
+        "ready",
+        "disabled",
+    ]
+    assert portfolio_guardrails["guardrails"][3]["finding"] == (
+        "single_name_exposure_limit_exceeded"
+    )
+    assert portfolio_guardrails["guardrails"][3]["evidence"] == (
+        "before=0.0; after=0.0832; limit=0.08"
+    )
+    assert portfolio_guardrails["guardrails"][5]["evidence"] == (
+        "1 active paper trades; notional=2080.0"
+    )
+    assert portfolio_guardrails["blockers"] == [
+        "stale_broker_data",
+        "missing_portfolio_impact:exposure_deltas",
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "zero_preview_size",
+        "single_name_exposure_limit_exceeded",
+    ]
+    assert portfolio_guardrails["metrics"] == {
+        "guardrail_count": 8,
+        "ready_guardrail_count": 3,
+        "review_guardrail_count": 1,
+        "blocked_guardrail_count": 3,
+        "disabled_guardrail_count": 1,
+        "active_paper_trade_count": 1,
+        "open_order_count": 0,
+        "single_name_after_pct": 0.0832,
+        "buying_power_usage_pct": 0.208,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert all(
+        row["external_calls_made"] == 0
+        for row in portfolio_guardrails["guardrails"]
+    )
+    assert all(row["db_writes_made"] == 0 for row in portfolio_guardrails["guardrails"])
+    assert all(
+        row["order_submission_allowed"] is False
+        for row in portfolio_guardrails["guardrails"]
+    )
+    assert portfolio_guardrails["external_calls_made"] == 0
+    assert portfolio_guardrails["db_writes_made"] == 0
+    assert portfolio_guardrails["broker_order_submitted"] is False
+    assert portfolio_guardrails["order_submission_allowed"] is False
+    assert portfolio_guardrails["allocation_update_allowed"] is False
+    assert portfolio_guardrails["live_trading_enabled"] is False
 
     order_ticket_draft = workbench["order_ticket_draft"]
     assert (

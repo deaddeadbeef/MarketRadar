@@ -359,3 +359,16 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the case file makes no provider calls, submits no
   broker order, performs no autonomous execution, and writes no database rows
   from browsing the case.
+
+## Current Slice: Portfolio Guardrails
+
+- Add a read-only portfolio-guardrails snapshot contract that turns account
+  freshness, buying power, risk budget, single-name exposure, paper exposure,
+  open orders, and broker execution boundaries into one governance board.
+- Render the guardrails board in the Tauri Command Center and relevant
+  portfolio, planner, risk, paper, broker, and agent pages.
+- Expose guardrail status, ticker, blocked/review counts, single-name exposure,
+  buying-power usage, and allocation permission in automation JSON.
+- Preserve the same boundary: the guardrails board makes no provider calls,
+  submits no broker order, performs no autonomous allocation change, and writes
+  no database rows from browsing the board.
