@@ -304,3 +304,19 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the compliance review makes no provider calls,
   submits no broker order, performs no autonomous execution, and writes no
   database rows from browsing the dossier.
+
+## Current Slice: Trade Readiness Brief
+
+- Add an agent-readable trade-readiness snapshot contract that condenses
+  MarketRadar scout state, decision readiness, risk, allocation, compliance,
+  paper-record readiness, learning, strategy, monitoring, and live/broker
+  boundaries into one handoff brief.
+- Render the readiness brief in the Tauri Command Center and relevant
+  market-radar, portfolio, trade-planner, risk, paper, broker, validation,
+  journal, and agent pages.
+- Expose readiness status, ticker, primary blocker, next page, check counts,
+  paper-record permission, broker-handoff permission, strategy-update
+  permission, and monitoring readiness in automation JSON.
+- Preserve the same boundary: the readiness brief makes no provider calls,
+  submits no broker order, performs no autonomous strategy/execution change,
+  and writes no database rows from browsing the dossier.

@@ -601,6 +601,28 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "pretrade_compliance_blocked_check_count: Number(",
         "pretrade_compliance_approval_required_count: Number(",
         "pretrade_compliance_ready: Boolean(",
+        "function workbenchTradeReadinessBrief",
+        "function workbenchTradeReadinessBriefForPage",
+        "function renderWorkbenchTradeReadinessBrief",
+        "function tradeReadinessBriefSummary",
+        "${renderWorkbenchTradeReadinessBrief(snapshot, 'overview')}",
+        "${renderWorkbenchTradeReadinessBrief(snapshot, pageKey)}",
+        'data-testid="workbench-trade-readiness-brief"',
+        'data-testid="trade-readiness-check"',
+        "data-trade-readiness-status=\"${escapeHtml(brief.status || 'unknown')}\"",
+        "data-trade-readiness-check-status=\"${escapeHtml(check.status || 'unknown')}\"",
+        "data-trade-readiness-check-kind=\"${escapeHtml(check.gate_kind || 'unknown')}\"",
+        "data-trade-readiness-check-module=\"${escapeHtml(check.module || 'unknown')}\"",
+        "trade_readiness_status: compact(",
+        "trade_readiness_ticker: compact(",
+        "trade_readiness_primary_blocker: compact(",
+        "trade_readiness_next_page: compact(",
+        "trade_readiness_blocked_check_count: Number(",
+        "trade_readiness_disabled_check_count: Number(",
+        "trade_readiness_paper_record_allowed: Boolean(",
+        "trade_readiness_broker_handoff_allowed: Boolean(",
+        "trade_readiness_strategy_update_allowed: Boolean(",
+        "trade_readiness_monitoring_ready: Boolean(",
         "function workbenchLearningLoop",
         "function workbenchLearningLoopForPage",
         "function renderWorkbenchLearningLoop",
@@ -769,6 +791,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".paper-trade-preview-checks" in styles
     assert ".workbench-pretrade-compliance" in styles
     assert ".pretrade-compliance-preview" in styles
+    assert ".workbench-trade-readiness-brief" in styles
+    assert ".trade-readiness-preview" in styles
     assert ".workbench-learning-loop" in styles
     assert ".learning-loop-preview" in styles
     assert ".workbench-strategy-review" in styles

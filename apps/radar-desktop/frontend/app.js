@@ -484,6 +484,30 @@ function workbenchPretradeComplianceForPage(pageKey, snapshot = state.snapshot |
   return pages.has(pageKey) ? checks : [];
 }
 
+function workbenchTradeReadinessBrief(snapshot = state.snapshot || {}) {
+  const brief = tradingWorkbenchSnapshot(snapshot)?.trade_readiness_brief;
+  return brief && typeof brief === 'object' ? brief : { checks: [] };
+}
+
+function workbenchTradeReadinessBriefForPage(pageKey, snapshot = state.snapshot || {}) {
+  const brief = workbenchTradeReadinessBrief(snapshot);
+  const checks = Array.isArray(brief.checks) ? brief.checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return checks;
+  const pages = new Set([
+    'portfolio',
+    'market-radar',
+    'trade-planner',
+    'risk-desk',
+    'paper-trading',
+    'broker',
+    'backtest',
+    'validation',
+    'journal',
+    'agent',
+  ]);
+  return pages.has(pageKey) ? checks : [];
+}
+
 function workbenchLearningLoop(snapshot = state.snapshot || {}) {
   const loop = tradingWorkbenchSnapshot(snapshot)?.learning_loop;
   return loop && typeof loop === 'object' ? loop : { cards: [] };
@@ -1092,6 +1116,16 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       pretrade_compliance_blocked_check_count: Number(workbenchPretradeCompliance(snapshot)?.metrics?.blocked_check_count || 0),
       pretrade_compliance_approval_required_count: Number(workbenchPretradeCompliance(snapshot)?.metrics?.approval_required_count || 0),
       pretrade_compliance_ready: Boolean(workbenchPretradeCompliance(snapshot)?.status === 'ready'),
+      trade_readiness_status: compact(workbenchTradeReadinessBrief(snapshot)?.status, 'unknown'),
+      trade_readiness_ticker: compact(workbenchTradeReadinessBrief(snapshot)?.ticker, 'none'),
+      trade_readiness_primary_blocker: compact(workbenchTradeReadinessBrief(snapshot)?.primary_blocker, 'none'),
+      trade_readiness_next_page: compact(workbenchTradeReadinessBrief(snapshot)?.agent_handoff?.next_page, 'none'),
+      trade_readiness_blocked_check_count: Number(workbenchTradeReadinessBrief(snapshot)?.metrics?.blocked_check_count || 0),
+      trade_readiness_disabled_check_count: Number(workbenchTradeReadinessBrief(snapshot)?.metrics?.disabled_check_count || 0),
+      trade_readiness_paper_record_allowed: Boolean(workbenchTradeReadinessBrief(snapshot)?.paper_record_allowed),
+      trade_readiness_broker_handoff_allowed: Boolean(workbenchTradeReadinessBrief(snapshot)?.broker_handoff_allowed),
+      trade_readiness_strategy_update_allowed: Boolean(workbenchTradeReadinessBrief(snapshot)?.strategy_update_allowed),
+      trade_readiness_monitoring_ready: Boolean(workbenchTradeReadinessBrief(snapshot)?.monitoring_ready),
       learning_loop_status: compact(workbenchLearningLoop(snapshot)?.status, 'unknown'),
       learning_loop_ticker: compact(workbenchLearningLoop(snapshot)?.ticker, 'none'),
       learning_loop_stage: compact(workbenchLearningLoop(snapshot)?.learning_stage, 'unlinked'),
@@ -1228,6 +1262,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
     ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
     ${renderWorkbenchPretradeCompliance(snapshot, 'overview')}
+    ${renderWorkbenchTradeReadinessBrief(snapshot, 'overview')}
     ${renderWorkbenchLearningLoop(snapshot, 'overview')}
     ${renderWorkbenchStrategyReview(snapshot, 'overview')}
     ${renderWorkbenchTradeMonitor(snapshot, 'overview')}
@@ -2073,6 +2108,87 @@ function pretradeComplianceSummary(compliance) {
   ].join('; ');
 }
 
+function renderWorkbenchTradeReadinessBrief(snapshot, pageKey = 'overview') {
+  const brief = workbenchTradeReadinessBrief(snapshot);
+  const checks = workbenchTradeReadinessBriefForPage(pageKey, snapshot);
+  const modes = brief.readiness_modes || {};
+  const paper = modes.paper_record || {};
+  const broker = modes.broker_handoff || {};
+  const strategy = modes.strategy_update || {};
+  const monitoring = modes.monitoring || {};
+  const handoff = brief.agent_handoff || {};
+  const metrics = brief.metrics || {};
+  if (!checks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-trade-readiness-brief"
+      data-testid="workbench-trade-readiness-brief"
+      data-trade-readiness-status="${escapeHtml(brief.status || 'unknown')}"
+      data-trade-readiness-ticker="${escapeHtml(brief.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Trade Readiness Brief</h2>
+          <p>${escapeHtml(tradeReadinessBriefSummary(brief))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(brief.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Next page</span><b>${escapeHtml(compact(handoff.next_page, '-'))}</b></div>
+        <div class="kv"><span>Next command</span><b>${escapeHtml(compact(handoff.next_command, '-'))}</b></div>
+        <div class="kv"><span>Safety</span><b>${escapeHtml(catalogLabel(handoff.safety || '-'))}</b></div>
+        <div class="kv"><span>No approval</span><b>${escapeHtml(handoff.can_execute_without_approval ? 'yes' : 'no')}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Paper record</span><b>${escapeHtml(catalogLabel(paper.status || '-'))}</b></div>
+        <div class="kv"><span>Broker handoff</span><b>${escapeHtml(catalogLabel(broker.status || '-'))}</b></div>
+        <div class="kv"><span>Strategy update</span><b>${escapeHtml(catalogLabel(strategy.status || '-'))}</b></div>
+        <div class="kv"><span>Monitoring</span><b>${escapeHtml(catalogLabel(monitoring.status || '-'))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Blocked checks</span><b>${escapeHtml(compact(metrics.blocked_check_count, '0'))}</b></div>
+        <div class="kv"><span>Approval checks</span><b>${escapeHtml(compact(metrics.approval_required_count, '0'))}</b></div>
+        <div class="kv"><span>Disabled checks</span><b>${escapeHtml(compact(metrics.disabled_check_count, '0'))}</b></div>
+        <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(brief.external_calls_made, '0'))}</b></div>
+      </div>
+      <div class="table-wrap trade-readiness-preview">
+        <table aria-label="Workbench trade readiness brief">
+          <thead><tr><th>Gate</th><th>Module</th><th>Status</th><th>Kind</th><th>Finding</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="trade-readiness-check"
+                data-trade-readiness-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-trade-readiness-check-kind="${escapeHtml(check.gate_kind || 'unknown')}"
+                data-trade-readiness-check-module="${escapeHtml(check.module || 'unknown')}"
+              >
+                <td data-label="Gate">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(check.module || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Kind">${escapeHtml(catalogLabel(check.gate_kind || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(check.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function tradeReadinessBriefSummary(brief) {
+  const metrics = brief?.metrics || {};
+  return [
+    `${compact(brief?.ticker, 'No ticker')} ${catalogLabel(brief?.status || 'unknown')}`,
+    `primary ${compact(brief?.primary_blocker, 'none')}`,
+    `${compact(metrics.blocked_check_count, '0')} blocked checks`,
+    `${compact(metrics.disabled_check_count, '0')} disabled boundaries`,
+    'agent decision support only',
+  ].join('; ');
+}
+
 function renderWorkbenchLearningLoop(snapshot, pageKey = 'overview') {
   const loop = workbenchLearningLoop(snapshot);
   const cards = workbenchLearningLoopForPage(pageKey, snapshot);
@@ -2729,6 +2845,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
     ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
     ${renderWorkbenchPretradeCompliance(snapshot, pageKey)}
+    ${renderWorkbenchTradeReadinessBrief(snapshot, pageKey)}
     ${renderWorkbenchLearningLoop(snapshot, pageKey)}
     ${renderWorkbenchStrategyReview(snapshot, pageKey)}
     ${renderWorkbenchTradeMonitor(snapshot, pageKey)}
