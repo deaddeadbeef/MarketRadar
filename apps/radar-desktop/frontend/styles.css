@@ -737,6 +737,32 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 920px;
 }
 
+.workbench-action-bus {
+  margin-top: 12px;
+}
+
+.action-bus-preview table {
+  min-width: 980px;
+}
+
+.workbench-action-button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.workbench-action-button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.workbench-boundary-code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .risk-action-row,
 .portfolio-action-row {
   display: flex;

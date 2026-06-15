@@ -479,6 +479,61 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert boundary["paper_trading"] == "preview_only"
     assert boundary["provider_calls_for_browsing"] == 0
 
+    action_bus = workbench["action_bus"]
+    assert action_bus["schema_version"] == "trading-workbench-action-bus-v1"
+    assert action_bus["status"] == "ready"
+    assert action_bus["primary_action_id"] == "paper-decision-preview"
+    assert action_bus["metrics"]["action_count"] >= 8
+    assert action_bus["metrics"]["backend_command_count"] >= 5
+    assert action_bus["metrics"]["page_route_count"] >= 3
+    assert action_bus["metrics"]["boundary_count"] == 1
+    assert action_bus["metrics"]["local_write_count"] >= 2
+    assert action_bus["external_calls_made"] == 0
+    assert action_bus["db_writes_made"] == 0
+    assert action_bus["broker_order_submitted"] is False
+    assert action_bus["order_submission_allowed"] is False
+    assert action_bus["live_trading_enabled"] is False
+    actions = {row["id"]: row for row in action_bus["actions"]}
+    assert actions["paper-decision-preview"] == {
+        "id": "paper-decision-preview",
+        "module": "paper-trading",
+        "label": "Preview paper decision",
+        "action_kind": "backend_command",
+        "command": "paper-decision preview",
+        "target_page": "paper-trading",
+        "status": "enabled",
+        "safety": "local_backend_preview",
+        "local_write_allowed": False,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_required": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "source": "trading_workbench.active_plan.paper_decision",
+        "next_action": "Preview the supervised paper decision without writing rows.",
+    }
+    assert actions["paper-decision-record"]["command"] == "paper-decision execute"
+    assert actions["paper-decision-record"]["local_write_allowed"] is True
+    assert actions["paper-decision-record"]["safety"] == "local_db_write"
+    assert actions["order-ticket-record"]["command"] == "order-ticket record"
+    assert actions["order-ticket-record"]["local_write_allowed"] is True
+    assert actions["portfolio-review"]["action_kind"] == "page"
+    assert actions["portfolio-review"]["target_page"] == "portfolio"
+    assert actions["risk-desk-review"]["target_page"] == "risk-desk"
+    assert actions["broker-boundary-review"]["target_page"] == "broker"
+    assert actions["agent-preview"]["command"] == "agent"
+    assert actions["agent-execute-boundary"]["action_kind"] == "boundary"
+    assert actions["agent-execute-boundary"]["command"] == "agent execute"
+    assert all(row["external_calls_made"] == 0 for row in action_bus["actions"])
+    assert all(
+        row["order_submission_allowed"] is False for row in action_bus["actions"]
+    )
+    assert all(
+        row["broker_order_submitted"] is False for row in action_bus["actions"]
+    )
+
     modules = workbench["modules"]
     assert {
         "portfolio",

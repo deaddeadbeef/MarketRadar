@@ -366,6 +366,22 @@ function tradingWorkbenchSnapshot(snapshot = state.snapshot || {}) {
   return snapshot?.trading_workbench || {};
 }
 
+function workbenchActionBus(snapshot = state.snapshot || {}) {
+  const bus = tradingWorkbenchSnapshot(snapshot)?.action_bus;
+  return bus && typeof bus === 'object' ? bus : { actions: [] };
+}
+
+function workbenchActionsForPage(pageKey, snapshot = state.snapshot || {}) {
+  const bus = workbenchActionBus(snapshot);
+  const actions = Array.isArray(bus.actions) ? bus.actions : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return actions;
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return actions.filter((action) => (
+    keys.has(action?.module) || keys.has(action?.target_page)
+  ));
+}
+
 function tradingWorkbenchModule(pageKey, snapshot = state.snapshot || {}) {
   const workbench = tradingWorkbenchSnapshot(snapshot);
   const modules = workbench?.modules || {};
@@ -629,6 +645,7 @@ function renderSnapshot() {
   bindWorkbenchLifecycleControls();
   bindWorkbenchAgentControls();
   bindWorkbenchReviewControls();
+  bindWorkbenchActionBusControls();
   bindQueueRows();
 }
 
@@ -787,6 +804,7 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       primary_tool: platformManifest().primary_tool || 'market-radar',
       live_trading_enabled: Boolean(platformBoundary().live_trading_enabled),
       modules: platformModules().map((module) => module.key),
+      action_count: Number(workbenchActionBus(snapshot)?.metrics?.action_count || 0),
     },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
@@ -884,6 +902,7 @@ function metric(label, value, caption) {
 function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
+    ${renderWorkbenchActionBus(snapshot, 'overview')}
     ${renderLiveTradingBoundary()}
     <section class="panel" data-testid="first-blocker">
       <h2>First Blocker</h2>
@@ -952,6 +971,89 @@ function platformToolCard(module) {
   `;
 }
 
+function renderWorkbenchActionBus(snapshot, pageKey = 'overview') {
+  const bus = workbenchActionBus(snapshot);
+  const actions = workbenchActionsForPage(pageKey, snapshot).slice(0, 10);
+  if (!actions.length) return '';
+  return `
+    <section
+      class="panel wide workbench-action-bus"
+      data-testid="workbench-action-bus"
+      data-action-bus-status="${escapeHtml(bus.status || 'empty')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Action Bus</h2>
+          <p>${escapeHtml(actionBusSummary(bus))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(bus.status || 'empty'))}</span>
+      </div>
+      <div class="table-wrap action-bus-preview">
+        <table aria-label="Workbench action bus">
+          <thead><tr><th>Module</th><th>Action</th><th>Safety</th><th>Writes</th><th>Control</th><th>Next</th></tr></thead>
+          <tbody>
+            ${actions.map((action) => `
+              <tr data-testid="workbench-action-row" data-action-kind="${escapeHtml(action.action_kind || 'unknown')}">
+                <td data-label="Module">${escapeHtml(catalogLabel(action.module || '-'))}</td>
+                <td data-label="Action">${escapeHtml(compact(action.label, '-'))}</td>
+                <td data-label="Safety">${escapeHtml(catalogLabel(action.safety || 'local_backend_preview'))}</td>
+                <td data-label="Writes">${escapeHtml(action.local_write_allowed ? 'local DB' : 'none')}</td>
+                <td data-label="Control">${renderWorkbenchActionControl(action)}</td>
+                <td data-label="Next">${escapeHtml(compact(action.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function actionBusSummary(bus) {
+  const metrics = bus?.metrics || {};
+  return [
+    `${compact(metrics.action_count, '0')} supervised actions`,
+    `${compact(metrics.backend_command_count, '0')} backend previews/records`,
+    `${compact(metrics.boundary_count, '0')} disabled boundaries`,
+    'live trading disabled',
+  ].join('; ');
+}
+
+function renderWorkbenchActionControl(action) {
+  const kind = compact(action?.action_kind, 'backend_command');
+  const command = compact(action?.command, '');
+  const targetPage = compact(action?.target_page, action?.module || '');
+  const disabled = action?.status && action.status !== 'enabled';
+  if (kind === 'boundary') {
+    return `<code class="workbench-boundary-code">${escapeHtml(command || targetPage || 'disabled')}</code>`;
+  }
+  if (kind === 'page') {
+    return `
+      <button
+        class="workbench-action-button"
+        type="button"
+        data-testid="workbench-action-page"
+        data-workbench-action-kind="page"
+        data-workbench-action-page="${escapeHtml(targetPage)}"
+        data-workbench-action-label="${escapeHtml(action?.label || targetPage)}"
+        ${disabled ? 'disabled' : ''}
+      >Open</button>
+    `;
+  }
+  return `
+    <button
+      class="workbench-action-button"
+      type="button"
+      data-testid="workbench-action-command"
+      data-workbench-action-kind="backend_command"
+      data-workbench-action-command="${escapeHtml(command)}"
+      data-workbench-local-write="${action?.local_write_allowed ? 'true' : 'false'}"
+      data-workbench-action-label="${escapeHtml(action?.label || command)}"
+      ${disabled || !command ? 'disabled' : ''}
+    >${escapeHtml(action?.local_write_allowed ? 'Run Local' : 'Preview')}</button>
+  `;
+}
+
 function renderPlatformModulePage(pageKey, snapshot) {
   const module = platformModuleForPage(pageKey) || {
     key: pageKey,
@@ -984,6 +1086,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
         <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(snapshot.external_calls_made, '0'))}</b></div>
       </div>
     </section>
+    ${renderWorkbenchActionBus(snapshot, pageKey)}
     ${renderWorkbenchModuleData(moduleData)}
     ${renderLiveTradingBoundary()}
     ${dataPanel}
@@ -2289,8 +2392,12 @@ function bindWorkbenchPaperControls() {
 async function runWorkbenchPaperDecision(mode) {
   const resolvedMode = mode === 'execute' ? 'execute' : 'preview';
   const command = `paper-decision ${resolvedMode}`;
-  state.lastCommand = command;
-  await handleBackendDashboardCommand(command);
+  await dispatchWorkbenchAction({
+    action_kind: 'backend_command',
+    command,
+    local_write_allowed: resolvedMode === 'execute',
+    label: resolvedMode === 'execute' ? 'Record paper decision' : 'Preview paper decision',
+  });
 }
 
 function bindWorkbenchTicketControls() {
@@ -2302,8 +2409,12 @@ function bindWorkbenchTicketControls() {
 async function runWorkbenchOrderTicket(mode) {
   const resolvedMode = mode === 'record' ? 'record' : 'preview';
   const command = `order-ticket ${resolvedMode}`;
-  state.lastCommand = command;
-  await handleBackendDashboardCommand(command);
+  await dispatchWorkbenchAction({
+    action_kind: 'backend_command',
+    command,
+    local_write_allowed: resolvedMode === 'record',
+    label: resolvedMode === 'record' ? 'Save blocked ticket' : 'Preview order ticket',
+  });
 }
 
 function bindWorkbenchLifecycleControls() {
@@ -2315,8 +2426,12 @@ function bindWorkbenchLifecycleControls() {
 async function runWorkbenchLifecycleCommand(command) {
   const resolved = compact(command, '');
   if (!resolved) return;
-  state.lastCommand = resolved;
-  await handleBackendDashboardCommand(resolved);
+  await dispatchWorkbenchAction({
+    action_kind: 'backend_command',
+    command: resolved,
+    local_write_allowed: resolved.startsWith('outcome update'),
+    label: 'Lifecycle action',
+  });
 }
 
 function bindWorkbenchAgentControls() {
@@ -2328,8 +2443,11 @@ function bindWorkbenchAgentControls() {
 async function runWorkbenchAgentCommand(command) {
   const resolved = compact(command, '');
   if (!resolved) return;
-  state.lastCommand = resolved;
-  await handleBackendDashboardCommand(resolved);
+  await dispatchWorkbenchAction({
+    action_kind: 'backend_command',
+    command: resolved,
+    label: 'Agent preview',
+  });
 }
 
 function bindWorkbenchReviewControls() {
@@ -2344,16 +2462,71 @@ function bindWorkbenchReviewControls() {
 async function runWorkbenchReviewPage(page) {
   const resolved = compact(page, '');
   if (!resolved) return;
-  state.lastCommand = resolved;
-  setCommandStatus(`Opened ${pageLabelFor(resolved)}.`);
-  await setPage(resolved);
+  await dispatchWorkbenchAction({
+    action_kind: 'page',
+    target_page: resolved,
+    command: resolved,
+    label: pageLabelFor(resolved),
+  });
 }
 
 async function runWorkbenchRiskCommand(command) {
   const resolved = compact(command, '');
   if (!resolved || resolved.toLowerCase().split(/\s+/).includes('execute')) return;
-  state.lastCommand = resolved;
-  await handleBackendDashboardCommand(resolved);
+  await dispatchWorkbenchAction({
+    action_kind: 'backend_command',
+    command: resolved,
+    label: 'Risk preview',
+  });
+}
+
+function bindWorkbenchActionBusControls() {
+  document.querySelectorAll('[data-workbench-action-command]').forEach((button) => {
+    button.addEventListener('click', () => dispatchWorkbenchAction({
+      action_kind: button.dataset.workbenchActionKind || 'backend_command',
+      command: button.dataset.workbenchActionCommand,
+      local_write_allowed: button.dataset.workbenchLocalWrite === 'true',
+      label: button.dataset.workbenchActionLabel,
+    }));
+  });
+  document.querySelectorAll('[data-workbench-action-page]').forEach((button) => {
+    button.addEventListener('click', () => dispatchWorkbenchAction({
+      action_kind: button.dataset.workbenchActionKind || 'page',
+      target_page: button.dataset.workbenchActionPage,
+      command: button.dataset.workbenchActionPage,
+      label: button.dataset.workbenchActionLabel,
+    }));
+  });
+}
+
+async function dispatchWorkbenchAction(action) {
+  const kind = compact(action?.action_kind || action?.kind, 'backend_command');
+  const command = compact(action?.command, '');
+  const targetPage = compact(action?.target_page || action?.page, '');
+  if (kind === 'boundary') {
+    const label = compact(action?.label, 'Boundary');
+    setCommandStatus(`${label} remains disabled in the workbench.`);
+    return;
+  }
+  if (kind === 'page') {
+    const page = targetPage || command;
+    if (!page) return;
+    state.lastCommand = command || page;
+    setCommandStatus(`Opened ${pageLabelFor(page)}.`);
+    await setPage(page);
+    return;
+  }
+  if (!command) return;
+  if (commandHasExecuteToken(command) && !action?.local_write_allowed) {
+    setCommandStatus('Execute commands stay outside dashboard browsing unless explicitly marked as local writes.');
+    return;
+  }
+  state.lastCommand = command;
+  await handleBackendDashboardCommand(command);
+}
+
+function commandHasExecuteToken(command) {
+  return compact(command, '').toLowerCase().split(/\s+/).includes('execute');
 }
 
 function renderTutorial() {
