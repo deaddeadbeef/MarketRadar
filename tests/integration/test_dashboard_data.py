@@ -867,6 +867,119 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert position_sizing["order_submission_allowed"] is False
     assert position_sizing["live_trading_enabled"] is False
 
+    order_ticket_draft = workbench["order_ticket_draft"]
+    assert (
+        order_ticket_draft["schema_version"]
+        == "trading-workbench-order-ticket-draft-v1"
+    )
+    assert order_ticket_draft["status"] == "blocked"
+    assert order_ticket_draft["source_tool"] == "market-radar"
+    assert order_ticket_draft["ticker"] == "MSFT"
+    assert order_ticket_draft["decision_card_id"] == "card-msft-latest"
+    assert order_ticket_draft["draft_id"] == "draft-msft-card-msft-latest"
+    assert order_ticket_draft["ticket_mode"] == "local_blocked_preview"
+    assert order_ticket_draft["primary_blocker"] == "missing_position_sizing:shares"
+    assert order_ticket_draft["primary_next_action"] == (
+        "Confirm share quantity before saving a local blocked ticket."
+    )
+    assert order_ticket_draft["ticket"] == {
+        "ticker": "MSFT",
+        "side": "buy",
+        "order_type": "stop_limit",
+        "time_in_force": "day",
+        "entry_price": 100.0,
+        "limit_price": 100.0,
+        "stop_price": 94.0,
+        "invalidation_price": 94.0,
+        "quantity": None,
+        "suggested_quantity": 208,
+        "risk_per_share": 6.0,
+        "risk_budget": 1250.0,
+        "estimated_notional": 20800.0,
+        "estimated_max_loss": 1248.0,
+        "estimated_notional_pct_of_equity": 0.0832,
+        "estimated_max_loss_pct_of_equity": 0.005,
+        "submission_allowed": False,
+        "broker_order_submitted": False,
+        "live_trading_enabled": False,
+    }
+    assert order_ticket_draft["commands"] == {
+        "preview": "order-ticket preview",
+        "record": "order-ticket record",
+        "live_submit": "broker live submission",
+    }
+    assert order_ticket_draft["checks"] == [
+        {
+            "id": "entry-stop-inputs",
+            "label": "Entry and stop",
+            "status": "ready",
+            "scope": "trade-planner",
+            "finding": "entry_stop_available",
+            "next_action": (
+                "Review entry, limit, and stop before saving a local blocked ticket."
+            ),
+        },
+        {
+            "id": "quantity-confirmation",
+            "label": "Quantity confirmation",
+            "status": "blocked",
+            "scope": "trade-planner",
+            "finding": "missing_position_sizing:shares",
+            "next_action": (
+                "Confirm share quantity before saving a local blocked ticket."
+            ),
+        },
+        {
+            "id": "risk-budget",
+            "label": "Risk budget",
+            "status": "ready",
+            "scope": "risk-desk",
+            "finding": "risk_budget=1250.0",
+            "next_action": "Use the risk budget as a ticket sizing ceiling.",
+        },
+        {
+            "id": "paper-trade-gate",
+            "label": "Paper trade gate",
+            "status": "blocked",
+            "scope": "paper-trading",
+            "finding": "action_state_not_manual_review_eligible",
+            "next_action": (
+                "Resolve paper blocks before saving a local blocked ticket."
+            ),
+        },
+        {
+            "id": "live-submission-gate",
+            "label": "Live submission gate",
+            "status": "disabled",
+            "scope": "broker",
+            "finding": "broker_submission_disabled",
+            "next_action": "Live broker submission remains disabled.",
+        },
+    ]
+    assert order_ticket_draft["blockers"] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "stale_broker_data",
+        "zero_preview_size",
+    ]
+    assert order_ticket_draft["metrics"] == {
+        "check_count": 5,
+        "ready_check_count": 2,
+        "blocked_check_count": 2,
+        "disabled_check_count": 1,
+        "suggested_quantity": 208,
+        "estimated_notional": 20800.0,
+        "estimated_max_loss": 1248.0,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert order_ticket_draft["external_calls_made"] == 0
+    assert order_ticket_draft["db_writes_made"] == 0
+    assert order_ticket_draft["broker_order_submitted"] is False
+    assert order_ticket_draft["order_submission_allowed"] is False
+    assert order_ticket_draft["live_trading_enabled"] is False
+
     trade_runbook = workbench["trade_runbook"]
     assert trade_runbook["schema_version"] == "trading-workbench-runbook-v1"
     assert trade_runbook["status"] == "blocked"

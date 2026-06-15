@@ -200,3 +200,15 @@ engine, but it is not the whole product frame.
   automation JSON for agentic desktop review.
 - Preserve the same boundary: no provider calls, no broker order submission,
   no shell execution, and no database writes from browsing the worksheet.
+
+## Current Slice: Order Ticket Draft
+
+- Add a read-only order-ticket-draft snapshot contract that composes the active
+  idea, sizing recommendation, ticket prices, risk estimates, and local ticket
+  commands into one broker-safe draft.
+- Render the draft in the Tauri Command Center and relevant planning, risk,
+  paper, and broker pages between sizing and risk controls.
+- Expose draft status, ticker, suggested shares, and preview command in
+  automation JSON for agentic desktop review.
+- Preserve the same boundary: no provider calls, no broker order submission,
+  no shell execution, and no database writes from browsing the draft.
