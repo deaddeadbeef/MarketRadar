@@ -1991,6 +1991,9 @@ def _workbench_agent_brief_module(
             "next_action": credit_gate.get("next_action"),
         },
         "decision_boundary": agent_brief.get("decision_boundary"),
+        "agent_preview_command": "agent",
+        "agent_execute_boundary_command": "agent execute",
+        "primary_command": "agent",
         "capability_map": capability_rows,
         "agent_contributions": contribution_rows,
         "agent_actions": action_rows,
@@ -2724,6 +2727,9 @@ def _workbench_agent_action_row(action: str, *, index: int) -> dict[str, object]
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,
+        "agent_preview_command": "agent",
+        "agent_execute_boundary_command": "agent execute",
+        "primary_command": "agent",
         "next_action": action,
     }
 

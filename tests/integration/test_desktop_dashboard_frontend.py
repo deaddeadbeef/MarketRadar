@@ -99,6 +99,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchAgentCapabilities",
         "function renderWorkbenchAgentContributions",
         "function renderWorkbenchAgentActions",
+        "function renderWorkbenchAgentActionControls",
         "function renderWorkbenchAgentInsights",
         "function renderWorkbenchAgentSecurityChecks",
         "function renderWorkbenchRiskBlocks",
@@ -195,6 +196,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-agent-contribution-row"',
         'data-testid="workbench-agent-actions"',
         'data-testid="workbench-agent-action-row"',
+        'data-testid="workbench-agent-preview-action"',
         'data-testid="workbench-agent-insights"',
         'data-testid="workbench-agent-insight-row"',
         'data-testid="workbench-agent-security-checks"',
@@ -293,6 +295,11 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "outcome_preview_command",
         "outcome_update_command",
         "primary_command",
+        "function bindWorkbenchAgentControls",
+        "function runWorkbenchAgentCommand",
+        "data-agent-command",
+        "agent_preview_command",
+        "agent_execute_boundary_command",
         "Record Paper Decision",
         "Preview Ticket",
         "Save Ticket",
@@ -409,6 +416,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".agent-capability-preview" in styles
     assert ".agent-contribution-preview" in styles
     assert ".agent-action-preview" in styles
+    assert ".agent-action-command-row" in styles
+    assert ".agent-action-command-button" in styles
     assert ".agent-insight-preview" in styles
     assert ".agent-security-preview" in styles
     assert ".risk-block-preview" in styles

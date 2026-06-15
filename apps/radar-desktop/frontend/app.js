@@ -627,6 +627,7 @@ function renderSnapshot() {
   bindWorkbenchPaperControls();
   bindWorkbenchTicketControls();
   bindWorkbenchLifecycleControls();
+  bindWorkbenchAgentControls();
   bindQueueRows();
 }
 
@@ -1353,13 +1354,14 @@ function renderWorkbenchAgentActions(actions) {
   return `
     <div class="table-wrap agent-action-preview" data-testid="workbench-agent-actions">
       <table aria-label="Agent proposed human actions">
-        <thead><tr><th>Rank</th><th>Status</th><th>Action</th><th>Provider Calls</th><th>DB Writes</th><th>Broker Order</th></tr></thead>
+        <thead><tr><th>Rank</th><th>Status</th><th>Action</th><th>Command</th><th>Provider Calls</th><th>DB Writes</th><th>Broker Order</th></tr></thead>
         <tbody>
           ${actions.slice(0, 8).map((row) => `
             <tr data-testid="workbench-agent-action-row">
               <td data-label="Rank">${escapeHtml(compact(row.rank, '-'))}</td>
               <td data-label="Status">${escapeHtml(catalogLabel(row.status || 'manual_review'))}</td>
               <td data-label="Action">${escapeHtml(compact(row.action || row.next_action, '-'))}</td>
+              <td data-label="Command">${renderWorkbenchAgentActionControls(row)}</td>
               <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
               <td data-label="DB Writes">${escapeHtml(compact(row.db_writes_made, '0'))}</td>
               <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
@@ -1367,6 +1369,25 @@ function renderWorkbenchAgentActions(actions) {
           `).join('')}
         </tbody>
       </table>
+    </div>
+  `;
+}
+
+function renderWorkbenchAgentActionControls(row) {
+  const command = compact(row?.agent_preview_command, '');
+  if (!command || command.toLowerCase().split(/\s+/).includes('execute')) {
+    return `<code>${escapeHtml(compact(row?.agent_execute_boundary_command, 'agent execute'))}</code>`;
+  }
+  return `
+    <div class="agent-action-command-row">
+      <button
+        class="agent-action-command-button"
+        type="button"
+        data-testid="workbench-agent-preview-action"
+        data-agent-command="${escapeHtml(command)}"
+        title="${escapeHtml(command)}"
+      >Preview</button>
+      <code>${escapeHtml(compact(row?.agent_execute_boundary_command, 'agent execute'))}</code>
     </div>
   `;
 }
@@ -2234,6 +2255,19 @@ function bindWorkbenchLifecycleControls() {
 }
 
 async function runWorkbenchLifecycleCommand(command) {
+  const resolved = compact(command, '');
+  if (!resolved) return;
+  state.lastCommand = resolved;
+  await handleBackendDashboardCommand(resolved);
+}
+
+function bindWorkbenchAgentControls() {
+  document.querySelectorAll('[data-agent-command]').forEach((button) => {
+    button.addEventListener('click', () => runWorkbenchAgentCommand(button.dataset.agentCommand));
+  });
+}
+
+async function runWorkbenchAgentCommand(command) {
   const resolved = compact(command, '');
   if (!resolved) return;
   state.lastCommand = resolved;
