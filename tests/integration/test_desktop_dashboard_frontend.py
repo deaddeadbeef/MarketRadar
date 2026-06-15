@@ -85,6 +85,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function workbenchWorkflowStagesForPage",
         "function workbenchPriorityQueue",
         "function workbenchPriorityItemsForPage",
+        "function workbenchSupervisionGates",
+        "function workbenchSupervisionGatesForPage",
         "function workbenchActionsForPage",
         "function tradingWorkbenchModule",
         "trading_workbench",
@@ -105,6 +107,12 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "data-priority-queue-status",
         "data-priority-item-status",
         "data-priority-item-kind",
+        "function renderWorkbenchSupervisionGates",
+        "function supervisionGateSummary",
+        'data-testid="workbench-supervision-gates"',
+        'data-testid="workbench-supervision-gate"',
+        "data-supervision-gate-status",
+        "data-supervision-gate-kind",
         "function renderWorkbenchActionBus",
         "function actionBusSummary",
         "function renderWorkbenchActionControl",
@@ -400,6 +408,17 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "primary_priority_item_id: compact("
         "workbenchPriorityQueue(snapshot)?.primary_item_id, 'none')",
         "priority_item_count: Number(workbenchPriorityQueue(snapshot)?.metrics?.item_count || 0)",
+        "supervision_status: compact(workbenchSupervisionGates(snapshot)?.status, 'unknown')",
+        "primary_supervision_gate_id: compact("
+        "workbenchSupervisionGates(snapshot)?.primary_gate_id, 'none')",
+        "approval_required_count: Number("
+        "workbenchSupervisionGates(snapshot)?.metrics?.approval_required_count || 0)",
+        "armed_local_write: compact(state.pendingLocalWrite?.command, 'none')",
+        "pendingLocalWrite: null",
+        "function localWriteArmKey",
+        "function clearPendingLocalWrite",
+        "requires_arm_before_run",
+        "Click again to confirm",
     ):
         assert text in source
 
@@ -457,6 +476,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".workflow-map-preview" in styles
     assert ".workbench-priority-queue" in styles
     assert ".priority-queue-preview" in styles
+    assert ".workbench-supervision-gates" in styles
+    assert ".supervision-gate-preview" in styles
     assert ".workbench-action-bus" in styles
     assert ".action-bus-preview" in styles
     assert ".workbench-action-button" in styles

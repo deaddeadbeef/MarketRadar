@@ -99,3 +99,15 @@ engine, but it is not the whole product frame.
   agentic desktop control.
 - Preserve the same decision-support boundary: zero provider calls from
   browsing, no live broker submission, and no autonomous execution.
+
+## Current Slice: Supervision Gates
+
+- Add a supervision-gates snapshot contract that explains zero-call browsing,
+  local previews, guarded local writes, broker submission, agent execution, and
+  autonomous execution boundaries.
+- Render supervision gates in the Tauri Command Center and module-filtered
+  pages so operators can see which actions require manual approval.
+- Require an explicit arm step before any Tauri workbench local-write command
+  can run through the shared dispatcher.
+- Expose supervision status, primary gate, approval-required count, and armed
+  local-write state in automation JSON.
