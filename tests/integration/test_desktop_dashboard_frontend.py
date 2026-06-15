@@ -485,6 +485,29 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchExecutionSandbox(snapshot)?.metrics?.preview_lane_count || 0)",
         "execution_sandbox_disabled_count: Number("
         "workbenchExecutionSandbox(snapshot)?.metrics?.disabled_lane_count || 0)",
+        "function workbenchMarketIntelligenceDossier",
+        "function workbenchMarketIntelligenceCardsForPage",
+        "function renderWorkbenchMarketIntelligenceDossier",
+        "function marketIntelligenceDossierSummary",
+        "${renderWorkbenchMarketIntelligenceDossier(snapshot, 'overview')}",
+        "${renderWorkbenchMarketIntelligenceDossier(snapshot, pageKey)}",
+        'data-testid="workbench-market-intelligence-dossier"',
+        'data-testid="market-intelligence-card"',
+        "data-market-intelligence-status=\"${escapeHtml(dossier.status || 'unknown')}\"",
+        "data-market-intelligence-card-status=\"${escapeHtml(card.status || 'unknown')}\"",
+        "data-market-intelligence-card-kind=\"${escapeHtml(card.context_kind || 'unknown')}\"",
+        "data-market-intelligence-card-module=\"${escapeHtml(card.module || 'unknown')}\"",
+        "market_intelligence_status: compact(",
+        "market_intelligence_ticker: compact(",
+        "market_intelligence_primary_card_id: compact(",
+        "market_intelligence_signal_state: compact(",
+        "market_intelligence_signal_score: compact(",
+        "market_intelligence_card_count: Number(",
+        "market_intelligence_blocked_card_count: Number(",
+        "market_intelligence_review_card_count: Number(",
+        "market_intelligence_alert_context_count: Number(",
+        "market_intelligence_theme_context_count: Number(",
+        "market_intelligence_ipo_watchlist_count: Number(",
         "decision_brief_status: compact(workbenchDecisionBrief(snapshot)?.status, 'unknown')",
         "decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none')",
         "decision_brief_source_tool: compact("
@@ -792,6 +815,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
 
     assert ".platform-tools" in styles
     assert ".platform-tool-card" in styles
+    assert ".workbench-market-intelligence-dossier" in styles
+    assert ".market-intelligence-preview" in styles
     assert ".workbench-operator-state" in styles
     assert ".operator-state-grid" in styles
     assert ".operator-state-cards" in styles
