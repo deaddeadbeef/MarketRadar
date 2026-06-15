@@ -584,6 +584,23 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchPaperTradePreview(snapshot)?.paper_decision?.suggested_quantity || 0)",
         "paper_trade_preview_block_count: Number("
         "workbenchPaperTradePreview(snapshot)?.blockers?.length || 0)",
+        "function workbenchPretradeCompliance",
+        "function workbenchPretradeComplianceForPage",
+        "function renderWorkbenchPretradeCompliance",
+        "function pretradeComplianceSummary",
+        "${renderWorkbenchPretradeCompliance(snapshot, 'overview')}",
+        "${renderWorkbenchPretradeCompliance(snapshot, pageKey)}",
+        'data-testid="workbench-pretrade-compliance"',
+        'data-testid="pretrade-compliance-check"',
+        "data-pretrade-compliance-status=\"${escapeHtml(compliance.status || 'unknown')}\"",
+        "data-pretrade-compliance-check-status=\"${escapeHtml(check.status || 'unknown')}\"",
+        "data-pretrade-compliance-check-scope=\"${escapeHtml(check.scope || 'unknown')}\"",
+        "pretrade_compliance_status: compact(",
+        "pretrade_compliance_ticker: compact(",
+        "pretrade_compliance_primary_blocker: compact(",
+        "pretrade_compliance_blocked_check_count: Number(",
+        "pretrade_compliance_approval_required_count: Number(",
+        "pretrade_compliance_ready: Boolean(",
         "function workbenchLearningLoop",
         "function workbenchLearningLoopForPage",
         "function renderWorkbenchLearningLoop",
@@ -750,6 +767,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".order-ticket-draft-preview" in styles
     assert ".workbench-paper-trade-preview" in styles
     assert ".paper-trade-preview-checks" in styles
+    assert ".workbench-pretrade-compliance" in styles
+    assert ".pretrade-compliance-preview" in styles
     assert ".workbench-learning-loop" in styles
     assert ".learning-loop-preview" in styles
     assert ".workbench-strategy-review" in styles
