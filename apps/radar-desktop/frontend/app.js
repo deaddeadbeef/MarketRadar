@@ -14,6 +14,7 @@ const state = {
   alertStatus: null,
   alertRoute: null,
   lastCommand: 'none',
+  pendingLocalWrite: null,
 };
 
 const keyAliases = new Map([
@@ -398,6 +399,22 @@ function workbenchPriorityItemsForPage(pageKey, snapshot = state.snapshot || {})
   const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
   return items.filter((item) => (
     keys.has(item?.module) || keys.has(item?.target_page)
+  ));
+}
+
+function workbenchSupervisionGates(snapshot = state.snapshot || {}) {
+  const gates = tradingWorkbenchSnapshot(snapshot)?.supervision_gates;
+  return gates && typeof gates === 'object' ? gates : { gates: [] };
+}
+
+function workbenchSupervisionGatesForPage(pageKey, snapshot = state.snapshot || {}) {
+  const supervision = workbenchSupervisionGates(snapshot);
+  const gates = Array.isArray(supervision.gates) ? supervision.gates : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return gates;
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return gates.filter((gate) => (
+    keys.has(gate?.module) || keys.has(gate?.target_page)
   ));
 }
 
@@ -841,6 +858,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       priority_queue_status: compact(workbenchPriorityQueue(snapshot)?.status, 'unknown'),
       primary_priority_item_id: compact(workbenchPriorityQueue(snapshot)?.primary_item_id, 'none'),
       priority_item_count: Number(workbenchPriorityQueue(snapshot)?.metrics?.item_count || 0),
+      supervision_status: compact(workbenchSupervisionGates(snapshot)?.status, 'unknown'),
+      primary_supervision_gate_id: compact(workbenchSupervisionGates(snapshot)?.primary_gate_id, 'none'),
+      approval_required_count: Number(workbenchSupervisionGates(snapshot)?.metrics?.approval_required_count || 0),
+      armed_local_write: compact(state.pendingLocalWrite?.command, 'none'),
     },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
@@ -940,6 +961,7 @@ function renderOverview(snapshot) {
     ${renderTradingWorkbenchOverview(snapshot)}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
     ${renderWorkbenchPriorityQueue(snapshot, 'overview')}
+    ${renderWorkbenchSupervisionGates(snapshot, 'overview')}
     ${renderWorkbenchActionBus(snapshot, 'overview')}
     ${renderLiveTradingBoundary()}
     <section class="panel" data-testid="first-blocker">
@@ -1124,6 +1146,70 @@ function priorityQueueSummary(queue) {
   ].join('; ');
 }
 
+function renderWorkbenchSupervisionGates(snapshot, pageKey = 'overview') {
+  const supervision = workbenchSupervisionGates(snapshot);
+  const gates = workbenchSupervisionGatesForPage(pageKey, snapshot).slice(0, 8);
+  if (!gates.length) return '';
+  return `
+    <section
+      class="panel wide workbench-supervision-gates"
+      data-testid="workbench-supervision-gates"
+      data-supervision-status="${escapeHtml(supervision.status || 'empty')}"
+      data-primary-supervision-gate="${escapeHtml(supervision.primary_gate_id || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Supervision Gates</h2>
+          <p>${escapeHtml(supervisionGateSummary(supervision))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(supervision.status || 'empty'))}</span>
+      </div>
+      <div class="table-wrap supervision-gate-preview">
+        <table aria-label="Workbench supervision gates">
+          <thead><tr><th>Rank</th><th>Gate</th><th>Status</th><th>Approval</th><th>Scope</th><th>Control</th><th>Next</th></tr></thead>
+          <tbody>
+            ${gates.map((gate) => `
+              <tr
+                data-testid="workbench-supervision-gate"
+                data-supervision-gate-status="${escapeHtml(gate.status || 'unknown')}"
+                data-supervision-gate-kind="${escapeHtml(gate.gate_kind || 'unknown')}"
+              >
+                <td data-label="Rank">${escapeHtml(compact(gate.rank, '-'))}</td>
+                <td data-label="Gate">${escapeHtml(compact(gate.label, '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(gate.status || '-'))}</td>
+                <td data-label="Approval">${escapeHtml(gate.approval_required ? 'required' : 'not required')}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(gate.safety || gate.gate_kind || '-'))}</td>
+                <td data-label="Control">${renderWorkbenchActionControl(supervisionGateControl(gate))}</td>
+                <td data-label="Next">${escapeHtml(compact(gate.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function supervisionGateControl(gate) {
+  const ready = ['ready', 'enabled'].includes(gate?.status);
+  return {
+    ...gate,
+    status: ready ? 'enabled' : gate?.status,
+    local_write_allowed: Boolean(gate?.local_write_allowed),
+    requires_arm_before_run: Boolean(gate?.requires_arm_before_run),
+  };
+}
+
+function supervisionGateSummary(supervision) {
+  const metrics = supervision?.metrics || {};
+  return [
+    `${compact(metrics.gate_count, '0')} gates`,
+    `${compact(metrics.approval_required_count, '0')} approval required`,
+    `${compact(metrics.disabled_gate_count, '0')} disabled/out of scope`,
+    'provider calls zero',
+  ].join('; ');
+}
+
 function renderWorkbenchActionBus(snapshot, pageKey = 'overview') {
   const bus = workbenchActionBus(snapshot);
   const actions = workbenchActionsForPage(pageKey, snapshot).slice(0, 10);
@@ -1241,6 +1327,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     </section>
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
     ${renderWorkbenchPriorityQueue(snapshot, pageKey)}
+    ${renderWorkbenchSupervisionGates(snapshot, pageKey)}
     ${renderWorkbenchActionBus(snapshot, pageKey)}
     ${renderWorkbenchModuleData(moduleData)}
     ${renderLiveTradingBoundary()}
@@ -2654,11 +2741,23 @@ function bindWorkbenchActionBusControls() {
   });
 }
 
+function localWriteArmKey(action) {
+  const command = compact(action?.command, '');
+  const target = compact(action?.target_page || action?.page, '');
+  const label = compact(action?.label, 'local-write');
+  return `${command || target || label}`.toLowerCase();
+}
+
+function clearPendingLocalWrite() {
+  state.pendingLocalWrite = null;
+}
+
 async function dispatchWorkbenchAction(action) {
   const kind = compact(action?.action_kind || action?.kind, 'backend_command');
   const command = compact(action?.command, '');
   const targetPage = compact(action?.target_page || action?.page, '');
   if (kind === 'boundary') {
+    clearPendingLocalWrite();
     const label = compact(action?.label, 'Boundary');
     setCommandStatus(`${label} remains disabled in the workbench.`);
     return;
@@ -2666,6 +2765,7 @@ async function dispatchWorkbenchAction(action) {
   if (kind === 'page') {
     const page = targetPage || command;
     if (!page) return;
+    clearPendingLocalWrite();
     state.lastCommand = command || page;
     setCommandStatus(`Opened ${pageLabelFor(page)}.`);
     await setPage(page);
@@ -2673,8 +2773,26 @@ async function dispatchWorkbenchAction(action) {
   }
   if (!command) return;
   if (commandHasExecuteToken(command) && !action?.local_write_allowed) {
+    clearPendingLocalWrite();
     setCommandStatus('Execute commands stay outside dashboard browsing unless explicitly marked as local writes.');
     return;
+  }
+  if (action?.local_write_allowed) {
+    const armKey = localWriteArmKey(action);
+    if (state.pendingLocalWrite?.key !== armKey) {
+      state.pendingLocalWrite = {
+        key: armKey,
+        command,
+        label: compact(action?.label, command),
+      };
+      setCommandStatus(
+        `Armed local write: ${state.pendingLocalWrite.label}. Click again to confirm; no provider or broker calls made.`,
+      );
+      return;
+    }
+    clearPendingLocalWrite();
+  } else {
+    clearPendingLocalWrite();
   }
   state.lastCommand = command;
   await handleBackendDashboardCommand(command);

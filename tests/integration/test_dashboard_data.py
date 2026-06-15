@@ -656,6 +656,79 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert all(row["broker_order_submitted"] is False for row in priority_items)
     assert all(row["order_submission_allowed"] is False for row in priority_items)
 
+    supervision_gates = workbench["supervision_gates"]
+    assert supervision_gates["schema_version"] == (
+        "trading-workbench-supervision-gates-v1"
+    )
+    assert supervision_gates["status"] == "approval_required"
+    assert supervision_gates["primary_gate_id"] == "guarded-local-write"
+    assert supervision_gates["metrics"] == {
+        "gate_count": 6,
+        "approval_required_count": 1,
+        "disabled_gate_count": 3,
+        "local_write_gate_count": 1,
+        "external_call_gate_count": 0,
+        "broker_submission_gate_count": 0,
+    }
+    assert supervision_gates["external_calls_made"] == 0
+    assert supervision_gates["db_writes_made"] == 0
+    assert supervision_gates["broker_order_submitted"] is False
+    assert supervision_gates["order_submission_allowed"] is False
+    assert supervision_gates["live_trading_enabled"] is False
+    supervision_by_id = {row["id"]: row for row in supervision_gates["gates"]}
+    assert list(supervision_by_id) == [
+        "zero-call-browsing",
+        "local-backend-preview",
+        "guarded-local-write",
+        "broker-submission",
+        "agent-execute",
+        "autonomous-execution",
+    ]
+    assert supervision_by_id["zero-call-browsing"] == {
+        "id": "zero-call-browsing",
+        "rank": 1,
+        "gate_kind": "read_only",
+        "module": "platform",
+        "label": "Zero-call browsing",
+        "status": "ready",
+        "approval_required": False,
+        "requires_arm_before_run": False,
+        "action_kind": "page",
+        "command": "overview",
+        "target_page": "overview",
+        "safety": "zero_call_navigation",
+        "local_write_allowed": False,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_allowed": False,
+        "db_writes_required": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": "Browse the local workbench snapshot without provider calls.",
+    }
+    assert supervision_by_id["local-backend-preview"]["status"] == "ready"
+    assert supervision_by_id["local-backend-preview"]["approval_required"] is False
+    assert supervision_by_id["local-backend-preview"]["external_calls_allowed"] is False
+    assert supervision_by_id["guarded-local-write"]["status"] == "approval_required"
+    assert supervision_by_id["guarded-local-write"]["approval_required"] is True
+    assert supervision_by_id["guarded-local-write"]["requires_arm_before_run"] is True
+    assert supervision_by_id["guarded-local-write"]["local_write_allowed"] is True
+    assert supervision_by_id["guarded-local-write"]["db_writes_allowed"] is True
+    assert supervision_by_id["guarded-local-write"]["db_writes_required"] >= 2
+    assert supervision_by_id["broker-submission"]["status"] == "disabled"
+    assert supervision_by_id["broker-submission"]["order_submission_allowed"] is False
+    assert supervision_by_id["agent-execute"]["status"] == "disabled"
+    assert supervision_by_id["autonomous-execution"]["status"] == "out_of_scope"
+    assert all(row["external_calls_made"] == 0 for row in supervision_gates["gates"])
+    assert all(
+        row["broker_order_submitted"] is False for row in supervision_gates["gates"]
+    )
+    assert all(
+        row["order_submission_allowed"] is False for row in supervision_gates["gates"]
+    )
+
     modules = workbench["modules"]
     assert {
         "portfolio",

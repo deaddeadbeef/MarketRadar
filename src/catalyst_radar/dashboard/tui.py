@@ -1114,6 +1114,10 @@ def _trading_workbench_snapshot_payload(
         action_bus=action_bus,
         workflow_map=workflow_map,
     )
+    supervision_gates = _workbench_supervision_gates_payload(
+        action_bus=action_bus,
+        priority_queue=priority_queue,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1129,6 +1133,7 @@ def _trading_workbench_snapshot_payload(
         "action_bus": action_bus,
         "workflow_map": workflow_map,
         "priority_queue": priority_queue,
+        "supervision_gates": supervision_gates,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -3209,6 +3214,241 @@ def _workbench_priority_item(
         "live_trading_enabled": False,
         "next_action": next_action
         or "Review this supervised priority item before continuing.",
+    }
+
+
+def _workbench_supervision_gates_payload(
+    *,
+    action_bus: Mapping[str, object],
+    priority_queue: Mapping[str, object],
+) -> dict[str, object]:
+    actions = _rows(action_bus.get("actions"))
+    local_write_actions = [
+        row for row in actions if row.get("local_write_allowed") is True
+    ]
+    preview_actions = [
+        row
+        for row in actions
+        if row.get("action_kind") == "backend_command"
+        and row.get("local_write_allowed") is not True
+        and row.get("status") == "enabled"
+    ]
+    queue_local_write_required = sum(
+        int(_number_or_zero(row.get("db_writes_required")))
+        for row in _rows(priority_queue.get("items"))
+        if row.get("local_write_allowed") is True
+    )
+    action_local_write_required = sum(
+        int(_number_or_zero(row.get("db_writes_required")))
+        for row in local_write_actions
+    )
+    db_writes_required = max(queue_local_write_required, action_local_write_required)
+    if local_write_actions and db_writes_required <= 0:
+        db_writes_required = len(local_write_actions)
+    preview_action = preview_actions[0] if preview_actions else {}
+
+    gates = [
+        _workbench_supervision_gate(
+            gate_id="zero-call-browsing",
+            rank=1,
+            gate_kind="read_only",
+            module="platform",
+            label="Zero-call browsing",
+            status="ready",
+            approval_required=False,
+            requires_arm_before_run=False,
+            action_kind="page",
+            command="overview",
+            target_page="overview",
+            safety="zero_call_navigation",
+            local_write_allowed=False,
+            db_writes_allowed=False,
+            db_writes_required=0,
+            next_action="Browse the local workbench snapshot without provider calls.",
+        ),
+        _workbench_supervision_gate(
+            gate_id="local-backend-preview",
+            rank=2,
+            gate_kind="local_preview",
+            module="platform",
+            label="Local backend previews",
+            status="ready" if preview_actions else "blocked",
+            approval_required=False,
+            requires_arm_before_run=False,
+            action_kind="backend_command",
+            command=preview_action.get("command") or "agent",
+            target_page=preview_action.get("target_page") or "agent",
+            safety="local_backend_preview",
+            local_write_allowed=False,
+            db_writes_allowed=False,
+            db_writes_required=0,
+            next_action="Use preview commands before arming any local write.",
+        ),
+        _workbench_supervision_gate(
+            gate_id="guarded-local-write",
+            rank=3,
+            gate_kind="local_write",
+            module="platform",
+            label="Guarded local writes",
+            status="approval_required" if local_write_actions else "blocked",
+            approval_required=bool(local_write_actions),
+            requires_arm_before_run=True,
+            action_kind="backend_command",
+            command=(local_write_actions[0].get("command") if local_write_actions else None),
+            target_page=(
+                local_write_actions[0].get("target_page")
+                if local_write_actions
+                else "paper-trading"
+            ),
+            safety="local_db_write",
+            local_write_allowed=bool(local_write_actions),
+            db_writes_allowed=bool(local_write_actions),
+            db_writes_required=db_writes_required,
+            next_action=(
+                "Arm a local write only after reviewing its preview; "
+                "click again to confirm."
+            ),
+        ),
+        _workbench_supervision_gate(
+            gate_id="broker-submission",
+            rank=4,
+            gate_kind="broker_submission",
+            module="broker",
+            label="Broker submission",
+            status="disabled",
+            approval_required=True,
+            requires_arm_before_run=False,
+            action_kind="boundary",
+            command="order-ticket submit",
+            target_page="broker",
+            safety="external_boundary",
+            local_write_allowed=False,
+            db_writes_allowed=False,
+            db_writes_required=0,
+            next_action="Broker order submission remains disabled.",
+        ),
+        _workbench_supervision_gate(
+            gate_id="agent-execute",
+            rank=5,
+            gate_kind="agent_execute",
+            module="agent",
+            label="Agent execute",
+            status="disabled",
+            approval_required=True,
+            requires_arm_before_run=False,
+            action_kind="boundary",
+            command="agent execute",
+            target_page="agent",
+            safety="external_boundary",
+            local_write_allowed=False,
+            db_writes_allowed=False,
+            db_writes_required=0,
+            next_action="Agent execution remains outside clickable browsing controls.",
+        ),
+        _workbench_supervision_gate(
+            gate_id="autonomous-execution",
+            rank=6,
+            gate_kind="autonomous_execution",
+            module="platform",
+            label="Autonomous execution",
+            status="out_of_scope",
+            approval_required=True,
+            requires_arm_before_run=False,
+            action_kind="boundary",
+            command="autonomous execute",
+            target_page="overview",
+            safety="external_boundary",
+            local_write_allowed=False,
+            db_writes_allowed=False,
+            db_writes_required=0,
+            next_action="Autonomous live trading is out of scope.",
+        ),
+    ]
+    primary_gate_id = next(
+        (
+            str(row.get("id"))
+            for row in gates
+            if row.get("status") == "approval_required"
+        ),
+        str(gates[0]["id"]) if gates else None,
+    )
+    return {
+        "schema_version": "trading-workbench-supervision-gates-v1",
+        "status": "approval_required"
+        if any(row.get("status") == "approval_required" for row in gates)
+        else "ready"
+        if gates
+        else "empty",
+        "primary_gate_id": primary_gate_id,
+        "metrics": {
+            "gate_count": len(gates),
+            "approval_required_count": sum(
+                1 for row in gates if row.get("status") == "approval_required"
+            ),
+            "disabled_gate_count": sum(
+                1 for row in gates if row.get("status") in {"disabled", "out_of_scope"}
+            ),
+            "local_write_gate_count": sum(
+                1 for row in gates if row.get("local_write_allowed") is True
+            ),
+            "external_call_gate_count": 0,
+            "broker_submission_gate_count": sum(
+                1 for row in gates if row.get("order_submission_allowed") is True
+            ),
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "gates": gates,
+    }
+
+
+def _workbench_supervision_gate(
+    *,
+    gate_id: str,
+    rank: int,
+    gate_kind: str,
+    module: str,
+    label: str,
+    status: str,
+    approval_required: bool,
+    requires_arm_before_run: bool,
+    action_kind: str,
+    command: object,
+    target_page: object,
+    safety: str,
+    local_write_allowed: bool,
+    db_writes_allowed: bool,
+    db_writes_required: int,
+    next_action: str,
+) -> dict[str, object]:
+    command_text = str(command or "").strip()
+    target_text = str(target_page or module or "").strip()
+    return {
+        "id": gate_id,
+        "rank": rank,
+        "gate_kind": gate_kind,
+        "module": module,
+        "label": label,
+        "status": status,
+        "approval_required": approval_required,
+        "requires_arm_before_run": requires_arm_before_run,
+        "action_kind": action_kind,
+        "command": command_text or None,
+        "target_page": target_text or None,
+        "safety": safety,
+        "local_write_allowed": local_write_allowed,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_allowed": db_writes_allowed,
+        "db_writes_required": db_writes_required,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "next_action": next_action,
     }
 
 
