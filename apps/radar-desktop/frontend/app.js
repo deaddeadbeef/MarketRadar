@@ -385,6 +385,19 @@ function workbenchScenarioMatrixForPage(pageKey, snapshot = state.snapshot || {}
   return pages.has(pageKey) ? rows : [];
 }
 
+function workbenchRiskEnvelope(snapshot = state.snapshot || {}) {
+  const envelope = tradingWorkbenchSnapshot(snapshot)?.risk_envelope;
+  return envelope && typeof envelope === 'object' ? envelope : { checks: [] };
+}
+
+function workbenchRiskEnvelopeForPage(pageKey, snapshot = state.snapshot || {}) {
+  const envelope = workbenchRiskEnvelope(snapshot);
+  const rows = Array.isArray(envelope.checks) ? envelope.checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return rows;
+  const pages = new Set(['portfolio', 'trade-planner', 'risk-desk', 'paper-trading', 'broker']);
+  return pages.has(pageKey) ? rows : [];
+}
+
 function workbenchActionBus(snapshot = state.snapshot || {}) {
   const bus = tradingWorkbenchSnapshot(snapshot)?.action_bus;
   return bus && typeof bus === 'object' ? bus : { actions: [] };
@@ -888,6 +901,11 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       scenario_matrix_ticker: compact(workbenchScenarioMatrix(snapshot)?.ticker, 'none'),
       scenario_count: Number(workbenchScenarioMatrix(snapshot)?.metrics?.scenario_count || 0),
       scenario_reward_risk: compact(workbenchScenarioMatrix(snapshot)?.metrics?.risk_reward, 'none'),
+      risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown'),
+      risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none'),
+      risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
+      risk_block_count: Number(workbenchRiskEnvelope(snapshot)?.blockers?.length || 0),
+      risk_max_loss: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.estimated_max_loss, 'none'),
     },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
@@ -987,6 +1005,7 @@ function renderOverview(snapshot) {
     ${renderTradingWorkbenchOverview(snapshot)}
     ${renderWorkbenchDecisionBrief(snapshot)}
     ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
+    ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
     ${renderWorkbenchPriorityQueue(snapshot, 'overview')}
     ${renderWorkbenchSupervisionGates(snapshot, 'overview')}
@@ -1207,6 +1226,68 @@ function scenarioMatrixSummary(matrix) {
     `${compact(metrics.scenario_count, '0')} scenarios`,
     `R/R ${compact(metrics.risk_reward, 'n/a')}`,
     `sizing ${catalogLabel(assumptions.sizing_status || 'unknown')}`,
+    'zero provider calls',
+  ].join('; ');
+}
+
+function renderWorkbenchRiskEnvelope(snapshot, pageKey = 'overview') {
+  const envelope = workbenchRiskEnvelope(snapshot);
+  const checks = workbenchRiskEnvelopeForPage(pageKey, snapshot);
+  const portfolio = envelope.portfolio_context || {};
+  const sizing = envelope.sizing_context || {};
+  if (!checks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-risk-envelope"
+      data-testid="workbench-risk-envelope"
+      data-risk-envelope-status="${escapeHtml(envelope.status || 'unknown')}"
+      data-risk-envelope-ticker="${escapeHtml(envelope.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Risk Envelope</h2>
+          <p>${escapeHtml(riskEnvelopeSummary(envelope))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(envelope.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Equity</span><b>${escapeHtml(text(portfolio.portfolio_equity))}</b></div>
+        <div class="kv"><span>Buying Power</span><b>${escapeHtml(text(portfolio.buying_power))}</b></div>
+        <div class="kv"><span>Max Loss</span><b>${escapeHtml(text(sizing.estimated_max_loss))}</b></div>
+        <div class="kv"><span>Sizing</span><b>${escapeHtml(catalogLabel(sizing.sizing_status || 'unknown'))}</b></div>
+      </div>
+      <div class="table-wrap risk-envelope-preview">
+        <table aria-label="Workbench risk envelope">
+          <thead><tr><th>Check</th><th>Scope</th><th>Status</th><th>Finding</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="workbench-risk-check"
+                data-risk-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-risk-check-scope="${escapeHtml(check.scope || 'unknown')}"
+              >
+                <td data-label="Check">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(check.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function riskEnvelopeSummary(envelope) {
+  const metrics = envelope?.metrics || {};
+  const sizing = envelope?.sizing_context || {};
+  return [
+    `${compact(envelope?.ticker, 'No ticker')} ${catalogLabel(envelope?.status || 'unknown')}`,
+    `${compact(metrics.blocked_check_count, '0')} blocked checks`,
+    `${compact(metrics.disabled_check_count, '0')} disabled boundaries`,
+    `max loss ${compact(sizing.estimated_max_loss, 'n/a')}`,
     'zero provider calls',
   ].join('; ');
 }
@@ -1506,6 +1587,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
       </div>
     </section>
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
+    ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
     ${renderWorkbenchPriorityQueue(snapshot, pageKey)}
     ${renderWorkbenchSupervisionGates(snapshot, pageKey)}

@@ -138,3 +138,15 @@ engine, but it is not the whole product frame.
   JSON for agentic desktop control.
 - Preserve the same boundary: no provider calls, no broker order submission,
   no shell execution, and no database writes from browsing the matrix.
+
+## Current Slice: Risk Envelope
+
+- Add a read-only risk-envelope snapshot contract that combines the active
+  MarketRadar plan with broker portfolio context, sizing state, paper/live
+  blockers, and execution-boundary checks.
+- Render the risk envelope in the Tauri Command Center and relevant portfolio,
+  planning, risk, paper, and broker pages before local-write controls.
+- Expose risk-envelope status, ticker, sizing state, risk block count, and
+  max-loss context in automation JSON for agentic desktop review.
+- Preserve the same boundary: no provider calls, no broker order submission,
+  no shell execution, and no database writes from browsing the envelope.
