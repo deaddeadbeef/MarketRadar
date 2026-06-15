@@ -1251,6 +1251,19 @@ def _trading_workbench_snapshot_payload(
         execution_sandbox=execution_sandbox,
         operator_state=operator_state,
     )
+    market_intelligence_dossier = _workbench_market_intelligence_dossier_payload(
+        focus_row=focus_row,
+        candidate_rows=candidate_module_rows,
+        alert_rows=alert_module_rows,
+        trigger_rows=alert_trigger_rows,
+        opportunity_action_rows=opportunity_action_rows,
+        ipo_rows=ipo_module_rows,
+        theme_rows=theme_module_rows,
+        decision_brief=decision_brief,
+        risk_envelope=risk_envelope,
+        trade_readiness_brief=trade_readiness_brief,
+        agent_playbook=agent_playbook,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1284,6 +1297,7 @@ def _trading_workbench_snapshot_payload(
         "execution_sandbox": execution_sandbox,
         "trade_readiness_brief": trade_readiness_brief,
         "agent_playbook": agent_playbook,
+        "market_intelligence_dossier": market_intelligence_dossier,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -2061,6 +2075,7 @@ def _trading_workbench_snapshot_payload(
                     "runtime_context",
                     "agent_brief",
                     "trading_workbench.agent_playbook",
+                    "trading_workbench.market_intelligence_dossier",
                     "trading_workbench.active_plan.capability_map",
                 ],
             },
@@ -2200,6 +2215,7 @@ def _workbench_agent_brief_module(
             "agent_brief.next_actions",
             "agent_brief.security_checks",
             "trading_workbench.agent_playbook",
+            "trading_workbench.market_intelligence_dossier",
             "trading_workbench.active_plan.capability_map",
         ],
     }
@@ -6590,6 +6606,393 @@ def _workbench_agent_playbook_task(
         "external_calls_allowed": False,
         "external_calls_made": 0,
         "db_writes_required": _first_nonnegative_int(db_writes_required),
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_market_intelligence_dossier_payload(
+    *,
+    focus_row: Mapping[str, object],
+    candidate_rows: Sequence[Mapping[str, object]],
+    alert_rows: Sequence[Mapping[str, object]],
+    trigger_rows: Sequence[Mapping[str, object]],
+    opportunity_action_rows: Sequence[Mapping[str, object]],
+    ipo_rows: Sequence[Mapping[str, object]],
+    theme_rows: Sequence[Mapping[str, object]],
+    decision_brief: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    trade_readiness_brief: Mapping[str, object],
+    agent_playbook: Mapping[str, object],
+) -> dict[str, object]:
+    ticker = str(
+        _first_value(
+            focus_row.get("ticker"),
+            decision_brief.get("ticker"),
+            risk_envelope.get("ticker"),
+            agent_playbook.get("ticker"),
+        )
+        or ""
+    ).strip().upper()
+    decision_card_id = _first_value(
+        focus_row.get("decision_card_id"),
+        decision_brief.get("decision_card_id"),
+        agent_playbook.get("decision_card_id"),
+    )
+    scout_subject = _first_value(
+        focus_row.get("subject"),
+        decision_brief.get("headline"),
+        ticker,
+    )
+    matching_alerts = _workbench_dossier_rows_for_ticker(alert_rows, ticker)
+    matching_triggers = _workbench_dossier_rows_for_ticker(trigger_rows, ticker)
+    matching_actions = _workbench_dossier_rows_for_ticker(
+        opportunity_action_rows,
+        ticker,
+    )
+    matching_themes = [
+        row
+        for row in theme_rows
+        if ticker and ticker in {text.upper() for text in _texts(row.get("top_tickers"))}
+    ]
+    primary_alert = _mapping(matching_alerts[0]) if matching_alerts else {}
+    primary_trigger = _mapping(matching_triggers[0]) if matching_triggers else {}
+    primary_theme = _mapping(matching_themes[0]) if matching_themes else {}
+    primary_ipo = _mapping(ipo_rows[0]) if ipo_rows else {}
+    decision_metrics = _mapping(decision_brief.get("metrics"))
+    risk_metrics = _mapping(risk_envelope.get("metrics"))
+    risk_blockers = _texts(risk_envelope.get("blockers"))
+    playbook_metrics = _mapping(agent_playbook.get("metrics"))
+    playbook_handoff = _mapping(agent_playbook.get("agent_handoff"))
+    readiness_metrics = _mapping(trade_readiness_brief.get("metrics"))
+    cards = [
+        _workbench_market_intelligence_card(
+            card_id="market-radar-scout",
+            rank=1,
+            module="market-radar",
+            label="MarketRadar scout",
+            status="ready" if ticker else "blocked",
+            context_kind="scout",
+            finding=scout_subject or "missing_scout",
+            evidence=(
+                f"score={focus_row.get('score')}; "
+                f"state={focus_row.get('state')}; "
+                f"usefulness={focus_row.get('usefulness_status')}"
+            ),
+            source="trading_workbench.modules.market-radar.rows",
+            target_page="market-radar",
+            next_action=focus_row.get("next_action")
+            or "Open the MarketRadar scout row before planning.",
+        ),
+        _workbench_market_intelligence_card(
+            card_id="candidate-evidence",
+            rank=2,
+            module="candidates",
+            label="Candidate evidence",
+            status="ready" if candidate_rows else "blocked",
+            context_kind="candidate",
+            finding=decision_card_id or "missing_decision_card",
+            evidence=(
+                f"candidate_rows={len(candidate_rows)}; "
+                f"decision_card={decision_card_id or 'none'}"
+            ),
+            source="trading_workbench.modules.candidates.rows",
+            target_page="candidates",
+            next_action=(
+                "Review the candidate evidence packet before planning."
+                if candidate_rows
+                else "Create candidate evidence before planning."
+            ),
+        ),
+        _workbench_market_intelligence_card(
+            card_id="decision-brief",
+            rank=3,
+            module="review",
+            label="Decision brief",
+            status=str(decision_brief.get("status") or "unknown"),
+            context_kind="decision",
+            finding=decision_brief.get("recommended_paper_decision")
+            or decision_brief.get("status"),
+            evidence=(
+                "paper_blocks="
+                f"{_first_nonnegative_int(decision_metrics.get('paper_block_count'))}; "
+                "live_blocks="
+                f"{_first_nonnegative_int(decision_metrics.get('live_block_count'))}"
+            ),
+            source="trading_workbench.decision_brief",
+            target_page="review",
+            command=_mapping(decision_brief.get("next_action")).get("command"),
+            next_action="Resolve decision-readiness context before using the thesis.",
+        ),
+        _workbench_market_intelligence_card(
+            card_id="risk-envelope",
+            rank=4,
+            module="risk-desk",
+            label="Risk envelope",
+            status=str(risk_envelope.get("status") or "unknown"),
+            context_kind="risk",
+            finding=risk_blockers[0] if risk_blockers else "risk_context_clear",
+            evidence=(
+                "blocked_checks="
+                f"{_first_nonnegative_int(risk_metrics.get('blocked_check_count'))}; "
+                f"max_loss={risk_metrics.get('estimated_max_loss')}"
+            ),
+            source="trading_workbench.risk_envelope",
+            target_page="risk-desk",
+            next_action=risk_envelope.get("primary_next_action")
+            or "Review risk envelope before any paper or broker handoff.",
+        ),
+        _workbench_market_intelligence_card(
+            card_id="alert-context",
+            rank=5,
+            module="alerts",
+            label="Alert and trigger context",
+            status="ready"
+            if matching_alerts or matching_triggers
+            else "review"
+            if alert_rows or trigger_rows
+            else "blocked",
+            context_kind="alert",
+            finding=(
+                primary_trigger.get("id")
+                or primary_alert.get("id")
+                or "no_ticker_alert_context"
+            ),
+            evidence=(
+                f"alerts={len(matching_alerts)}; "
+                f"triggers={len(matching_triggers)}; "
+                f"operator_actions={len(matching_actions)}"
+            ),
+            source="trading_workbench.modules.alerts",
+            target_page="alerts",
+            next_action=(
+                "Review alert and trigger evidence before changing watch state."
+                if matching_alerts or matching_triggers
+                else "Create or inspect local alert context if the thesis needs monitoring."
+            ),
+        ),
+        _workbench_market_intelligence_card(
+            card_id="theme-context",
+            rank=6,
+            module="themes",
+            label="Theme context",
+            status="ready" if matching_themes else "review" if theme_rows else "blocked",
+            context_kind="theme",
+            finding=primary_theme.get("theme") or "no_related_theme",
+            evidence=(
+                f"themes={len(theme_rows)}; "
+                f"related={len(matching_themes)}; "
+                "top_tickers="
+                f"{','.join(_texts(primary_theme.get('top_tickers'))[:4]) or 'none'}"
+            ),
+            source="trading_workbench.modules.themes",
+            target_page="themes",
+            next_action=(
+                "Use related theme context as thesis background, not approval."
+                if matching_themes
+                else "Review theme rows before using macro context in the thesis."
+            ),
+        ),
+        _workbench_market_intelligence_card(
+            card_id="ipo-watchlist",
+            rank=7,
+            module="ipo",
+            label="IPO/S-1 watchlist",
+            status="review" if ipo_rows else "ready",
+            context_kind="market-calendar",
+            finding=(
+                f"{primary_ipo.get('ticker')} {primary_ipo.get('form_type')}"
+                if primary_ipo
+                else "no_current_ipo_watchlist"
+            ),
+            evidence=(
+                f"ipo_s1_rows={len(ipo_rows)}; "
+                f"risk_flags={len(_texts(primary_ipo.get('risk_flags')))}"
+            ),
+            source="trading_workbench.modules.ipo",
+            target_page="ipo",
+            next_action=(
+                "Treat IPO/S-1 rows as market context; no trade is approved."
+                if ipo_rows
+                else "No IPO/S-1 watchlist context is present."
+            ),
+        ),
+        _workbench_market_intelligence_card(
+            card_id="agent-playbook",
+            rank=8,
+            module="agent",
+            label="Agent playbook",
+            status=str(agent_playbook.get("status") or "unknown"),
+            context_kind="agent",
+            finding=agent_playbook.get("primary_task_id") or "no_agent_task",
+            evidence=(
+                f"tasks={_first_nonnegative_int(playbook_metrics.get('task_count'))}; "
+                "blocked="
+                f"{_first_nonnegative_int(playbook_metrics.get('blocked_task_count'))}; "
+                "safe_previews="
+                f"{_first_nonnegative_int(playbook_metrics.get('safe_preview_task_count'))}"
+            ),
+            source="trading_workbench.agent_playbook",
+            target_page=playbook_handoff.get("next_page") or "agent",
+            command=playbook_handoff.get("next_command") or "agent",
+            safety=playbook_handoff.get("safety") or "zero_call_navigation",
+            next_action=agent_playbook.get("primary_next_action")
+            or "Use the supervised playbook as the next action list.",
+        ),
+    ]
+    ready_count = sum(1 for row in cards if row.get("status") == "ready")
+    blocked_count = sum(1 for row in cards if row.get("status") == "blocked")
+    review_count = sum(1 for row in cards if row.get("status") == "review")
+    disabled_count = sum(1 for row in cards if row.get("status") == "disabled")
+    primary_card = next(
+        (row for row in cards if row.get("status") == "blocked"),
+        cards[0] if cards else {},
+    )
+    status = "blocked" if blocked_count else "review" if review_count else "ready"
+    return {
+        "schema_version": "trading-workbench-market-intelligence-dossier-v1",
+        "status": status,
+        "source_tool": "market-radar",
+        "ticker": ticker or None,
+        "decision_card_id": decision_card_id,
+        "dossier_id": (
+            f"market-intelligence-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "operating_mode": "supervised_market_context",
+        "headline": decision_brief.get("headline") or scout_subject,
+        "primary_card_id": primary_card.get("id"),
+        "primary_next_action": primary_card.get("next_action")
+        or agent_playbook.get("primary_next_action")
+        or "Review market intelligence before following the agent playbook.",
+        "primary_signal": {
+            "ticker": ticker or None,
+            "subject": scout_subject,
+            "score": focus_row.get("score"),
+            "setup": focus_row.get("setup"),
+            "state": focus_row.get("state"),
+            "usefulness_status": focus_row.get("usefulness_status"),
+            "decision_ready": bool(focus_row.get("decision_ready")),
+            "decision_card_id": decision_card_id,
+            "recommended_paper_decision": decision_brief.get(
+                "recommended_paper_decision"
+            ),
+        },
+        "market_context": {
+            "alert_count": len(matching_alerts),
+            "trigger_count": len(matching_triggers),
+            "opportunity_action_count": len(matching_actions),
+            "theme_count": len(theme_rows),
+            "related_theme_count": len(matching_themes),
+            "ipo_s1_count": len(ipo_rows),
+            "primary_theme": primary_theme.get("theme"),
+            "primary_alert_id": primary_alert.get("id"),
+            "primary_trigger_id": primary_trigger.get("id"),
+        },
+        "agent_context": {
+            "primary_task_id": agent_playbook.get("primary_task_id"),
+            "next_page": playbook_handoff.get("next_page"),
+            "next_command": playbook_handoff.get("next_command"),
+            "safety": playbook_handoff.get("safety"),
+            "blocked_task_count": _first_nonnegative_int(
+                playbook_metrics.get("blocked_task_count")
+            ),
+            "safe_preview_task_count": _first_nonnegative_int(
+                playbook_metrics.get("safe_preview_task_count")
+            ),
+        },
+        "readiness_context": {
+            "status": trade_readiness_brief.get("status"),
+            "blocked_check_count": _first_nonnegative_int(
+                readiness_metrics.get("blocked_check_count")
+            ),
+            "disabled_check_count": _first_nonnegative_int(
+                readiness_metrics.get("disabled_check_count")
+            ),
+            "paper_record_allowed": bool(
+                trade_readiness_brief.get("paper_record_allowed")
+            ),
+            "broker_handoff_allowed": bool(
+                trade_readiness_brief.get("broker_handoff_allowed")
+            ),
+        },
+        "cards": cards,
+        "source_keys": [
+            "trading_workbench.modules.market-radar.rows",
+            "trading_workbench.modules.candidates.rows",
+            "trading_workbench.modules.alerts",
+            "trading_workbench.modules.themes",
+            "trading_workbench.modules.ipo",
+            "trading_workbench.decision_brief",
+            "trading_workbench.risk_envelope",
+            "trading_workbench.agent_playbook",
+        ],
+        "metrics": {
+            "card_count": len(cards),
+            "ready_card_count": ready_count,
+            "blocked_card_count": blocked_count,
+            "review_card_count": review_count,
+            "disabled_card_count": disabled_count,
+            "alert_context_count": len(matching_alerts) + len(matching_triggers),
+            "theme_context_count": len(matching_themes),
+            "ipo_watchlist_count": len(ipo_rows),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_dossier_rows_for_ticker(
+    rows: Sequence[Mapping[str, object]],
+    ticker: str,
+) -> list[Mapping[str, object]]:
+    if not ticker:
+        return []
+    return [
+        row
+        for row in rows
+        if str(row.get("ticker") or "").strip().upper() == ticker
+    ]
+
+
+def _workbench_market_intelligence_card(
+    *,
+    card_id: str,
+    rank: int,
+    module: str,
+    label: str,
+    status: str,
+    context_kind: str,
+    finding: object,
+    evidence: object,
+    source: str,
+    target_page: str,
+    next_action: object,
+    command: object = None,
+    safety: object = "zero_call_navigation",
+) -> dict[str, object]:
+    return {
+        "id": card_id,
+        "rank": rank,
+        "module": module,
+        "label": label,
+        "status": status,
+        "context_kind": context_kind,
+        "finding": finding,
+        "evidence": evidence,
+        "source": source,
+        "target_page": target_page,
+        "command": command,
+        "safety": safety,
+        "next_action": next_action,
+        "external_calls_made": 0,
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,

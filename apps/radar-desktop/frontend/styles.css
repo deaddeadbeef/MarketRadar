@@ -653,6 +653,7 @@ tr[data-testid="queue-row"]:focus-visible td {
   text-transform: uppercase;
 }
 
+.workbench-market-intelligence-dossier,
 .workbench-operator-state,
 .workbench-execution-sandbox,
 .workbench-decision-brief,
@@ -881,6 +882,7 @@ tr[data-testid="queue-row"]:focus-visible td {
   margin-top: 12px;
 }
 
+.market-intelligence-preview table,
 .workflow-map-preview table,
 .scenario-matrix-preview table,
 .portfolio-impact-preview table,

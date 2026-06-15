@@ -367,6 +367,29 @@ function tradingWorkbenchSnapshot(snapshot = state.snapshot || {}) {
   return snapshot?.trading_workbench || {};
 }
 
+function workbenchMarketIntelligenceDossier(snapshot = state.snapshot || {}) {
+  const dossier = tradingWorkbenchSnapshot(snapshot)?.market_intelligence_dossier;
+  return dossier && typeof dossier === 'object' ? dossier : { cards: [] };
+}
+
+function workbenchMarketIntelligenceCardsForPage(pageKey, snapshot = state.snapshot || {}) {
+  const dossier = workbenchMarketIntelligenceDossier(snapshot);
+  const cards = Array.isArray(dossier.cards) ? dossier.cards : [];
+  if (
+    pageKey === 'overview'
+    || pageKey === 'command-center'
+    || pageKey === 'market-radar'
+    || pageKey === 'agent'
+  ) {
+    return cards;
+  }
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return cards.filter((card) => (
+    keys.has(card?.module) || keys.has(card?.target_page)
+  ));
+}
+
 function workbenchOperatorState(snapshot = state.snapshot || {}) {
   const operator = tradingWorkbenchSnapshot(snapshot)?.operator_state;
   return operator && typeof operator === 'object' ? operator : { state_cards: [] };
@@ -1102,6 +1125,17 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       execution_sandbox_active_lane_id: compact(workbenchExecutionSandbox(snapshot)?.active_lane_id, 'none'),
       execution_sandbox_preview_count: Number(workbenchExecutionSandbox(snapshot)?.metrics?.preview_lane_count || 0),
       execution_sandbox_disabled_count: Number(workbenchExecutionSandbox(snapshot)?.metrics?.disabled_lane_count || 0),
+      market_intelligence_status: compact(workbenchMarketIntelligenceDossier(snapshot)?.status, 'unknown'),
+      market_intelligence_ticker: compact(workbenchMarketIntelligenceDossier(snapshot)?.ticker, 'none'),
+      market_intelligence_primary_card_id: compact(workbenchMarketIntelligenceDossier(snapshot)?.primary_card_id, 'none'),
+      market_intelligence_signal_state: compact(workbenchMarketIntelligenceDossier(snapshot)?.primary_signal?.state, 'none'),
+      market_intelligence_signal_score: compact(workbenchMarketIntelligenceDossier(snapshot)?.primary_signal?.score, 'none'),
+      market_intelligence_card_count: Number(workbenchMarketIntelligenceDossier(snapshot)?.metrics?.card_count || 0),
+      market_intelligence_blocked_card_count: Number(workbenchMarketIntelligenceDossier(snapshot)?.metrics?.blocked_card_count || 0),
+      market_intelligence_review_card_count: Number(workbenchMarketIntelligenceDossier(snapshot)?.metrics?.review_card_count || 0),
+      market_intelligence_alert_context_count: Number(workbenchMarketIntelligenceDossier(snapshot)?.metrics?.alert_context_count || 0),
+      market_intelligence_theme_context_count: Number(workbenchMarketIntelligenceDossier(snapshot)?.metrics?.theme_context_count || 0),
+      market_intelligence_ipo_watchlist_count: Number(workbenchMarketIntelligenceDossier(snapshot)?.metrics?.ipo_watchlist_count || 0),
       decision_brief_status: compact(workbenchDecisionBrief(snapshot)?.status, 'unknown'),
       decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none'),
       decision_brief_source_tool: compact(workbenchDecisionBrief(snapshot)?.source_tool, 'market-radar'),
@@ -1286,6 +1320,7 @@ function metric(label, value, caption) {
 function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
+    ${renderWorkbenchMarketIntelligenceDossier(snapshot, 'overview')}
     ${renderWorkbenchOperatorState(snapshot)}
     ${renderWorkbenchExecutionSandbox(snapshot, 'overview')}
     ${renderWorkbenchDecisionBrief(snapshot)}
@@ -1373,6 +1408,80 @@ function platformToolCard(module) {
       </div>
     </article>
   `;
+}
+
+function renderWorkbenchMarketIntelligenceDossier(snapshot, pageKey = 'overview') {
+  const dossier = workbenchMarketIntelligenceDossier(snapshot);
+  const cards = workbenchMarketIntelligenceCardsForPage(pageKey, snapshot);
+  const signal = dossier.primary_signal || {};
+  const market = dossier.market_context || {};
+  const agent = dossier.agent_context || {};
+  const metrics = dossier.metrics || {};
+  if (!cards.length) return '';
+  return `
+    <section
+      class="panel wide workbench-market-intelligence-dossier"
+      data-testid="workbench-market-intelligence-dossier"
+      data-market-intelligence-status="${escapeHtml(dossier.status || 'unknown')}"
+      data-market-intelligence-ticker="${escapeHtml(dossier.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Market Intelligence Dossier</h2>
+          <p>${escapeHtml(marketIntelligenceDossierSummary(dossier))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(dossier.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Signal</span><b>${escapeHtml(compact(signal.state, '-'))}</b></div>
+        <div class="kv"><span>Score</span><b>${escapeHtml(compact(signal.score, '-'))}</b></div>
+        <div class="kv"><span>Primary card</span><b>${escapeHtml(compact(dossier.primary_card_id, '-'))}</b></div>
+        <div class="kv"><span>Next command</span><b>${escapeHtml(compact(agent.next_command, '-'))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Cards</span><b>${escapeHtml(compact(metrics.card_count, '0'))}</b></div>
+        <div class="kv"><span>Blocked</span><b>${escapeHtml(compact(metrics.blocked_card_count, '0'))}</b></div>
+        <div class="kv"><span>Alerts</span><b>${escapeHtml(compact(market.alert_count, '0'))}</b></div>
+        <div class="kv"><span>Themes</span><b>${escapeHtml(compact(market.related_theme_count, '0'))}</b></div>
+      </div>
+      <div class="table-wrap market-intelligence-preview">
+        <table aria-label="Workbench market intelligence dossier">
+          <thead><tr><th>Card</th><th>Module</th><th>Status</th><th>Kind</th><th>Finding</th><th>Evidence</th><th>Source</th><th>Next</th></tr></thead>
+          <tbody>
+            ${cards.map((card) => `
+              <tr
+                data-testid="market-intelligence-card"
+                data-market-intelligence-card-status="${escapeHtml(card.status || 'unknown')}"
+                data-market-intelligence-card-kind="${escapeHtml(card.context_kind || 'unknown')}"
+                data-market-intelligence-card-module="${escapeHtml(card.module || 'unknown')}"
+              >
+                <td data-label="Card">${escapeHtml(compact(card.label, card.id || '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(card.module || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(card.status || '-'))}</td>
+                <td data-label="Kind">${escapeHtml(catalogLabel(card.context_kind || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(card.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(card.evidence, '-'))}</td>
+                <td data-label="Source">${escapeHtml(compact(card.source, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(card.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function marketIntelligenceDossierSummary(dossier) {
+  const metrics = dossier?.metrics || {};
+  const signal = dossier?.primary_signal || {};
+  return [
+    `${compact(dossier?.ticker, 'No ticker')} ${catalogLabel(dossier?.status || 'unknown')}`,
+    `signal ${compact(signal.state, 'none')}`,
+    `${compact(metrics.blocked_card_count, '0')} blocked cards`,
+    `${compact(metrics.alert_context_count, '0')} alert signals`,
+    'market context only',
+  ].join('; ');
 }
 
 function renderWorkbenchOperatorState(snapshot) {
@@ -2950,6 +3059,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
         <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(snapshot.external_calls_made, '0'))}</b></div>
       </div>
     </section>
+    ${renderWorkbenchMarketIntelligenceDossier(snapshot, pageKey)}
     ${renderWorkbenchOperatorState(snapshot)}
     ${renderWorkbenchExecutionSandbox(snapshot, pageKey)}
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}

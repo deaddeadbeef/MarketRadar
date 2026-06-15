@@ -333,3 +333,17 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the playbook makes no provider calls, submits no
   broker order, performs no autonomous execution, and writes no database rows
   from browsing the dossier.
+
+## Current Slice: Market Intelligence Dossier
+
+- Add a supervised market-intelligence dossier that combines the active
+  MarketRadar scout, candidate packet, decision brief, risk envelope,
+  alert/trigger context, theme context, IPO/S-1 watchlist, and agent playbook.
+- Render the dossier in the Tauri Command Center and relevant market-radar,
+  candidate, review, trade-planner, risk, alerts, themes, IPO, and agent pages.
+- Expose dossier status, ticker, primary card, signal state/score, evidence
+  card counts, alert context, theme context, and IPO watchlist counts in
+  automation JSON.
+- Preserve the same boundary: the dossier makes no provider calls, submits no
+  broker order, performs no autonomous execution, and writes no database rows
+  from browsing the dossier.

@@ -1779,6 +1779,132 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert agent_playbook["order_submission_allowed"] is False
     assert agent_playbook["live_trading_enabled"] is False
 
+    market_intelligence = workbench["market_intelligence_dossier"]
+    assert (
+        market_intelligence["schema_version"]
+        == "trading-workbench-market-intelligence-dossier-v1"
+    )
+    assert market_intelligence["status"] == "blocked"
+    assert market_intelligence["source_tool"] == "market-radar"
+    assert market_intelligence["ticker"] == "MSFT"
+    assert market_intelligence["decision_card_id"] == "card-msft-latest"
+    assert (
+        market_intelligence["dossier_id"]
+        == "market-intelligence-msft-card-msft-latest"
+    )
+    assert market_intelligence["operating_mode"] == "supervised_market_context"
+    assert market_intelligence["headline"] == "MSFT: MSFT guidance raised"
+    assert market_intelligence["primary_card_id"] == "decision-brief"
+    assert market_intelligence["primary_next_action"] == (
+        "Resolve decision-readiness context before using the thesis."
+    )
+    assert market_intelligence["primary_signal"] == {
+        "ticker": "MSFT",
+        "subject": "MSFT guidance raised",
+        "score": 88.0,
+        "setup": "breakout",
+        "state": "Warning",
+        "usefulness_status": "monitor_only",
+        "decision_ready": False,
+        "decision_card_id": "card-msft-latest",
+        "recommended_paper_decision": "deferred",
+    }
+    assert market_intelligence["market_context"] == {
+        "alert_count": 2,
+        "trigger_count": 1,
+        "opportunity_action_count": 1,
+        "theme_count": 1,
+        "related_theme_count": 1,
+        "ipo_s1_count": 1,
+        "primary_theme": "ai_infrastructure",
+        "primary_alert_id": "alert-msft-dry-run",
+        "primary_trigger_id": trigger_id,
+    }
+    assert market_intelligence["agent_context"] == {
+        "primary_task_id": "priority-stage-decision-review",
+        "next_page": "review",
+        "next_command": "review",
+        "safety": "zero_call_navigation",
+        "blocked_task_count": 4,
+        "safe_preview_task_count": 3,
+    }
+    assert market_intelligence["readiness_context"] == {
+        "status": "blocked",
+        "blocked_check_count": 7,
+        "disabled_check_count": 2,
+        "paper_record_allowed": False,
+        "broker_handoff_allowed": False,
+    }
+    assert market_intelligence["metrics"] == {
+        "card_count": 8,
+        "ready_card_count": 4,
+        "blocked_card_count": 3,
+        "review_card_count": 1,
+        "disabled_card_count": 0,
+        "alert_context_count": 3,
+        "theme_context_count": 1,
+        "ipo_watchlist_count": 1,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert [row["id"] for row in market_intelligence["cards"]] == [
+        "market-radar-scout",
+        "candidate-evidence",
+        "decision-brief",
+        "risk-envelope",
+        "alert-context",
+        "theme-context",
+        "ipo-watchlist",
+        "agent-playbook",
+    ]
+    assert [row["status"] for row in market_intelligence["cards"]] == [
+        "ready",
+        "ready",
+        "blocked",
+        "blocked",
+        "ready",
+        "ready",
+        "review",
+        "blocked",
+    ]
+    assert [row["context_kind"] for row in market_intelligence["cards"]] == [
+        "scout",
+        "candidate",
+        "decision",
+        "risk",
+        "alert",
+        "theme",
+        "market-calendar",
+        "agent",
+    ]
+    dossier_cards = {row["id"]: row for row in market_intelligence["cards"]}
+    assert dossier_cards["market-radar-scout"]["evidence"] == (
+        "score=88.0; state=Warning; usefulness=monitor_only"
+    )
+    assert dossier_cards["alert-context"]["evidence"] == (
+        "alerts=2; triggers=1; operator_actions=1"
+    )
+    assert dossier_cards["theme-context"]["finding"] == "ai_infrastructure"
+    assert dossier_cards["ipo-watchlist"]["finding"] == "ACME S-1"
+    assert dossier_cards["agent-playbook"]["command"] == "review"
+    assert all(
+        row["external_calls_made"] == 0 for row in market_intelligence["cards"]
+    )
+    assert all(row["db_writes_made"] == 0 for row in market_intelligence["cards"])
+    assert all(
+        row["order_submission_allowed"] is False
+        for row in market_intelligence["cards"]
+    )
+    assert all(
+        row["broker_order_submitted"] is False
+        for row in market_intelligence["cards"]
+    )
+    assert market_intelligence["external_calls_made"] == 0
+    assert market_intelligence["db_writes_made"] == 0
+    assert market_intelligence["broker_order_submitted"] is False
+    assert market_intelligence["order_submission_allowed"] is False
+    assert market_intelligence["live_trading_enabled"] is False
+
     learning_loop = workbench["learning_loop"]
     assert learning_loop["schema_version"] == "trading-workbench-learning-loop-v1"
     assert learning_loop["status"] == "blocked"
