@@ -264,3 +264,16 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the review makes no provider calls, submits no
   broker order, performs no autonomous strategy update, and writes no database
   rows from browsing the dossier.
+
+## Current Slice: Trade Monitor
+
+- Add a read-only trade-monitor snapshot contract that joins active MarketRadar
+  plan, open paper trade, lifecycle/outcome evidence, risk blockers, alerts,
+  trigger rules, and open-order context into one position-watch dossier.
+- Render the monitor in the Tauri Command Center and relevant portfolio, risk,
+  paper-trading, broker, alerts, journal, and agent pages.
+- Expose monitor status, ticker, stage, active paper trade count, blocker count,
+  open order count, trigger id, and exit-update permission in automation JSON.
+- Preserve the same boundary: the monitor makes no provider calls, submits no
+  broker order, performs no autonomous exit/state update, and writes no
+  database rows from browsing the dossier.

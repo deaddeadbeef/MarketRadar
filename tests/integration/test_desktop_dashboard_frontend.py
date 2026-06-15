@@ -613,6 +613,33 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchStrategyReview(snapshot)?.metrics?.blocked_hypothesis_count || 0)",
         "strategy_update_allowed: Boolean("
         "workbenchStrategyReview(snapshot)?.strategy_update_allowed)",
+        "function workbenchTradeMonitor",
+        "function workbenchTradeMonitorForPage",
+        "function renderWorkbenchTradeMonitor",
+        "function tradeMonitorSummary",
+        "${renderWorkbenchTradeMonitor(snapshot, 'overview')}",
+        "${renderWorkbenchTradeMonitor(snapshot, pageKey)}",
+        'data-testid="workbench-trade-monitor"',
+        'data-testid="trade-monitor-watch-item"',
+        "data-trade-monitor-status=\"${escapeHtml(monitor.status || 'unknown')}\"",
+        "data-trade-monitor-item-status=\"${escapeHtml(item.status || 'unknown')}\"",
+        "data-trade-monitor-item-scope=\"${escapeHtml(item.scope || 'unknown')}\"",
+        "trade_monitor_status: compact("
+        "workbenchTradeMonitor(snapshot)?.status, 'unknown')",
+        "trade_monitor_ticker: compact("
+        "workbenchTradeMonitor(snapshot)?.ticker, 'none')",
+        "trade_monitor_stage: compact("
+        "workbenchTradeMonitor(snapshot)?.monitor_stage, 'unlinked')",
+        "trade_monitor_active_trade_count: Number("
+        "workbenchTradeMonitor(snapshot)?.metrics?.active_paper_trade_count || 0)",
+        "trade_monitor_blocker_count: Number("
+        "workbenchTradeMonitor(snapshot)?.metrics?.blocked_watch_item_count || 0)",
+        "trade_monitor_open_order_count: Number("
+        "workbenchTradeMonitor(snapshot)?.metrics?.open_order_count || 0)",
+        "trade_monitor_primary_trigger_id: compact("
+        "workbenchTradeMonitor(snapshot)?.alert_watch?.primary_trigger_id, 'none')",
+        "trade_monitor_exit_update_allowed: Boolean("
+        "workbenchTradeMonitor(snapshot)?.exit_update_allowed)",
         "risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown')",
         "risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none')",
         "risk_sizing_status: compact("
@@ -708,6 +735,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".learning-loop-preview" in styles
     assert ".workbench-strategy-review" in styles
     assert ".strategy-review-preview" in styles
+    assert ".workbench-trade-monitor" in styles
+    assert ".trade-monitor-preview" in styles
     assert ".workbench-risk-envelope" in styles
     assert ".risk-envelope-preview" in styles
     assert ".workbench-trade-runbook" in styles

@@ -349,9 +349,10 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         )
     _insert_broker_portfolio_fixture(engine)
     broker_repo = BrokerRepository(engine)
+    trigger_id = broker_trigger_id("MSFT", "price_above", 105.0, AVAILABLE_AT)
     broker_repo.upsert_trigger(
         BrokerTrigger(
-            id=broker_trigger_id("MSFT", "price_above", 105.0, AVAILABLE_AT),
+            id=trigger_id,
             ticker="MSFT",
             trigger_type="price_above",
             operator="gte",
@@ -1506,6 +1507,132 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert strategy_review["strategy_update_allowed"] is False
     assert strategy_review["autonomous_update_allowed"] is False
     assert strategy_review["live_trading_enabled"] is False
+
+    trade_monitor = workbench["trade_monitor"]
+    assert trade_monitor["schema_version"] == "trading-workbench-trade-monitor-v1"
+    assert trade_monitor["status"] == "blocked"
+    assert trade_monitor["source_tool"] == "market-radar"
+    assert trade_monitor["ticker"] == "MSFT"
+    assert trade_monitor["decision_card_id"] == "card-msft-latest"
+    assert trade_monitor["monitor_id"] == "trade-monitor-msft-card-msft-latest"
+    assert trade_monitor["monitor_stage"] == "outcome_computed"
+    assert (
+        trade_monitor["primary_blocker"]
+        == "action_state_not_manual_review_eligible"
+    )
+    assert trade_monitor["primary_next_action"] == (
+        "Resolve risk and monitor blockers before changing position state."
+    )
+    assert trade_monitor["active_trade"] == {
+        "paper_trade_id": "paper-msft",
+        "paper_state": "open",
+        "decision": "approved",
+        "entry_price": 101.0,
+        "invalidation_price": 94.0,
+        "shares": 20.0,
+        "notional": 2080.0,
+        "max_loss": 200.0,
+        "outcome_id": "value-outcome-msft",
+        "outcome_status": "computed",
+        "no_execution": True,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+    }
+    assert trade_monitor["risk_watch"] == {
+        "risk_envelope_status": "blocked",
+        "blocked_check_count": 3,
+        "disabled_check_count": 2,
+        "paper_block_count": 2,
+        "live_block_count": 3,
+        "estimated_max_loss": 200.0,
+        "broker_data_stale": True,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "blockers": [
+            "action_state_not_manual_review_eligible",
+            "missing_position_sizing:shares",
+            "broker_submission_disabled",
+            "stale_broker_data",
+            "zero_preview_size",
+        ],
+    }
+    assert trade_monitor["alert_watch"] == {
+        "alert_count": 2,
+        "trigger_count": 1,
+        "active_trigger_count": 1,
+        "primary_alert_id": "alert-msft-dry-run",
+        "primary_trigger_id": trigger_id,
+        "primary_trigger_type": "price_above",
+        "latest_trigger_value": 104.5,
+        "next_action": "Open alert evidence or evaluate saved trigger rules.",
+    }
+    assert trade_monitor["exit_plan"] == {
+        "entry_price": 101.0,
+        "invalidation_price": 94.0,
+        "target_price": 116.2,
+        "stop_status": "watch",
+        "target_status": "watch",
+        "exit_update_allowed": False,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "primary_command": "broker",
+        "next_action": (
+            "Review exit context manually; broker submission remains disabled."
+        ),
+    }
+    assert trade_monitor["commands"] == {
+        "paper_trade": "paper",
+        "alerts": "alerts",
+        "journal": "outcome show value-outcome-msft",
+        "risk": "risk-desk",
+        "broker_boundary": "broker",
+    }
+    assert [row["id"] for row in trade_monitor["watch_items"]] == [
+        "active-paper-trade",
+        "invalidation-watch",
+        "alert-trigger-watch",
+        "portfolio-open-orders",
+        "risk-blockers",
+        "exit-boundary",
+    ]
+    assert [row["status"] for row in trade_monitor["watch_items"]] == [
+        "ready",
+        "ready",
+        "ready",
+        "ready",
+        "blocked",
+        "disabled",
+    ]
+    assert trade_monitor["watch_items"][2]["finding"] == trigger_id
+    assert trade_monitor["watch_items"][3]["finding"] == "no_open_orders"
+    assert (
+        trade_monitor["watch_items"][4]["finding"]
+        == "action_state_not_manual_review_eligible"
+    )
+    assert trade_monitor["metrics"] == {
+        "watch_item_count": 6,
+        "ready_watch_item_count": 4,
+        "review_watch_item_count": 0,
+        "blocked_watch_item_count": 1,
+        "disabled_watch_item_count": 1,
+        "active_paper_trade_count": 1,
+        "alert_count": 2,
+        "trigger_count": 1,
+        "active_trigger_count": 1,
+        "open_order_count": 0,
+        "blocked_check_count": 3,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert trade_monitor["external_calls_made"] == 0
+    assert trade_monitor["db_writes_made"] == 0
+    assert trade_monitor["broker_order_submitted"] is False
+    assert trade_monitor["order_submission_allowed"] is False
+    assert trade_monitor["position_state_update_allowed"] is False
+    assert trade_monitor["exit_update_allowed"] is False
+    assert trade_monitor["live_trading_enabled"] is False
 
     trade_runbook = workbench["trade_runbook"]
     assert trade_runbook["schema_version"] == "trading-workbench-runbook-v1"

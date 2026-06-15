@@ -484,6 +484,19 @@ function workbenchStrategyReviewForPage(pageKey, snapshot = state.snapshot || {}
   return pages.has(pageKey) ? hypotheses : [];
 }
 
+function workbenchTradeMonitor(snapshot = state.snapshot || {}) {
+  const monitor = tradingWorkbenchSnapshot(snapshot)?.trade_monitor;
+  return monitor && typeof monitor === 'object' ? monitor : { watch_items: [] };
+}
+
+function workbenchTradeMonitorForPage(pageKey, snapshot = state.snapshot || {}) {
+  const monitor = workbenchTradeMonitor(snapshot);
+  const items = Array.isArray(monitor.watch_items) ? monitor.watch_items : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return items;
+  const pages = new Set(['portfolio', 'risk-desk', 'paper-trading', 'broker', 'alerts', 'journal', 'agent']);
+  return pages.has(pageKey) ? items : [];
+}
+
 function workbenchRiskEnvelope(snapshot = state.snapshot || {}) {
   const envelope = tradingWorkbenchSnapshot(snapshot)?.risk_envelope;
   return envelope && typeof envelope === 'object' ? envelope : { checks: [] };
@@ -1053,6 +1066,14 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       strategy_review_hypothesis_count: Number(workbenchStrategyReview(snapshot)?.metrics?.hypothesis_count || 0),
       strategy_review_blocked_hypothesis_count: Number(workbenchStrategyReview(snapshot)?.metrics?.blocked_hypothesis_count || 0),
       strategy_update_allowed: Boolean(workbenchStrategyReview(snapshot)?.strategy_update_allowed),
+      trade_monitor_status: compact(workbenchTradeMonitor(snapshot)?.status, 'unknown'),
+      trade_monitor_ticker: compact(workbenchTradeMonitor(snapshot)?.ticker, 'none'),
+      trade_monitor_stage: compact(workbenchTradeMonitor(snapshot)?.monitor_stage, 'unlinked'),
+      trade_monitor_active_trade_count: Number(workbenchTradeMonitor(snapshot)?.metrics?.active_paper_trade_count || 0),
+      trade_monitor_blocker_count: Number(workbenchTradeMonitor(snapshot)?.metrics?.blocked_watch_item_count || 0),
+      trade_monitor_open_order_count: Number(workbenchTradeMonitor(snapshot)?.metrics?.open_order_count || 0),
+      trade_monitor_primary_trigger_id: compact(workbenchTradeMonitor(snapshot)?.alert_watch?.primary_trigger_id, 'none'),
+      trade_monitor_exit_update_allowed: Boolean(workbenchTradeMonitor(snapshot)?.exit_update_allowed),
       risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown'),
       risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none'),
       risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
@@ -1169,6 +1190,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
     ${renderWorkbenchLearningLoop(snapshot, 'overview')}
     ${renderWorkbenchStrategyReview(snapshot, 'overview')}
+    ${renderWorkbenchTradeMonitor(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
@@ -2010,6 +2032,83 @@ function strategyReviewSummary(review) {
   ].join('; ');
 }
 
+function renderWorkbenchTradeMonitor(snapshot, pageKey = 'overview') {
+  const monitor = workbenchTradeMonitor(snapshot);
+  const items = workbenchTradeMonitorForPage(pageKey, snapshot);
+  const active = monitor.active_trade || {};
+  const risk = monitor.risk_watch || {};
+  const alerts = monitor.alert_watch || {};
+  const exit = monitor.exit_plan || {};
+  const commands = monitor.commands || {};
+  if (!items.length) return '';
+  return `
+    <section
+      class="panel wide workbench-trade-monitor"
+      data-testid="workbench-trade-monitor"
+      data-trade-monitor-status="${escapeHtml(monitor.status || 'unknown')}"
+      data-trade-monitor-stage="${escapeHtml(monitor.monitor_stage || 'unlinked')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Trade Monitor</h2>
+          <p>${escapeHtml(tradeMonitorSummary(monitor))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(monitor.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Stage</span><b>${escapeHtml(catalogLabel(monitor.monitor_stage || 'unlinked'))}</b></div>
+        <div class="kv"><span>Paper</span><b>${escapeHtml(catalogLabel(active.paper_state || '-'))}</b></div>
+        <div class="kv"><span>Exit</span><b>${escapeHtml(catalogLabel(exit.stop_status || '-'))}</b></div>
+        <div class="kv"><span>Trigger</span><b>${escapeHtml(compact(alerts.primary_trigger_id, 'none'))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Shares</span><b>${escapeHtml(text(active.shares))}</b></div>
+        <div class="kv"><span>Notional</span><b>${escapeHtml(text(active.notional))}</b></div>
+        <div class="kv"><span>Max loss</span><b>${escapeHtml(text(active.max_loss || risk.estimated_max_loss))}</b></div>
+        <div class="kv"><span>Open orders</span><b>${escapeHtml(text(monitor.metrics?.open_order_count || 0))}</b></div>
+      </div>
+      <div class="plan-command-list trade-monitor-commands">
+        <div><span>Paper</span><code>${escapeHtml(compact(commands.paper_trade, 'paper'))}</code></div>
+        <div><span>Alerts</span><code>${escapeHtml(compact(commands.alerts, 'alerts'))}</code></div>
+        <div><span>Journal</span><code>${escapeHtml(compact(commands.journal, 'journal'))}</code></div>
+        <div><span>Broker boundary</span><code>${escapeHtml(compact(commands.broker_boundary, 'broker'))}</code></div>
+      </div>
+      <div class="table-wrap trade-monitor-preview">
+        <table aria-label="Workbench trade monitor">
+          <thead><tr><th>Watch</th><th>Scope</th><th>Status</th><th>Finding</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${items.map((item) => `
+              <tr
+                data-testid="trade-monitor-watch-item"
+                data-trade-monitor-item-status="${escapeHtml(item.status || 'unknown')}"
+                data-trade-monitor-item-scope="${escapeHtml(item.scope || 'unknown')}"
+              >
+                <td data-label="Watch">${escapeHtml(compact(item.label, item.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(item.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(item.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(item.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(item.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(item.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function tradeMonitorSummary(monitor) {
+  const metrics = monitor?.metrics || {};
+  return [
+    `${compact(monitor?.ticker, 'No ticker')} ${catalogLabel(monitor?.status || 'unknown')}`,
+    `${catalogLabel(monitor?.monitor_stage || 'unlinked')} stage`,
+    `${compact(metrics.active_paper_trade_count, '0')} active paper trades`,
+    `${compact(metrics.blocked_watch_item_count, '0')} blocked watch items`,
+    'exit updates disabled',
+  ].join('; ');
+}
+
 function renderWorkbenchRiskEnvelope(snapshot, pageKey = 'overview') {
   const envelope = workbenchRiskEnvelope(snapshot);
   const checks = workbenchRiskEnvelopeForPage(pageKey, snapshot);
@@ -2439,6 +2538,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
     ${renderWorkbenchLearningLoop(snapshot, pageKey)}
     ${renderWorkbenchStrategyReview(snapshot, pageKey)}
+    ${renderWorkbenchTradeMonitor(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
