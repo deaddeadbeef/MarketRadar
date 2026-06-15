@@ -471,6 +471,19 @@ function workbenchLearningLoopForPage(pageKey, snapshot = state.snapshot || {}) 
   return pages.has(pageKey) ? cards : [];
 }
 
+function workbenchStrategyReview(snapshot = state.snapshot || {}) {
+  const review = tradingWorkbenchSnapshot(snapshot)?.strategy_review;
+  return review && typeof review === 'object' ? review : { hypotheses: [] };
+}
+
+function workbenchStrategyReviewForPage(pageKey, snapshot = state.snapshot || {}) {
+  const review = workbenchStrategyReview(snapshot);
+  const hypotheses = Array.isArray(review.hypotheses) ? review.hypotheses : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return hypotheses;
+  const pages = new Set(['trade-planner', 'backtest', 'validation', 'journal', 'agent']);
+  return pages.has(pageKey) ? hypotheses : [];
+}
+
 function workbenchRiskEnvelope(snapshot = state.snapshot || {}) {
   const envelope = tradingWorkbenchSnapshot(snapshot)?.risk_envelope;
   return envelope && typeof envelope === 'object' ? envelope : { checks: [] };
@@ -1034,6 +1047,12 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       learning_loop_validation_result_id: compact(workbenchLearningLoop(snapshot)?.validation_state?.validation_result_id, 'none'),
       learning_loop_outcome_id: compact(workbenchLearningLoop(snapshot)?.journal_state?.outcome_id, 'none'),
       learning_loop_blocked_card_count: Number(workbenchLearningLoop(snapshot)?.metrics?.blocked_card_count || 0),
+      strategy_review_status: compact(workbenchStrategyReview(snapshot)?.status, 'unknown'),
+      strategy_review_ticker: compact(workbenchStrategyReview(snapshot)?.ticker, 'none'),
+      strategy_review_stage: compact(workbenchStrategyReview(snapshot)?.strategy_stage, 'unlinked'),
+      strategy_review_hypothesis_count: Number(workbenchStrategyReview(snapshot)?.metrics?.hypothesis_count || 0),
+      strategy_review_blocked_hypothesis_count: Number(workbenchStrategyReview(snapshot)?.metrics?.blocked_hypothesis_count || 0),
+      strategy_update_allowed: Boolean(workbenchStrategyReview(snapshot)?.strategy_update_allowed),
       risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown'),
       risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none'),
       risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
@@ -1149,6 +1168,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
     ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
     ${renderWorkbenchLearningLoop(snapshot, 'overview')}
+    ${renderWorkbenchStrategyReview(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
@@ -1915,6 +1935,81 @@ function learningLoopSummary(loop) {
   ].join('; ');
 }
 
+function renderWorkbenchStrategyReview(snapshot, pageKey = 'overview') {
+  const review = workbenchStrategyReview(snapshot);
+  const hypotheses = workbenchStrategyReviewForPage(pageKey, snapshot);
+  const context = review.strategy_context || {};
+  const evidence = review.evidence || {};
+  const recommendation = review.recommendation || {};
+  const commands = review.commands || {};
+  if (!hypotheses.length) return '';
+  return `
+    <section
+      class="panel wide workbench-strategy-review"
+      data-testid="workbench-strategy-review"
+      data-strategy-review-status="${escapeHtml(review.status || 'unknown')}"
+      data-strategy-review-stage="${escapeHtml(review.strategy_stage || 'unlinked')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Strategy Review</h2>
+          <p>${escapeHtml(strategyReviewSummary(review))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(review.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Stage</span><b>${escapeHtml(catalogLabel(review.strategy_stage || 'unlinked'))}</b></div>
+        <div class="kv"><span>Decision</span><b>${escapeHtml(catalogLabel(recommendation.decision || '-'))}</b></div>
+        <div class="kv"><span>Update</span><b>${escapeHtml(recommendation.strategy_update_allowed ? 'allowed' : 'disabled')}</b></div>
+        <div class="kv"><span>Validation</span><b>${escapeHtml(compact(evidence.final_score, '-'))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Reward/risk</span><b>${escapeHtml(compact(context.reward_risk, '-'))}</b></div>
+        <div class="kv"><span>Max loss</span><b>${escapeHtml(text(context.estimated_max_loss))}</b></div>
+        <div class="kv"><span>20D return</span><b>${escapeHtml(text(evidence.return_20d))}</b></div>
+        <div class="kv"><span>SPY relative</span><b>${escapeHtml(text(evidence.spy_relative_return_20d))}</b></div>
+      </div>
+      <div class="plan-command-list strategy-review-commands">
+        <div><span>Review</span><code>${escapeHtml(compact(commands.review, 'agent'))}</code></div>
+        <div><span>Validation</span><code>${escapeHtml(compact(commands.validation, 'validation'))}</code></div>
+        <div><span>Journal</span><code>${escapeHtml(compact(commands.journal, 'journal'))}</code></div>
+        <div><span>Update boundary</span><code>${escapeHtml(compact(commands.strategy_update, 'agent execute'))}</code></div>
+      </div>
+      <div class="table-wrap strategy-review-preview">
+        <table aria-label="Workbench strategy review">
+          <thead><tr><th>Hypothesis</th><th>Driver</th><th>Status</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${hypotheses.map((row) => `
+              <tr
+                data-testid="strategy-review-hypothesis"
+                data-strategy-hypothesis-status="${escapeHtml(row.status || 'unknown')}"
+                data-strategy-hypothesis-driver="${escapeHtml(row.driver || 'unknown')}"
+              >
+                <td data-label="Hypothesis">${escapeHtml(compact(row.label, row.id || '-'))}</td>
+                <td data-label="Driver">${escapeHtml(catalogLabel(row.driver || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(row.status || '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(row.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function strategyReviewSummary(review) {
+  const metrics = review?.metrics || {};
+  return [
+    `${compact(review?.ticker, 'No ticker')} ${catalogLabel(review?.status || 'unknown')}`,
+    `${catalogLabel(review?.strategy_stage || 'unlinked')} stage`,
+    `${compact(metrics.hypothesis_count, '0')} hypotheses`,
+    `${compact(metrics.blocked_hypothesis_count, '0')} blocked`,
+    'autonomous updates disabled',
+  ].join('; ');
+}
+
 function renderWorkbenchRiskEnvelope(snapshot, pageKey = 'overview') {
   const envelope = workbenchRiskEnvelope(snapshot);
   const checks = workbenchRiskEnvelopeForPage(pageKey, snapshot);
@@ -2343,6 +2438,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
     ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
     ${renderWorkbenchLearningLoop(snapshot, pageKey)}
+    ${renderWorkbenchStrategyReview(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}

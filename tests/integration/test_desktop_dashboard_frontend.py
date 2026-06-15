@@ -590,6 +590,29 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchLearningLoop(snapshot)?.journal_state?.outcome_id, 'none')",
         "learning_loop_blocked_card_count: Number("
         "workbenchLearningLoop(snapshot)?.metrics?.blocked_card_count || 0)",
+        "function workbenchStrategyReview",
+        "function workbenchStrategyReviewForPage",
+        "function renderWorkbenchStrategyReview",
+        "function strategyReviewSummary",
+        "${renderWorkbenchStrategyReview(snapshot, 'overview')}",
+        "${renderWorkbenchStrategyReview(snapshot, pageKey)}",
+        'data-testid="workbench-strategy-review"',
+        'data-testid="strategy-review-hypothesis"',
+        "data-strategy-review-status=\"${escapeHtml(review.status || 'unknown')}\"",
+        "data-strategy-hypothesis-status=\"${escapeHtml(row.status || 'unknown')}\"",
+        "data-strategy-hypothesis-driver=\"${escapeHtml(row.driver || 'unknown')}\"",
+        "strategy_review_status: compact("
+        "workbenchStrategyReview(snapshot)?.status, 'unknown')",
+        "strategy_review_ticker: compact("
+        "workbenchStrategyReview(snapshot)?.ticker, 'none')",
+        "strategy_review_stage: compact("
+        "workbenchStrategyReview(snapshot)?.strategy_stage, 'unlinked')",
+        "strategy_review_hypothesis_count: Number("
+        "workbenchStrategyReview(snapshot)?.metrics?.hypothesis_count || 0)",
+        "strategy_review_blocked_hypothesis_count: Number("
+        "workbenchStrategyReview(snapshot)?.metrics?.blocked_hypothesis_count || 0)",
+        "strategy_update_allowed: Boolean("
+        "workbenchStrategyReview(snapshot)?.strategy_update_allowed)",
         "risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown')",
         "risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none')",
         "risk_sizing_status: compact("
@@ -683,6 +706,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".paper-trade-preview-checks" in styles
     assert ".workbench-learning-loop" in styles
     assert ".learning-loop-preview" in styles
+    assert ".workbench-strategy-review" in styles
+    assert ".strategy-review-preview" in styles
     assert ".workbench-risk-envelope" in styles
     assert ".risk-envelope-preview" in styles
     assert ".workbench-trade-runbook" in styles

@@ -1414,6 +1414,99 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert learning_loop["order_submission_allowed"] is False
     assert learning_loop["live_trading_enabled"] is False
 
+    strategy_review = workbench["strategy_review"]
+    assert strategy_review["schema_version"] == "trading-workbench-strategy-review-v1"
+    assert strategy_review["status"] == "blocked"
+    assert strategy_review["source_tool"] == "market-radar"
+    assert strategy_review["ticker"] == "MSFT"
+    assert strategy_review["decision_card_id"] == "card-msft-latest"
+    assert strategy_review["review_id"] == "strategy-review-msft-card-msft-latest"
+    assert strategy_review["strategy_stage"] == "outcome_computed"
+    assert (
+        strategy_review["primary_blocker"]
+        == "action_state_not_manual_review_eligible"
+    )
+    assert strategy_review["primary_next_action"] == (
+        "Resolve risk and paper blockers before using this as a rule-change input."
+    )
+    assert strategy_review["strategy_context"] == {
+        "plan_status": "blocked",
+        "recommended_paper_decision": "deferred",
+        "paper_decision": "deferred",
+        "entry_price": 100.0,
+        "invalidation_price": 94.0,
+        "target_price": 116.2,
+        "reward_risk": 2.7,
+        "estimated_max_loss": 200.0,
+    }
+    assert strategy_review["evidence"] == {
+        "validation_result_id": "validation-result-msft",
+        "validation_state": "Warning",
+        "final_score": 88.0,
+        "positive_labels": ["target_20d_25"],
+        "leakage_flags": [],
+        "ledger_entry_id": "value-ledger-msft",
+        "outcome_id": "value-outcome-msft",
+        "outcome_status": "computed",
+        "return_20d": 0.08,
+        "spy_relative_return_20d": 0.05,
+        "invalidation_touched": False,
+    }
+    assert strategy_review["recommendation"] == {
+        "decision": "manual_review_required",
+        "strategy_update_allowed": False,
+        "autonomous_update_allowed": False,
+        "requires_human_approval": True,
+        "agent_execute_boundary": "agent execute",
+        "next_action": "Review strategy hypotheses; do not auto-change rules.",
+    }
+    assert strategy_review["commands"] == {
+        "review": "agent",
+        "validation": "validation",
+        "journal": "outcome show value-outcome-msft",
+        "strategy_update": "agent execute",
+    }
+    assert [row["id"] for row in strategy_review["hypotheses"]] == [
+        "thesis-validation",
+        "outcome-attribution",
+        "risk-calibration",
+        "strategy-update-boundary",
+    ]
+    assert [row["status"] for row in strategy_review["hypotheses"]] == [
+        "ready",
+        "ready",
+        "blocked",
+        "disabled",
+    ]
+    assert strategy_review["hypotheses"][0]["evidence"] == (
+        "score=88.0; labels=1; leakage=0"
+    )
+    assert strategy_review["hypotheses"][1]["evidence"] == (
+        "return_20d=0.08; spy_relative=0.05"
+    )
+    assert strategy_review["hypotheses"][2]["evidence"] == (
+        "paper_blocks=2; max_loss=200.0; reward_risk=2.7"
+    )
+    assert strategy_review["metrics"] == {
+        "hypothesis_count": 4,
+        "ready_hypothesis_count": 2,
+        "review_hypothesis_count": 0,
+        "blocked_hypothesis_count": 1,
+        "disabled_hypothesis_count": 1,
+        "positive_label_count": 1,
+        "leakage_flag_count": 0,
+        "paper_block_count": 2,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert strategy_review["external_calls_made"] == 0
+    assert strategy_review["db_writes_made"] == 0
+    assert strategy_review["broker_order_submitted"] is False
+    assert strategy_review["order_submission_allowed"] is False
+    assert strategy_review["strategy_update_allowed"] is False
+    assert strategy_review["autonomous_update_allowed"] is False
+    assert strategy_review["live_trading_enabled"] is False
+
     trade_runbook = workbench["trade_runbook"]
     assert trade_runbook["schema_version"] == "trading-workbench-runbook-v1"
     assert trade_runbook["status"] == "blocked"
