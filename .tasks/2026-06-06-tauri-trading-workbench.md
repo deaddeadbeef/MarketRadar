@@ -57,3 +57,11 @@ engine, but it is not the whole product frame.
 - Render row-level preview buttons for proposed human actions.
 - Route preview buttons through the existing dashboard backend command path.
 - Keep `agent execute` outside clickable browsing controls.
+
+## Current Slice: Portfolio And Risk Actions
+
+- Add safe portfolio/risk review command metadata to Portfolio and Risk Desk rows.
+- Render row-level review/preview buttons for read-only portfolio context and
+  paper-risk approval gates.
+- Route safe buttons through existing page/backend command paths.
+- Keep live submission and broker execution as disabled boundary text.

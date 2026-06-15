@@ -535,6 +535,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "portfolio_review_command": "portfolio",
+            "risk_review_command": "risk-desk",
+            "primary_command": "risk-desk",
             "next_action": (
                 "Use as read-only portfolio context; order submission is disabled."
             ),
@@ -553,6 +556,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "portfolio_review_command": "portfolio",
+            "risk_review_command": "risk-desk",
+            "primary_command": "portfolio",
             "next_action": (
                 "Use balance context for sizing only; broker submission is disabled."
             ),
@@ -570,6 +576,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "portfolio_review_command": "portfolio",
+            "risk_review_command": "risk-desk",
+            "primary_command": "risk-desk",
             "next_action": "Review concentration before sizing any new plan.",
         },
         {
@@ -583,6 +592,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "portfolio_review_command": "portfolio",
+            "risk_review_command": "risk-desk",
+            "primary_command": "risk-desk",
             "next_action": (
                 "Compare against single-name limits before paper review."
             ),
@@ -603,6 +615,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "portfolio_review_command": "portfolio",
+            "broker_review_command": "broker",
+            "primary_command": "broker",
             "next_action": "No open broker orders in the read-only snapshot.",
         }
     ]
@@ -1110,6 +1125,9 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,
+        "risk_review_command": "risk-desk",
+        "paper_preview_command": "paper-decision preview",
+        "primary_command": "paper-decision preview",
         "next_action": "Resolve paper blocks before supervised paper review.",
     }
     assert risk_desk["risk_approval_rows"][1]["status"] == "disabled"
@@ -1117,9 +1135,20 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert "broker_submission_disabled" in risk_desk["risk_approval_rows"][1][
         "blocks"
     ]
+    assert risk_desk["risk_approval_rows"][1]["risk_review_command"] == "risk-desk"
+    assert (
+        risk_desk["risk_approval_rows"][1]["live_boundary_command"]
+        == "order-ticket preview"
+    )
+    assert risk_desk["risk_approval_rows"][1]["primary_command"] == "risk-desk"
     assert risk_desk["risk_approval_rows"][2]["status"] == "disabled"
     assert risk_desk["risk_approval_rows"][2]["external_calls_made"] == 0
     assert risk_desk["risk_approval_rows"][2]["db_writes_made"] == 0
+    assert risk_desk["risk_approval_rows"][2]["risk_review_command"] == "risk-desk"
+    assert (
+        risk_desk["risk_approval_rows"][2]["live_boundary_command"]
+        == "order-ticket preview"
+    )
     assert all(
         row["broker_order_submitted"] is False
         for row in risk_desk["risk_approval_rows"]
