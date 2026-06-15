@@ -96,6 +96,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchPaperIntents",
         "function renderWorkbenchOrderIntents",
         "function renderWorkbenchRiskApprovals",
+        "function renderWorkbenchRiskActionControls",
         "function renderWorkbenchAgentCapabilities",
         "function renderWorkbenchAgentContributions",
         "function renderWorkbenchAgentActions",
@@ -130,6 +131,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function renderWorkbenchPortfolioBalances",
         "function renderWorkbenchPortfolioExposure",
         "function renderWorkbenchPortfolioOpenOrders",
+        "function renderWorkbenchPortfolioActionControls",
+        "function reviewPageButton",
         "function renderWorkbenchFeatureRows",
         "broker: () => renderPlatformModulePage('broker', snapshot)",
         "run: () => renderPlatformModulePage('run', snapshot)",
@@ -159,12 +162,15 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-useful-label-row"',
         'data-testid="workbench-portfolio-positions"',
         'data-testid="workbench-portfolio-position-row"',
+        "workbench-portfolio-review-page",
+        "workbench-portfolio-risk-page",
         'data-testid="workbench-portfolio-balances"',
         'data-testid="workbench-portfolio-balance-row"',
         'data-testid="workbench-portfolio-exposure"',
         'data-testid="workbench-portfolio-exposure-row"',
         'data-testid="workbench-portfolio-open-orders"',
         'data-testid="workbench-portfolio-open-order-row"',
+        "workbench-portfolio-broker-page",
         'data-testid="workbench-feature-inventory"',
         'data-testid="workbench-feature-row"',
         'data-testid="workbench-active-plan"',
@@ -190,6 +196,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         'data-testid="workbench-order-intent-row"',
         'data-testid="workbench-risk-approvals"',
         'data-testid="workbench-risk-approval-row"',
+        'data-testid="workbench-risk-paper-preview"',
+        "workbench-risk-review-page",
         'data-testid="workbench-agent-capabilities"',
         'data-testid="workbench-agent-capability-row"',
         'data-testid="workbench-agent-contributions"',
@@ -300,6 +308,16 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "data-agent-command",
         "agent_preview_command",
         "agent_execute_boundary_command",
+        "function bindWorkbenchReviewControls",
+        "function runWorkbenchReviewPage",
+        "function runWorkbenchRiskCommand",
+        "data-review-page",
+        "data-risk-command",
+        "portfolio_review_command",
+        "risk_review_command",
+        "broker_review_command",
+        "paper_preview_command",
+        "live_boundary_command",
         "Record Paper Decision",
         "Preview Ticket",
         "Save Ticket",
@@ -400,6 +418,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".paper-intent-preview" in styles
     assert ".order-intent-preview" in styles
     assert ".risk-approval-preview" in styles
+    assert ".risk-action-row" in styles
+    assert ".portfolio-action-row" in styles
+    assert ".review-action-button" in styles
     assert ".paper-trade-preview" in styles
     assert ".order-ticket-preview" in styles
     assert ".execution-audit-preview" in styles

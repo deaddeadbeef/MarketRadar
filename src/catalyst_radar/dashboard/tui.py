@@ -2360,6 +2360,9 @@ def _workbench_risk_approval_rows(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "risk_review_command": "risk-desk",
+            "paper_preview_command": "paper-decision preview",
+            "primary_command": "paper-decision preview",
             "next_action": "Resolve paper blocks before supervised paper review.",
         },
         {
@@ -2374,6 +2377,9 @@ def _workbench_risk_approval_rows(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "risk_review_command": "risk-desk",
+            "live_boundary_command": "order-ticket preview",
+            "primary_command": "risk-desk",
             "next_action": risk.get("live_submission_reason")
             or "Live submission remains disabled by the platform boundary.",
         },
@@ -2393,6 +2399,9 @@ def _workbench_risk_approval_rows(
             "db_writes_made": controls.get("db_writes_made", 0),
             "broker_order_submitted": bool(controls.get("broker_order_submitted")),
             "order_submission_allowed": bool(controls.get("order_submission_allowed")),
+            "risk_review_command": "risk-desk",
+            "live_boundary_command": "order-ticket preview",
+            "primary_command": "risk-desk",
             "next_action": (
                 "Execution controls enforce no-execution and read-only broker mode."
             ),
@@ -2987,6 +2996,9 @@ def _workbench_portfolio_position_row(
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,
+        "portfolio_review_command": "portfolio",
+        "risk_review_command": "risk-desk",
+        "primary_command": "risk-desk",
         "next_action": "Use as read-only portfolio context; order submission is disabled.",
     }
 
@@ -3004,6 +3016,9 @@ def _workbench_portfolio_balance_row(row: Mapping[str, object]) -> dict[str, obj
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,
+        "portfolio_review_command": "portfolio",
+        "risk_review_command": "risk-desk",
+        "primary_command": "portfolio",
         "next_action": "Use balance context for sizing only; broker submission is disabled.",
     }
 
@@ -3035,6 +3050,9 @@ def _workbench_portfolio_exposure_rows(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "portfolio_review_command": "portfolio",
+            "risk_review_command": "risk-desk",
+            "primary_command": "risk-desk",
             "next_action": "Review concentration before sizing any new plan.",
         }
     ]
@@ -3050,6 +3068,9 @@ def _workbench_portfolio_exposure_rows(
             "db_writes_made": 0,
             "broker_order_submitted": False,
             "order_submission_allowed": False,
+            "portfolio_review_command": "portfolio",
+            "risk_review_command": "risk-desk",
+            "primary_command": "risk-desk",
             "next_action": "Compare against single-name limits before paper review.",
         }
         for ticker, value in sorted(single_name.items())
@@ -3076,6 +3097,9 @@ def _workbench_portfolio_open_order_rows(
                 "db_writes_made": 0,
                 "broker_order_submitted": False,
                 "order_submission_allowed": False,
+                "portfolio_review_command": "portfolio",
+                "broker_review_command": "broker",
+                "primary_command": "broker",
                 "next_action": "No open broker orders in the read-only snapshot.",
             }
         ]
@@ -3099,6 +3123,9 @@ def _workbench_portfolio_open_order_row(
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,
+        "portfolio_review_command": "portfolio",
+        "broker_review_command": "broker",
+        "primary_command": "broker",
         "next_action": "Read-only open-order context; no broker order is submitted.",
     }
 

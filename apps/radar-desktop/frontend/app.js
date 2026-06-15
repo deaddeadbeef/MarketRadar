@@ -628,6 +628,7 @@ function renderSnapshot() {
   bindWorkbenchTicketControls();
   bindWorkbenchLifecycleControls();
   bindWorkbenchAgentControls();
+  bindWorkbenchReviewControls();
   bindQueueRows();
 }
 
@@ -1281,7 +1282,7 @@ function renderWorkbenchRiskApprovals(rows) {
   return `
     <div class="table-wrap risk-approval-preview" data-testid="workbench-risk-approvals">
       <table aria-label="Risk desk approval gates">
-        <thead><tr><th>Gate</th><th>Status</th><th>Approved</th><th>Blocks</th><th>Max Loss</th><th>Manual</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <thead><tr><th>Gate</th><th>Status</th><th>Approved</th><th>Blocks</th><th>Max Loss</th><th>Manual</th><th>Command</th><th>Broker Order</th><th>Next</th></tr></thead>
         <tbody>
           ${rows.slice(0, 8).map((row) => `
             <tr data-testid="workbench-risk-approval-row">
@@ -1291,6 +1292,7 @@ function renderWorkbenchRiskApprovals(rows) {
               <td data-label="Blocks">${escapeHtml(compact(row.block_count, '0'))}</td>
               <td data-label="Max Loss">${escapeHtml(compact(row.estimated_max_loss, '-'))}</td>
               <td data-label="Manual">${escapeHtml(row.requires_manual_approval ? 'required' : 'not required')}</td>
+              <td data-label="Command">${renderWorkbenchRiskActionControls(row)}</td>
               <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
@@ -1299,6 +1301,33 @@ function renderWorkbenchRiskApprovals(rows) {
       </table>
     </div>
   `;
+}
+
+function renderWorkbenchRiskActionControls(row) {
+  const previewCommand = compact(row?.paper_preview_command, '');
+  const reviewCommand = compact(row?.risk_review_command, '');
+  const boundaryCommand = compact(row?.live_boundary_command, '');
+  const buttons = [];
+  if (previewCommand && !previewCommand.toLowerCase().split(/\s+/).includes('execute')) {
+    buttons.push(`
+      <button
+        class="review-action-button"
+        type="button"
+        data-testid="workbench-risk-paper-preview"
+        data-risk-command="${escapeHtml(previewCommand)}"
+        title="${escapeHtml(previewCommand)}"
+      >Preview Paper</button>
+    `);
+  }
+  if (reviewCommand) {
+    buttons.push(reviewPageButton(reviewCommand, 'Risk', 'workbench-risk-review-page'));
+  }
+  const boundary = boundaryCommand
+    ? `<code title="${escapeHtml(boundaryCommand)}">${escapeHtml(boundaryCommand)}</code>`
+    : '';
+  return buttons.length || boundary
+    ? `<div class="risk-action-row">${buttons.join('')}${boundary}</div>`
+    : `<code>${escapeHtml(compact(row?.primary_command, 'risk-desk'))}</code>`;
 }
 
 function renderWorkbenchAgentCapabilities(capabilities) {
@@ -2073,7 +2102,7 @@ function renderWorkbenchPortfolioPositions(positions) {
   return `
     <div class="table-wrap portfolio-position-preview" data-testid="workbench-portfolio-positions">
       <table aria-label="Portfolio positions">
-        <thead><tr><th>Ticker</th><th>Qty</th><th>Average</th><th>Market Value</th><th>Unrealized P/L</th><th>Exposure</th><th>Theme</th></tr></thead>
+        <thead><tr><th>Ticker</th><th>Qty</th><th>Average</th><th>Market Value</th><th>Unrealized P/L</th><th>Exposure</th><th>Theme</th><th>Actions</th></tr></thead>
         <tbody>
           ${positions.slice(0, 8).map((position) => `
             <tr data-testid="workbench-portfolio-position-row">
@@ -2084,6 +2113,7 @@ function renderWorkbenchPortfolioPositions(positions) {
               <td data-label="Unrealized P/L">${escapeHtml(compact(position.unrealized_pnl, '-'))}</td>
               <td data-label="Exposure">${escapeHtml(compact(position.exposure_pct, '-'))}</td>
               <td data-label="Theme">${escapeHtml(catalogLabel(position.theme || 'broker_synced'))}</td>
+              <td data-label="Actions">${renderWorkbenchPortfolioActionControls(position)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -2097,7 +2127,7 @@ function renderWorkbenchPortfolioBalances(balances) {
   return `
     <div class="table-wrap portfolio-balance-preview" data-testid="workbench-portfolio-balances">
       <table aria-label="Portfolio account balances">
-        <thead><tr><th>Account</th><th>As Of</th><th>Cash</th><th>Buying Power</th><th>Equity</th><th>Liquidation</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <thead><tr><th>Account</th><th>As Of</th><th>Cash</th><th>Buying Power</th><th>Equity</th><th>Liquidation</th><th>Actions</th><th>Broker Order</th><th>Next</th></tr></thead>
         <tbody>
           ${balances.slice(0, 8).map((balance) => `
             <tr data-testid="workbench-portfolio-balance-row">
@@ -2107,6 +2137,7 @@ function renderWorkbenchPortfolioBalances(balances) {
               <td data-label="Buying Power">${escapeHtml(compact(balance.buying_power, '0'))}</td>
               <td data-label="Equity">${escapeHtml(compact(balance.equity, '0'))}</td>
               <td data-label="Liquidation">${escapeHtml(compact(balance.liquidation_value, '0'))}</td>
+              <td data-label="Actions">${renderWorkbenchPortfolioActionControls(balance)}</td>
               <td data-label="Broker Order">${escapeHtml(balance.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(balance.next_action, '-'))}</td>
             </tr>
@@ -2122,7 +2153,7 @@ function renderWorkbenchPortfolioExposure(rows) {
   return `
     <div class="table-wrap portfolio-exposure-preview" data-testid="workbench-portfolio-exposure">
       <table aria-label="Portfolio exposure summary">
-        <thead><tr><th>Scope</th><th>Metric</th><th>Value</th><th>Status</th><th>Snapshot</th><th>Stale</th><th>Provider Calls</th><th>Next</th></tr></thead>
+        <thead><tr><th>Scope</th><th>Metric</th><th>Value</th><th>Status</th><th>Snapshot</th><th>Stale</th><th>Actions</th><th>Provider Calls</th><th>Next</th></tr></thead>
         <tbody>
           ${rows.slice(0, 10).map((row) => `
             <tr data-testid="workbench-portfolio-exposure-row">
@@ -2132,6 +2163,7 @@ function renderWorkbenchPortfolioExposure(rows) {
               <td data-label="Status">${escapeHtml(catalogLabel(row.status || 'unknown'))}</td>
               <td data-label="Snapshot">${escapeHtml(compact(row.snapshot_as_of, '-'))}</td>
               <td data-label="Stale">${escapeHtml(row.broker_data_stale ? 'yes' : 'no')}</td>
+              <td data-label="Actions">${renderWorkbenchPortfolioActionControls(row)}</td>
               <td data-label="Provider Calls">${escapeHtml(compact(row.external_calls_made, '0'))}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
@@ -2147,7 +2179,7 @@ function renderWorkbenchPortfolioOpenOrders(rows) {
   return `
     <div class="table-wrap portfolio-open-order-preview" data-testid="workbench-portfolio-open-orders">
       <table aria-label="Portfolio open order boundary">
-        <thead><tr><th>Ticker</th><th>Side</th><th>Type</th><th>Qty</th><th>Limit</th><th>Status</th><th>Broker Order</th><th>Next</th></tr></thead>
+        <thead><tr><th>Ticker</th><th>Side</th><th>Type</th><th>Qty</th><th>Limit</th><th>Status</th><th>Actions</th><th>Broker Order</th><th>Next</th></tr></thead>
         <tbody>
           ${rows.slice(0, 8).map((row) => `
             <tr data-testid="workbench-portfolio-open-order-row">
@@ -2157,6 +2189,7 @@ function renderWorkbenchPortfolioOpenOrders(rows) {
               <td data-label="Qty">${escapeHtml(compact(row.quantity, '0'))}</td>
               <td data-label="Limit">${escapeHtml(compact(row.limit_price, '-'))}</td>
               <td data-label="Status">${escapeHtml(catalogLabel(row.status || 'none'))}</td>
+              <td data-label="Actions">${renderWorkbenchPortfolioActionControls(row)}</td>
               <td data-label="Broker Order">${escapeHtml(row.broker_order_submitted ? 'submitted' : 'not submitted')}</td>
               <td data-label="Next">${escapeHtml(compact(row.next_action, '-'))}</td>
             </tr>
@@ -2164,6 +2197,31 @@ function renderWorkbenchPortfolioOpenOrders(rows) {
         </tbody>
       </table>
     </div>
+  `;
+}
+
+function renderWorkbenchPortfolioActionControls(row) {
+  const buttons = [
+    reviewPageButton(row?.portfolio_review_command, 'Portfolio', 'workbench-portfolio-review-page'),
+    reviewPageButton(row?.risk_review_command, 'Risk', 'workbench-portfolio-risk-page'),
+    reviewPageButton(row?.broker_review_command, 'Broker', 'workbench-portfolio-broker-page'),
+  ].filter(Boolean);
+  return buttons.length
+    ? `<div class="portfolio-action-row">${buttons.join('')}</div>`
+    : `<code>${escapeHtml(compact(row?.primary_command, 'portfolio'))}</code>`;
+}
+
+function reviewPageButton(page, label, testId) {
+  const resolved = compact(page, '');
+  if (!resolved) return '';
+  return `
+    <button
+      class="review-action-button"
+      type="button"
+      data-testid="${escapeHtml(testId)}"
+      data-review-page="${escapeHtml(resolved)}"
+      title="${escapeHtml(resolved)}"
+    >${escapeHtml(label)}</button>
   `;
 }
 
@@ -2270,6 +2328,30 @@ function bindWorkbenchAgentControls() {
 async function runWorkbenchAgentCommand(command) {
   const resolved = compact(command, '');
   if (!resolved) return;
+  state.lastCommand = resolved;
+  await handleBackendDashboardCommand(resolved);
+}
+
+function bindWorkbenchReviewControls() {
+  document.querySelectorAll('[data-review-page]').forEach((button) => {
+    button.addEventListener('click', () => runWorkbenchReviewPage(button.dataset.reviewPage));
+  });
+  document.querySelectorAll('[data-risk-command]').forEach((button) => {
+    button.addEventListener('click', () => runWorkbenchRiskCommand(button.dataset.riskCommand));
+  });
+}
+
+async function runWorkbenchReviewPage(page) {
+  const resolved = compact(page, '');
+  if (!resolved) return;
+  state.lastCommand = resolved;
+  setCommandStatus(`Opened ${pageLabelFor(resolved)}.`);
+  await setPage(resolved);
+}
+
+async function runWorkbenchRiskCommand(command) {
+  const resolved = compact(command, '');
+  if (!resolved || resolved.toLowerCase().split(/\s+/).includes('execute')) return;
   state.lastCommand = resolved;
   await handleBackendDashboardCommand(resolved);
 }

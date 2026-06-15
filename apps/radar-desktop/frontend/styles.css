@@ -737,6 +737,26 @@ tr[data-testid="queue-row"]:focus-visible td {
   min-width: 920px;
 }
 
+.risk-action-row,
+.portfolio-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.review-action-button {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-action-row code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .order-ticket-preview {
   margin-top: 12px;
 }
