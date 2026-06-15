@@ -224,3 +224,15 @@ engine, but it is not the whole product frame.
   automation JSON for agentic risk review.
 - Preserve the same boundary: no provider calls, no broker order submission,
   no shell execution, and no database writes from browsing the preview.
+
+## Current Slice: Paper Trade Preview
+
+- Add a read-only paper-trade-preview snapshot contract that turns the active
+  agentic paper intent, risk gate, confirmed/suggested size, and paper commands
+  into one supervised preview dossier.
+- Render the preview in the Tauri Command Center and relevant planning, risk,
+  paper, and broker pages between ticket drafting and risk/runbook controls.
+- Expose preview status, ticker, decision, suggested quantity, and blocker count
+  in automation JSON for agentic desktop review.
+- Preserve the same boundary: preview makes no provider calls, writes no rows,
+  submits no broker order, and keeps the record command behind manual approval.
