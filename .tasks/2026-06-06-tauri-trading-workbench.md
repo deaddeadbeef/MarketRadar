@@ -150,3 +150,16 @@ engine, but it is not the whole product frame.
   max-loss context in automation JSON for agentic desktop review.
 - Preserve the same boundary: no provider calls, no broker order submission,
   no shell execution, and no database writes from browsing the envelope.
+
+## Current Slice: Trade Runbook
+
+- Add a read-only trade-runbook snapshot contract that sequences the active
+  MarketRadar idea through decision review, scenario review, risk envelope,
+  paper preview, guarded paper record, broker-ticket preview, live boundary,
+  and journal/validation review.
+- Render the runbook in the Tauri Command Center and relevant trading pages so
+  agents and operators can follow the supervised workflow from one surface.
+- Expose runbook status, active step, step count, and blocked-step count in
+  automation JSON for agentic desktop control.
+- Preserve the same boundary: no provider calls, no broker order submission,
+  no shell execution, and no database writes from browsing the runbook.

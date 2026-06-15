@@ -398,6 +398,22 @@ function workbenchRiskEnvelopeForPage(pageKey, snapshot = state.snapshot || {}) 
   return pages.has(pageKey) ? rows : [];
 }
 
+function workbenchTradeRunbook(snapshot = state.snapshot || {}) {
+  const runbook = tradingWorkbenchSnapshot(snapshot)?.trade_runbook;
+  return runbook && typeof runbook === 'object' ? runbook : { steps: [] };
+}
+
+function workbenchTradeRunbookForPage(pageKey, snapshot = state.snapshot || {}) {
+  const runbook = workbenchTradeRunbook(snapshot);
+  const steps = Array.isArray(runbook.steps) ? runbook.steps : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return steps;
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return steps.filter((step) => (
+    keys.has(step?.module) || keys.has(step?.target_page)
+  ));
+}
+
 function workbenchActionBus(snapshot = state.snapshot || {}) {
   const bus = tradingWorkbenchSnapshot(snapshot)?.action_bus;
   return bus && typeof bus === 'object' ? bus : { actions: [] };
@@ -906,6 +922,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
       risk_block_count: Number(workbenchRiskEnvelope(snapshot)?.blockers?.length || 0),
       risk_max_loss: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.estimated_max_loss, 'none'),
+      runbook_status: compact(workbenchTradeRunbook(snapshot)?.status, 'unknown'),
+      runbook_active_step_id: compact(workbenchTradeRunbook(snapshot)?.active_step_id, 'none'),
+      runbook_step_count: Number(workbenchTradeRunbook(snapshot)?.metrics?.step_count || 0),
+      runbook_blocked_step_count: Number(workbenchTradeRunbook(snapshot)?.metrics?.blocked_step_count || 0),
     },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
@@ -1006,6 +1026,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchDecisionBrief(snapshot)}
     ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
+    ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
     ${renderWorkbenchPriorityQueue(snapshot, 'overview')}
     ${renderWorkbenchSupervisionGates(snapshot, 'overview')}
@@ -1289,6 +1310,70 @@ function riskEnvelopeSummary(envelope) {
     `${compact(metrics.disabled_check_count, '0')} disabled boundaries`,
     `max loss ${compact(sizing.estimated_max_loss, 'n/a')}`,
     'zero provider calls',
+  ].join('; ');
+}
+
+function renderWorkbenchTradeRunbook(snapshot, pageKey = 'overview') {
+  const runbook = workbenchTradeRunbook(snapshot);
+  const steps = workbenchTradeRunbookForPage(pageKey, snapshot);
+  if (!steps.length) return '';
+  return `
+    <section
+      class="panel wide workbench-trade-runbook"
+      data-testid="workbench-trade-runbook"
+      data-runbook-status="${escapeHtml(runbook.status || 'unknown')}"
+      data-runbook-active-step="${escapeHtml(runbook.active_step_id || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Trade Runbook</h2>
+          <p>${escapeHtml(tradeRunbookSummary(runbook))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(runbook.status || 'unknown'))}</span>
+      </div>
+      <div class="table-wrap trade-runbook-preview">
+        <table aria-label="Workbench trade runbook">
+          <thead><tr><th>Rank</th><th>Step</th><th>Module</th><th>Status</th><th>Control</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${steps.map((step) => `
+              <tr
+                data-testid="workbench-runbook-step"
+                data-runbook-step-status="${escapeHtml(step.status || 'unknown')}"
+                data-runbook-step-kind="${escapeHtml(step.step_kind || 'unknown')}"
+              >
+                <td data-label="Rank">${escapeHtml(compact(step.rank, '-'))}</td>
+                <td data-label="Step">${escapeHtml(compact(step.label, step.id || '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(step.module || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(step.status || '-'))}</td>
+                <td data-label="Control">${renderWorkbenchActionControl(runbookStepControl(step))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(step.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(step.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function runbookStepControl(step) {
+  const navigable = step?.action_kind === 'page';
+  const preview = step?.step_kind === 'preview';
+  return {
+    ...step,
+    status: (navigable || preview) ? 'enabled' : step?.status,
+  };
+}
+
+function tradeRunbookSummary(runbook) {
+  const metrics = runbook?.metrics || {};
+  return [
+    `${compact(metrics.step_count, '0')} steps`,
+    `${compact(metrics.blocked_step_count, '0')} blocked`,
+    `${compact(metrics.approval_required_count, '0')} approval required`,
+    `${compact(metrics.disabled_step_count, '0')} disabled`,
+    'live trading disabled',
   ].join('; ');
 }
 
@@ -1588,6 +1673,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     </section>
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
+    ${renderWorkbenchTradeRunbook(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
     ${renderWorkbenchPriorityQueue(snapshot, pageKey)}
     ${renderWorkbenchSupervisionGates(snapshot, pageKey)}

@@ -655,7 +655,8 @@ tr[data-testid="queue-row"]:focus-visible td {
 
 .workbench-decision-brief,
 .workbench-scenario-matrix,
-.workbench-risk-envelope {
+.workbench-risk-envelope,
+.workbench-trade-runbook {
   margin-top: 12px;
 }
 
@@ -815,6 +816,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 .workflow-map-preview table,
 .scenario-matrix-preview table,
 .risk-envelope-preview table,
+.trade-runbook-preview table,
 .priority-queue-preview table,
 .supervision-gate-preview table {
   min-width: 980px;
