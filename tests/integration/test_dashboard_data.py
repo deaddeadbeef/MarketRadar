@@ -479,6 +479,96 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert boundary["paper_trading"] == "preview_only"
     assert boundary["provider_calls_for_browsing"] == 0
 
+    decision_brief = workbench["decision_brief"]
+    assert decision_brief["schema_version"] == "trading-workbench-decision-brief-v1"
+    assert decision_brief["status"] == "blocked"
+    assert decision_brief["source_tool"] == "market-radar"
+    assert decision_brief["ticker"] == "MSFT"
+    assert decision_brief["decision_card_id"] == "card-msft-latest"
+    assert decision_brief["headline"] == "MSFT: MSFT guidance raised"
+    assert decision_brief["autonomy_level"] == "L1_agentic_review"
+    assert decision_brief["recommended_paper_decision"] == "deferred"
+    assert decision_brief["scout"] == {
+        "ticker": "MSFT",
+        "subject": "MSFT guidance raised",
+        "score": 88.0,
+        "setup": "breakout",
+        "state": "Warning",
+        "usefulness_status": "monitor_only",
+        "decision_ready": False,
+        "decision_card_id": "card-msft-latest",
+        "next_action": "Keep this in monitoring until the priced-in signal changes.",
+    }
+    assert decision_brief["setup"] == {
+        "setup_type": "breakout",
+        "direction": "bullish",
+        "entry_price": 100.0,
+        "invalidation_price": 94.0,
+        "reward_risk": 2.7,
+        "action_state": "Warning",
+    }
+    assert decision_brief["risk"] == {
+        "approved_for_paper_trade": False,
+        "approved_for_live_submission": False,
+        "paper_block_count": 2,
+        "live_block_count": 3,
+        "estimated_max_loss": 200.0,
+        "requires_manual_approval": True,
+    }
+    assert decision_brief["workflow"] == {
+        "status": "blocked",
+        "active_stage_id": "decision-review",
+        "primary_priority_item_id": "priority-stage-decision-review",
+        "primary_supervision_gate_id": "guarded-local-write",
+        "approval_required_count": 1,
+    }
+    assert decision_brief["next_action"] == {
+        "label": "Decision Review",
+        "action_kind": "page",
+        "command": "review",
+        "target_page": "review",
+        "safety": "zero_call_navigation",
+        "source": "priority_queue",
+    }
+    assert decision_brief["evidence_chain"] == [
+        {
+            "step": "market-scout",
+            "label": "MarketRadar scout",
+            "status": "ready",
+            "artifact": "MSFT guidance raised",
+        },
+        {
+            "step": "decision-card",
+            "label": "Decision card",
+            "status": "available",
+            "artifact": "card-msft-latest",
+        },
+        {
+            "step": "risk-approval",
+            "label": "Risk approval",
+            "status": "blocked",
+            "artifact": "paper_blocks=2 live_blocks=3",
+        },
+        {
+            "step": "supervision",
+            "label": "Supervision gate",
+            "status": "approval_required",
+            "artifact": "guarded-local-write",
+        },
+    ]
+    assert decision_brief["metrics"] == {
+        "evidence_count": 4,
+        "paper_block_count": 2,
+        "live_block_count": 3,
+        "approval_required_count": 1,
+        "external_calls_made": 0,
+    }
+    assert decision_brief["external_calls_made"] == 0
+    assert decision_brief["db_writes_made"] == 0
+    assert decision_brief["broker_order_submitted"] is False
+    assert decision_brief["order_submission_allowed"] is False
+    assert decision_brief["live_trading_enabled"] is False
+
     action_bus = workbench["action_bus"]
     assert action_bus["schema_version"] == "trading-workbench-action-bus-v1"
     assert action_bus["status"] == "ready"

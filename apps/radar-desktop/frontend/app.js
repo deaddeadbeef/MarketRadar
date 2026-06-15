@@ -367,6 +367,11 @@ function tradingWorkbenchSnapshot(snapshot = state.snapshot || {}) {
   return snapshot?.trading_workbench || {};
 }
 
+function workbenchDecisionBrief(snapshot = state.snapshot || {}) {
+  const brief = tradingWorkbenchSnapshot(snapshot)?.decision_brief;
+  return brief && typeof brief === 'object' ? brief : {};
+}
+
 function workbenchActionBus(snapshot = state.snapshot || {}) {
   const bus = tradingWorkbenchSnapshot(snapshot)?.action_bus;
   return bus && typeof bus === 'object' ? bus : { actions: [] };
@@ -862,6 +867,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       primary_supervision_gate_id: compact(workbenchSupervisionGates(snapshot)?.primary_gate_id, 'none'),
       approval_required_count: Number(workbenchSupervisionGates(snapshot)?.metrics?.approval_required_count || 0),
       armed_local_write: compact(state.pendingLocalWrite?.command, 'none'),
+      decision_brief_status: compact(workbenchDecisionBrief(snapshot)?.status, 'unknown'),
+      decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none'),
+      decision_brief_source_tool: compact(workbenchDecisionBrief(snapshot)?.source_tool, 'market-radar'),
+      decision_brief_next_command: compact(workbenchDecisionBrief(snapshot)?.next_action?.command, 'none'),
     },
     next_command: compact(snapshot?.next_command || snapshot?.canonical_next_command, 'none'),
     next_action: compact(snapshot?.next_action || snapshot?.canonical_next_action, 'none'),
@@ -959,6 +968,7 @@ function metric(label, value, caption) {
 function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
+    ${renderWorkbenchDecisionBrief(snapshot)}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
     ${renderWorkbenchPriorityQueue(snapshot, 'overview')}
     ${renderWorkbenchSupervisionGates(snapshot, 'overview')}
@@ -1029,6 +1039,95 @@ function platformToolCard(module) {
       </div>
     </article>
   `;
+}
+
+function renderWorkbenchDecisionBrief(snapshot) {
+  const brief = workbenchDecisionBrief(snapshot);
+  if (!brief || !brief.schema_version) return '';
+  const scout = brief.scout || {};
+  const setup = brief.setup || {};
+  const risk = brief.risk || {};
+  const workflow = brief.workflow || {};
+  const nextAction = brief.next_action || {};
+  const evidence = Array.isArray(brief.evidence_chain) ? brief.evidence_chain : [];
+  return `
+    <section
+      class="panel wide workbench-decision-brief"
+      data-testid="workbench-decision-brief"
+      data-decision-brief-status="${escapeHtml(brief.status || 'unknown')}"
+      data-decision-brief-ticker="${escapeHtml(brief.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Decision Brief</h2>
+          <p>${escapeHtml(decisionBriefSummary(brief))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(brief.status || 'unknown'))}</span>
+      </div>
+      <div class="decision-brief-grid">
+        <div class="decision-brief-block" data-testid="decision-brief-source">
+          <h3>Source</h3>
+          <div class="kv-grid">
+            <div class="kv"><span>Tool</span><b>${escapeHtml(compact(brief.source_tool, 'market-radar'))}</b></div>
+            <div class="kv"><span>Ticker</span><b>${escapeHtml(compact(brief.ticker, '-'))}</b></div>
+            <div class="kv"><span>Scout</span><b>${escapeHtml(compact(scout.subject, '-'))}</b></div>
+            <div class="kv"><span>Score</span><b>${escapeHtml(text(scout.score))}</b></div>
+          </div>
+        </div>
+        <div class="decision-brief-block" data-testid="decision-brief-setup">
+          <h3>Setup</h3>
+          <div class="kv-grid">
+            <div class="kv"><span>Type</span><b>${escapeHtml(compact(setup.setup_type, '-'))}</b></div>
+            <div class="kv"><span>Direction</span><b>${escapeHtml(compact(setup.direction, '-'))}</b></div>
+            <div class="kv"><span>Entry</span><b>${escapeHtml(text(setup.entry_price))}</b></div>
+            <div class="kv"><span>Invalidation</span><b>${escapeHtml(text(setup.invalidation_price))}</b></div>
+          </div>
+        </div>
+        <div class="decision-brief-block" data-testid="decision-brief-risk">
+          <h3>Risk</h3>
+          <div class="kv-grid">
+            <div class="kv"><span>Paper blocks</span><b>${escapeHtml(compact(risk.paper_block_count, '0'))}</b></div>
+            <div class="kv"><span>Live blocks</span><b>${escapeHtml(compact(risk.live_block_count, '0'))}</b></div>
+            <div class="kv"><span>Max loss</span><b>${escapeHtml(text(risk.estimated_max_loss))}</b></div>
+            <div class="kv"><span>Approval</span><b>${escapeHtml(risk.requires_manual_approval ? 'manual required' : 'not required')}</b></div>
+          </div>
+        </div>
+        <div class="decision-brief-block" data-testid="decision-brief-next-action">
+          <h3>Next</h3>
+          <div class="kv-grid">
+            <div class="kv"><span>Stage</span><b>${escapeHtml(compact(workflow.active_stage_id, '-'))}</b></div>
+            <div class="kv"><span>Gate</span><b>${escapeHtml(compact(workflow.primary_supervision_gate_id, '-'))}</b></div>
+            <div class="kv"><span>Command</span><b>${escapeHtml(compact(nextAction.command, '-'))}</b></div>
+            <div class="kv"><span>Safety</span><b>${escapeHtml(catalogLabel(nextAction.safety || '-'))}</b></div>
+          </div>
+          <div class="decision-brief-action">${renderWorkbenchActionControl(nextAction)}</div>
+        </div>
+      </div>
+      <div class="decision-brief-evidence" aria-label="Decision brief evidence chain">
+        ${evidence.map((row) => `
+          <article
+            data-testid="decision-brief-evidence-row"
+            data-evidence-status="${escapeHtml(row.status || 'unknown')}"
+          >
+            <span>${escapeHtml(compact(row.label, row.step || '-'))}</span>
+            <b>${escapeHtml(catalogLabel(row.status || '-'))}</b>
+            <p>${escapeHtml(compact(row.artifact, '-'))}</p>
+          </article>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function decisionBriefSummary(brief) {
+  const metrics = brief?.metrics || {};
+  return [
+    compact(brief?.headline, 'No active decision brief'),
+    `${compact(metrics.paper_block_count, '0')} paper blocks`,
+    `${compact(metrics.live_block_count, '0')} live blocks`,
+    `${compact(metrics.approval_required_count, '0')} approval gates`,
+    'zero provider calls',
+  ].join('; ');
 }
 
 function renderWorkbenchWorkflowMap(snapshot, pageKey = 'overview') {

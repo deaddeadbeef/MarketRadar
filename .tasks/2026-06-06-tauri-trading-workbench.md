@@ -111,3 +111,17 @@ engine, but it is not the whole product frame.
   can run through the shared dispatcher.
 - Expose supervision status, primary gate, approval-required count, and armed
   local-write state in automation JSON.
+
+## Current Slice: Decision Brief
+
+- Add a top-level decision-brief snapshot contract that turns MarketRadar's
+  current scouted opportunity plus the active trading plan into one
+  agent-readable workbench dossier.
+- Include ticker, source tool, scouted evidence, setup, risk posture, workflow
+  blocker, priority item, supervision gate, safe next action, and execution
+  boundary metadata.
+- Render the decision brief in the Tauri Command Center before workflow and
+  action controls so operators see the current case before interacting with
+  tools.
+- Expose decision-brief status, ticker, next command, and source tool in
+  automation JSON without adding provider, broker, shell, or DB calls.

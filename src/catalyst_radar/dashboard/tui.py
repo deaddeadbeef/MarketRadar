@@ -1118,6 +1118,13 @@ def _trading_workbench_snapshot_payload(
         action_bus=action_bus,
         priority_queue=priority_queue,
     )
+    decision_brief = _workbench_decision_brief_payload(
+        focus_row=focus_row,
+        active_plan=active_plan,
+        workflow_map=workflow_map,
+        priority_queue=priority_queue,
+        supervision_gates=supervision_gates,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1134,6 +1141,7 @@ def _trading_workbench_snapshot_payload(
         "workflow_map": workflow_map,
         "priority_queue": priority_queue,
         "supervision_gates": supervision_gates,
+        "decision_brief": decision_brief,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -3450,6 +3458,148 @@ def _workbench_supervision_gate(
         "live_trading_enabled": False,
         "next_action": next_action,
     }
+
+
+def _workbench_decision_brief_payload(
+    *,
+    focus_row: Mapping[str, object],
+    active_plan: Mapping[str, object],
+    workflow_map: Mapping[str, object],
+    priority_queue: Mapping[str, object],
+    supervision_gates: Mapping[str, object],
+) -> dict[str, object]:
+    strategy = _mapping(active_plan.get("strategy_proposal"))
+    risk = _mapping(active_plan.get("risk_approval"))
+    primary_item = _workbench_primary_priority_item(priority_queue)
+    ticker = str(
+        _first_value(focus_row.get("ticker"), active_plan.get("ticker")) or ""
+    ).strip()
+    subject = _first_value(
+        focus_row.get("subject"),
+        strategy.get("setup_type"),
+        active_plan.get("next_action"),
+    )
+    decision_card_id = _first_value(
+        focus_row.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+    )
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    approval_required_count = _first_nonnegative_int(
+        _mapping(supervision_gates.get("metrics")).get("approval_required_count")
+    )
+    status = str(
+        _first_value(active_plan.get("status"), workflow_map.get("status"), "missing")
+    )
+    evidence_chain = [
+        {
+            "step": "market-scout",
+            "label": "MarketRadar scout",
+            "status": "ready" if ticker else "missing",
+            "artifact": subject or ticker or "No active scout row",
+        },
+        {
+            "step": "decision-card",
+            "label": "Decision card",
+            "status": "available" if decision_card_id else "missing",
+            "artifact": decision_card_id or "No decision card",
+        },
+        {
+            "step": "risk-approval",
+            "label": "Risk approval",
+            "status": "ready"
+            if risk.get("approved_for_paper_trade")
+            else "blocked"
+            if paper_blocks or live_blocks
+            else "review",
+            "artifact": f"paper_blocks={len(paper_blocks)} live_blocks={len(live_blocks)}",
+        },
+        {
+            "step": "supervision",
+            "label": "Supervision gate",
+            "status": supervision_gates.get("status") or "unknown",
+            "artifact": supervision_gates.get("primary_gate_id") or "none",
+        },
+    ]
+    return {
+        "schema_version": "trading-workbench-decision-brief-v1",
+        "status": status,
+        "source_tool": "market-radar",
+        "ticker": ticker or None,
+        "decision_card_id": decision_card_id,
+        "headline": f"{ticker}: {subject}" if ticker and subject else subject or ticker,
+        "autonomy_level": active_plan.get("autonomy_level"),
+        "recommended_paper_decision": active_plan.get("recommended_paper_decision"),
+        "scout": {
+            "ticker": ticker or None,
+            "subject": subject,
+            "score": focus_row.get("score"),
+            "setup": focus_row.get("setup"),
+            "state": focus_row.get("state"),
+            "usefulness_status": focus_row.get("usefulness_status"),
+            "decision_ready": bool(focus_row.get("decision_ready")),
+            "decision_card_id": decision_card_id,
+            "next_action": focus_row.get("next_action"),
+        },
+        "setup": {
+            "setup_type": strategy.get("setup_type"),
+            "direction": strategy.get("direction"),
+            "entry_price": strategy.get("entry_price"),
+            "invalidation_price": strategy.get("invalidation_price"),
+            "reward_risk": strategy.get("reward_risk"),
+            "action_state": strategy.get("action_state"),
+        },
+        "risk": {
+            "approved_for_paper_trade": bool(risk.get("approved_for_paper_trade")),
+            "approved_for_live_submission": bool(
+                risk.get("approved_for_live_submission")
+            ),
+            "paper_block_count": len(paper_blocks),
+            "live_block_count": len(live_blocks),
+            "estimated_max_loss": risk.get("estimated_max_loss"),
+            "requires_manual_approval": bool(risk.get("requires_manual_approval")),
+        },
+        "workflow": {
+            "status": workflow_map.get("status"),
+            "active_stage_id": workflow_map.get("active_stage_id"),
+            "primary_priority_item_id": priority_queue.get("primary_item_id"),
+            "primary_supervision_gate_id": supervision_gates.get("primary_gate_id"),
+            "approval_required_count": approval_required_count,
+        },
+        "next_action": {
+            "label": primary_item.get("label"),
+            "action_kind": primary_item.get("action_kind"),
+            "command": primary_item.get("command"),
+            "target_page": primary_item.get("target_page"),
+            "safety": primary_item.get("safety"),
+            "source": "priority_queue" if primary_item else "active_plan",
+        },
+        "evidence_chain": evidence_chain,
+        "metrics": {
+            "evidence_count": len(evidence_chain),
+            "paper_block_count": len(paper_blocks),
+            "live_block_count": len(live_blocks),
+            "approval_required_count": approval_required_count,
+            "external_calls_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_primary_priority_item(
+    priority_queue: Mapping[str, object],
+) -> Mapping[str, object]:
+    items = _rows(priority_queue.get("items"))
+    primary_item_id = str(priority_queue.get("primary_item_id") or "").strip()
+    if primary_item_id:
+        for item in items:
+            if str(item.get("id") or "") == primary_item_id:
+                return item
+    return items[0] if items else {}
 
 
 def _workbench_priority_action_sort_key(
