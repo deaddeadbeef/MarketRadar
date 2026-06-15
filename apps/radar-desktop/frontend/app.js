@@ -406,6 +406,19 @@ function workbenchScenarioMatrixForPage(pageKey, snapshot = state.snapshot || {}
   return pages.has(pageKey) ? rows : [];
 }
 
+function workbenchPositionSizing(snapshot = state.snapshot || {}) {
+  const sizing = tradingWorkbenchSnapshot(snapshot)?.position_sizing;
+  return sizing && typeof sizing === 'object' ? sizing : { checks: [] };
+}
+
+function workbenchPositionSizingForPage(pageKey, snapshot = state.snapshot || {}) {
+  const sizing = workbenchPositionSizing(snapshot);
+  const checks = Array.isArray(sizing.checks) ? sizing.checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return checks;
+  const pages = new Set(['portfolio', 'trade-planner', 'risk-desk', 'paper-trading', 'broker']);
+  return pages.has(pageKey) ? checks : [];
+}
+
 function workbenchRiskEnvelope(snapshot = state.snapshot || {}) {
   const envelope = tradingWorkbenchSnapshot(snapshot)?.risk_envelope;
   return envelope && typeof envelope === 'object' ? envelope : { checks: [] };
@@ -946,6 +959,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       scenario_matrix_ticker: compact(workbenchScenarioMatrix(snapshot)?.ticker, 'none'),
       scenario_count: Number(workbenchScenarioMatrix(snapshot)?.metrics?.scenario_count || 0),
       scenario_reward_risk: compact(workbenchScenarioMatrix(snapshot)?.metrics?.risk_reward, 'none'),
+      position_sizing_status: compact(workbenchPositionSizing(snapshot)?.status, 'unknown'),
+      position_sizing_ticker: compact(workbenchPositionSizing(snapshot)?.ticker, 'none'),
+      position_sizing_suggested_shares: Number(workbenchPositionSizing(snapshot)?.recommendation?.suggested_quantity || 0),
+      position_sizing_risk_budget: compact(workbenchPositionSizing(snapshot)?.recommendation?.risk_budget, 'none'),
       risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown'),
       risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none'),
       risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
@@ -1056,6 +1073,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchExecutionSandbox(snapshot, 'overview')}
     ${renderWorkbenchDecisionBrief(snapshot)}
     ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
+    ${renderWorkbenchPositionSizing(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
@@ -1440,6 +1458,74 @@ function scenarioMatrixSummary(matrix) {
     `R/R ${compact(metrics.risk_reward, 'n/a')}`,
     `sizing ${catalogLabel(assumptions.sizing_status || 'unknown')}`,
     'zero provider calls',
+  ].join('; ');
+}
+
+function renderWorkbenchPositionSizing(snapshot, pageKey = 'overview') {
+  const sizing = workbenchPositionSizing(snapshot);
+  const checks = workbenchPositionSizingForPage(pageKey, snapshot);
+  const inputs = sizing.inputs || {};
+  const recommendation = sizing.recommendation || {};
+  if (!checks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-position-sizing"
+      data-testid="workbench-position-sizing"
+      data-position-sizing-status="${escapeHtml(sizing.status || 'unknown')}"
+      data-position-sizing-ticker="${escapeHtml(sizing.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Position Sizing</h2>
+          <p>${escapeHtml(positionSizingSummary(sizing))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(sizing.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Suggested shares</span><b>${escapeHtml(compact(recommendation.suggested_quantity, '-'))}</b></div>
+        <div class="kv"><span>Risk budget</span><b>${escapeHtml(text(recommendation.risk_budget))}</b></div>
+        <div class="kv"><span>Notional</span><b>${escapeHtml(text(recommendation.estimated_notional))}</b></div>
+        <div class="kv"><span>Max loss</span><b>${escapeHtml(text(recommendation.estimated_max_loss))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Entry</span><b>${escapeHtml(text(inputs.entry_price))}</b></div>
+        <div class="kv"><span>Invalidation</span><b>${escapeHtml(text(inputs.invalidation_price))}</b></div>
+        <div class="kv"><span>Risk/share</span><b>${escapeHtml(text(inputs.risk_per_share))}</b></div>
+        <div class="kv"><span>Current qty</span><b>${escapeHtml(compact(inputs.current_quantity, '-'))}</b></div>
+      </div>
+      <div class="table-wrap position-sizing-preview">
+        <table aria-label="Workbench position sizing worksheet">
+          <thead><tr><th>Check</th><th>Scope</th><th>Status</th><th>Finding</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="position-sizing-check"
+                data-position-sizing-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-position-sizing-check-scope="${escapeHtml(check.scope || 'unknown')}"
+              >
+                <td data-label="Check">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(check.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function positionSizingSummary(sizing) {
+  const metrics = sizing?.metrics || {};
+  const recommendation = sizing?.recommendation || {};
+  return [
+    `${compact(sizing?.ticker, 'No ticker')} ${catalogLabel(sizing?.status || 'unknown')}`,
+    `${compact(recommendation.suggested_quantity, '0')} suggested shares`,
+    `risk budget ${compact(recommendation.risk_budget, 'n/a')}`,
+    `${compact(metrics.blocked_check_count, '0')} blocked checks`,
+    'review-only sizing',
   ].join('; ');
 }
 
@@ -1866,6 +1952,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchOperatorState(snapshot)}
     ${renderWorkbenchExecutionSandbox(snapshot, pageKey)}
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
+    ${renderWorkbenchPositionSizing(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}
