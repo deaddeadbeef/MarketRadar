@@ -1141,6 +1141,12 @@ def _trading_workbench_snapshot_payload(
             len(broker_open_orders),
         ),
     )
+    trade_runbook = _workbench_trade_runbook_payload(
+        decision_brief=decision_brief,
+        scenario_matrix=scenario_matrix,
+        risk_envelope=risk_envelope,
+        action_bus=action_bus,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1160,6 +1166,7 @@ def _trading_workbench_snapshot_payload(
         "decision_brief": decision_brief,
         "scenario_matrix": scenario_matrix,
         "risk_envelope": risk_envelope,
+        "trade_runbook": trade_runbook,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -4012,6 +4019,257 @@ def _workbench_ratio(
 
 def _workbench_round_ratio(value: float | None) -> float | None:
     return round(value, 4) if value is not None else None
+
+
+def _workbench_trade_runbook_payload(
+    *,
+    decision_brief: Mapping[str, object],
+    scenario_matrix: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    action_bus: Mapping[str, object],
+) -> dict[str, object]:
+    actions = {
+        str(row.get("id")): row
+        for row in _rows(action_bus.get("actions"))
+        if row.get("id")
+    }
+    scenario_count = _first_nonnegative_int(
+        _mapping(scenario_matrix.get("metrics")).get("scenario_count")
+    )
+    blocked_check_count = _first_nonnegative_int(
+        _mapping(risk_envelope.get("metrics")).get("blocked_check_count")
+    )
+    paper_preview = actions.get("paper-decision-preview", {})
+    paper_record = actions.get("paper-decision-record", {})
+    ticket_preview = actions.get("order-ticket-preview", {})
+    paper_record_writes = _first_nonnegative_int(
+        paper_record.get("db_writes_required")
+    )
+    if paper_record_writes <= 0:
+        paper_record_writes = 2
+    steps = [
+        _workbench_runbook_step(
+            step_id="decision-review",
+            rank=1,
+            module="review",
+            label="Decision readiness",
+            status="blocked",
+            step_kind="review",
+            action_kind="page",
+            command="review",
+            target_page="review",
+            safety="zero_call_navigation",
+            source="trading_workbench.decision_brief",
+            evidence=str(decision_brief.get("decision_card_id") or "no decision card"),
+            next_action="Review decision readiness before continuing.",
+        ),
+        _workbench_runbook_step(
+            step_id="scenario-review",
+            rank=2,
+            module="trade-planner",
+            label="Scenario review",
+            status="review",
+            step_kind="analysis",
+            action_kind="page",
+            command="trade-planner",
+            target_page="trade-planner",
+            safety="zero_call_navigation",
+            source="trading_workbench.scenario_matrix",
+            evidence=f"{scenario_count} scenarios",
+            next_action="Compare downside, entry, and reward target before sizing.",
+        ),
+        _workbench_runbook_step(
+            step_id="risk-envelope",
+            rank=3,
+            module="risk-desk",
+            label="Risk envelope",
+            status="blocked",
+            step_kind="risk",
+            action_kind="page",
+            command="risk-desk",
+            target_page="risk-desk",
+            safety="zero_call_navigation",
+            source="trading_workbench.risk_envelope",
+            evidence=f"{blocked_check_count} blocked checks",
+            next_action="Resolve risk-envelope blockers before local writes.",
+        ),
+        _workbench_runbook_step(
+            step_id="paper-decision-preview",
+            rank=4,
+            module="paper-trading",
+            label="Preview paper decision",
+            status="ready",
+            step_kind="preview",
+            action_kind="backend_command",
+            command=paper_preview.get("command") or "paper-decision preview",
+            target_page=paper_preview.get("target_page") or "paper-trading",
+            safety=paper_preview.get("safety") or "local_backend_preview",
+            source="trading_workbench.action_bus.paper-decision-preview",
+            evidence="local preview",
+            next_action="Preview only after decision and risk blockers are clear.",
+        ),
+        _workbench_runbook_step(
+            step_id="paper-decision-record",
+            rank=5,
+            module="paper-trading",
+            label="Record paper decision",
+            status="approval_required",
+            step_kind="guarded_write",
+            action_kind="backend_command",
+            command=paper_record.get("command") or "paper-decision execute",
+            target_page=paper_record.get("target_page") or "paper-trading",
+            safety=paper_record.get("safety") or "local_db_write",
+            local_write_allowed=True,
+            requires_arm_before_run=True,
+            db_writes_required=paper_record_writes,
+            source="trading_workbench.action_bus.paper-decision-record",
+            evidence="guarded local write",
+            next_action="Arm and record only after manual approval.",
+        ),
+        _workbench_runbook_step(
+            step_id="order-ticket-preview",
+            rank=6,
+            module="broker",
+            label="Preview blocked ticket",
+            status="ready",
+            step_kind="preview",
+            action_kind="backend_command",
+            command=ticket_preview.get("command") or "order-ticket preview",
+            target_page=ticket_preview.get("target_page") or "broker",
+            safety=ticket_preview.get("safety") or "local_backend_preview",
+            source="trading_workbench.action_bus.order-ticket-preview",
+            evidence="blocked ticket preview",
+            next_action="Preview the local ticket; live submission stays disabled.",
+        ),
+        _workbench_runbook_step(
+            step_id="live-submission-boundary",
+            rank=7,
+            module="broker",
+            label="Live submission boundary",
+            status="disabled",
+            step_kind="boundary",
+            action_kind="boundary",
+            command="broker live submission",
+            target_page="broker",
+            safety="external_boundary",
+            source="trading_workbench.execution_boundary",
+            evidence="live trading disabled",
+            next_action="Live broker submission remains disabled.",
+        ),
+        _workbench_runbook_step(
+            step_id="journal-validation",
+            rank=8,
+            module="journal",
+            label="Journal and validation",
+            status="ready",
+            step_kind="review",
+            action_kind="page",
+            command="journal",
+            target_page="journal",
+            safety="zero_call_navigation",
+            source="trading_workbench.modules.journal",
+            evidence="journal and validation review",
+            next_action="Review lifecycle, journal, and validation evidence.",
+        ),
+    ]
+    active_step_id = next(
+        (
+            str(row.get("id"))
+            for row in steps
+            if row.get("status") in {"blocked", "approval_required"}
+        ),
+        steps[0]["id"] if steps else None,
+    )
+    blocked_step_count = sum(1 for row in steps if row.get("status") == "blocked")
+    approval_required_count = sum(
+        1 for row in steps if row.get("status") == "approval_required"
+    )
+    disabled_step_count = sum(1 for row in steps if row.get("status") == "disabled")
+    return {
+        "schema_version": "trading-workbench-runbook-v1",
+        "status": "blocked"
+        if blocked_step_count
+        else "approval_required"
+        if approval_required_count
+        else "ready",
+        "source_tool": decision_brief.get("source_tool") or "market-radar",
+        "ticker": _first_value(
+            decision_brief.get("ticker"),
+            scenario_matrix.get("ticker"),
+            risk_envelope.get("ticker"),
+        ),
+        "decision_card_id": _first_value(
+            decision_brief.get("decision_card_id"),
+            scenario_matrix.get("decision_card_id"),
+            risk_envelope.get("decision_card_id"),
+        ),
+        "active_step_id": active_step_id,
+        "primary_next_action": "Review decision readiness before continuing.",
+        "steps": steps,
+        "metrics": {
+            "step_count": len(steps),
+            "blocked_step_count": blocked_step_count,
+            "approval_required_count": approval_required_count,
+            "disabled_step_count": disabled_step_count,
+            "preview_step_count": sum(
+                1 for row in steps if row.get("step_kind") == "preview"
+            ),
+            "local_write_step_count": sum(
+                1 for row in steps if row.get("local_write_allowed") is True
+            ),
+            "external_calls_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_runbook_step(
+    *,
+    step_id: str,
+    rank: int,
+    module: str,
+    label: str,
+    status: str,
+    step_kind: str,
+    action_kind: str,
+    command: object,
+    target_page: object,
+    safety: object,
+    source: str,
+    evidence: str,
+    next_action: str,
+    local_write_allowed: bool = False,
+    requires_arm_before_run: bool = False,
+    db_writes_required: object = 0,
+) -> dict[str, object]:
+    return {
+        "id": step_id,
+        "rank": rank,
+        "module": module,
+        "label": label,
+        "status": status,
+        "step_kind": step_kind,
+        "action_kind": action_kind,
+        "command": str(command or "").strip() or None,
+        "target_page": str(target_page or module).strip(),
+        "safety": str(safety or "").strip() or "zero_call_navigation",
+        "local_write_allowed": local_write_allowed,
+        "requires_arm_before_run": requires_arm_before_run,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_required": _first_nonnegative_int(db_writes_required),
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "source": source,
+        "evidence": evidence,
+        "next_action": next_action,
+    }
 
 
 def _workbench_priority_action_sort_key(

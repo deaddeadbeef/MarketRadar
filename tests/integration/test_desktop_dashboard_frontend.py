@@ -85,6 +85,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function workbenchScenarioMatrixForPage",
         "function workbenchRiskEnvelope",
         "function workbenchRiskEnvelopeForPage",
+        "function workbenchTradeRunbook",
+        "function workbenchTradeRunbookForPage",
         "function workbenchActionBus",
         "function workbenchWorkflowMap",
         "function workbenchWorkflowStagesForPage",
@@ -121,6 +123,13 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "data-risk-envelope-status",
         "data-risk-check-status",
         "data-risk-check-scope",
+        "function renderWorkbenchTradeRunbook",
+        "function tradeRunbookSummary",
+        'data-testid="workbench-trade-runbook"',
+        'data-testid="workbench-runbook-step"',
+        "data-runbook-status",
+        "data-runbook-step-status",
+        "data-runbook-step-kind",
         "function renderWorkbenchWorkflowMap",
         "function workflowMapSummary",
         'data-testid="workbench-workflow-map"',
@@ -461,6 +470,13 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "risk_block_count: Number(workbenchRiskEnvelope(snapshot)?.blockers?.length || 0)",
         "risk_max_loss: compact("
         "workbenchRiskEnvelope(snapshot)?.sizing_context?.estimated_max_loss, 'none')",
+        "runbook_status: compact(workbenchTradeRunbook(snapshot)?.status, 'unknown')",
+        "runbook_active_step_id: compact("
+        "workbenchTradeRunbook(snapshot)?.active_step_id, 'none')",
+        "runbook_step_count: Number("
+        "workbenchTradeRunbook(snapshot)?.metrics?.step_count || 0)",
+        "runbook_blocked_step_count: Number("
+        "workbenchTradeRunbook(snapshot)?.metrics?.blocked_step_count || 0)",
         "pendingLocalWrite: null",
         "function localWriteArmKey",
         "function clearPendingLocalWrite",
@@ -526,6 +542,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".scenario-matrix-preview" in styles
     assert ".workbench-risk-envelope" in styles
     assert ".risk-envelope-preview" in styles
+    assert ".workbench-trade-runbook" in styles
+    assert ".trade-runbook-preview" in styles
     assert ".workbench-workflow-map" in styles
     assert ".workflow-map-preview" in styles
     assert ".workbench-priority-queue" in styles
