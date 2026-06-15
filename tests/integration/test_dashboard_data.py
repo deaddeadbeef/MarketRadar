@@ -1088,6 +1088,116 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert position_sizing["order_submission_allowed"] is False
     assert position_sizing["live_trading_enabled"] is False
 
+    capital_allocation = workbench["capital_allocation"]
+    assert (
+        capital_allocation["schema_version"]
+        == "trading-workbench-capital-allocation-v1"
+    )
+    assert capital_allocation["status"] == "blocked"
+    assert capital_allocation["source_tool"] == "market-radar"
+    assert capital_allocation["ticker"] == "MSFT"
+    assert capital_allocation["decision_card_id"] == "card-msft-latest"
+    assert (
+        capital_allocation["allocation_id"]
+        == "capital-allocation-msft-card-msft-latest"
+    )
+    assert capital_allocation["allocation_mode"] == "read_only_capital_review"
+    assert capital_allocation["primary_blocker"] == "stale_broker_data"
+    assert capital_allocation["primary_next_action"] == (
+        "Resolve allocation blockers before changing capital exposure."
+    )
+    assert capital_allocation["capital_context"] == {
+        "broker_connected": True,
+        "broker_data_stale": True,
+        "portfolio_equity": 250000.0,
+        "cash": 50000.0,
+        "buying_power": 100000.0,
+        "gross_exposure_pct": 0.038,
+        "position_count": 1,
+        "open_order_count": 0,
+        "current_position_market_value": 9500.0,
+        "current_position_exposure_pct": 0.038,
+    }
+    assert capital_allocation["allocation_plan"] == {
+        "proposed_notional": 2080.0,
+        "proposed_notional_pct_of_equity": 0.0083,
+        "suggested_quantity": 208,
+        "suggested_notional": 20800.0,
+        "suggested_notional_pct_of_equity": 0.0832,
+        "risk_budget": 1250.0,
+        "proposed_max_loss": 200.0,
+        "suggested_max_loss": 1248.0,
+        "max_loss_pct_of_equity": 0.005,
+        "buying_power_usage_pct": 0.208,
+        "allocation_allowed": False,
+        "requires_manual_approval": True,
+        "no_execution": True,
+    }
+    assert capital_allocation["exposure_context"] == {
+        "exposure_scope_count": 4,
+        "ready_exposure_scope_count": 0,
+        "missing_exposure_scope_count": 4,
+        "current_gross_exposure_pct": 0.038,
+        "projected_notional_pct_of_equity": 0.0832,
+        "has_exposure_deltas": False,
+    }
+    assert [row["id"] for row in capital_allocation["checks"]] == [
+        "portfolio-capital-context",
+        "risk-budget-capacity",
+        "buying-power-usage",
+        "exposure-deltas",
+        "active-paper-capital",
+        "open-order-overlap",
+        "allocation-boundary",
+    ]
+    assert [row["status"] for row in capital_allocation["checks"]] == [
+        "blocked",
+        "ready",
+        "ready",
+        "blocked",
+        "review",
+        "ready",
+        "disabled",
+    ]
+    assert capital_allocation["checks"][0]["finding"] == "stale_broker_data"
+    assert capital_allocation["checks"][2]["finding"] == (
+        "buying_power_usage=0.208"
+    )
+    assert capital_allocation["checks"][3]["finding"] == (
+        "missing_portfolio_impact:exposure_deltas"
+    )
+    assert capital_allocation["checks"][4]["evidence"] == (
+        "1 active paper trades; notional=2080.0"
+    )
+    assert capital_allocation["blockers"] == [
+        "stale_broker_data",
+        "missing_portfolio_impact:exposure_deltas",
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "zero_preview_size",
+    ]
+    assert capital_allocation["metrics"] == {
+        "check_count": 7,
+        "ready_check_count": 3,
+        "review_check_count": 1,
+        "blocked_check_count": 2,
+        "disabled_check_count": 1,
+        "suggested_quantity": 208,
+        "suggested_notional": 20800.0,
+        "buying_power_usage_pct": 0.208,
+        "active_paper_trade_count": 1,
+        "open_order_count": 0,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert capital_allocation["external_calls_made"] == 0
+    assert capital_allocation["db_writes_made"] == 0
+    assert capital_allocation["broker_order_submitted"] is False
+    assert capital_allocation["order_submission_allowed"] is False
+    assert capital_allocation["allocation_update_allowed"] is False
+    assert capital_allocation["live_trading_enabled"] is False
+
     order_ticket_draft = workbench["order_ticket_draft"]
     assert (
         order_ticket_draft["schema_version"]

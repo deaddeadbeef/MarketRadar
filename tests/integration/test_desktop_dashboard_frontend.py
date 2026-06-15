@@ -531,6 +531,23 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchPositionSizing(snapshot)?.recommendation?.suggested_quantity || 0)",
         "position_sizing_risk_budget: compact("
         "workbenchPositionSizing(snapshot)?.recommendation?.risk_budget, 'none')",
+        "function workbenchCapitalAllocation",
+        "function workbenchCapitalAllocationForPage",
+        "function renderWorkbenchCapitalAllocation",
+        "function capitalAllocationSummary",
+        "${renderWorkbenchCapitalAllocation(snapshot, 'overview')}",
+        "${renderWorkbenchCapitalAllocation(snapshot, pageKey)}",
+        'data-testid="workbench-capital-allocation"',
+        'data-testid="capital-allocation-check"',
+        "data-capital-allocation-status=\"${escapeHtml(allocation.status || 'unknown')}\"",
+        "data-capital-allocation-check-status=\"${escapeHtml(check.status || 'unknown')}\"",
+        "data-capital-allocation-check-scope=\"${escapeHtml(check.scope || 'unknown')}\"",
+        "capital_allocation_status: compact(",
+        "capital_allocation_ticker: compact(",
+        "capital_allocation_suggested_notional: compact(",
+        "capital_allocation_buying_power_usage_pct: compact(",
+        "capital_allocation_blocked_check_count: Number(",
+        "capital_allocation_allowed: Boolean(",
         "function workbenchOrderTicketDraft",
         "function workbenchOrderTicketDraftForPage",
         "function renderWorkbenchOrderTicketDraft",
@@ -727,6 +744,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".portfolio-impact-check-preview" in styles
     assert ".workbench-position-sizing" in styles
     assert ".position-sizing-preview" in styles
+    assert ".workbench-capital-allocation" in styles
+    assert ".capital-allocation-preview" in styles
     assert ".workbench-order-ticket-draft" in styles
     assert ".order-ticket-draft-preview" in styles
     assert ".workbench-paper-trade-preview" in styles

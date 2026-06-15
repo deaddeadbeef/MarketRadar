@@ -277,3 +277,17 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the monitor makes no provider calls, submits no
   broker order, performs no autonomous exit/state update, and writes no
   database rows from browsing the dossier.
+
+## Current Slice: Capital Allocation
+
+- Add a read-only capital-allocation snapshot contract that joins portfolio
+  equity, cash, buying power, current exposure, portfolio impact, position
+  sizing, active paper exposure, open orders, and risk blockers into one
+  allocation-review dossier.
+- Render the allocation dossier in the Tauri Command Center and relevant
+  portfolio, trade-planner, risk, paper-trading, broker, and agent pages.
+- Expose allocation status, ticker, suggested notional, buying-power usage,
+  blocked-check count, and allocation permission in automation JSON.
+- Preserve the same boundary: the allocation review makes no provider calls,
+  submits no broker order, performs no autonomous allocation change, and writes
+  no database rows from browsing the dossier.

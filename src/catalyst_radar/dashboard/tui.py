@@ -1151,6 +1151,15 @@ def _trading_workbench_snapshot_payload(
         scenario_matrix=scenario_matrix,
         risk_envelope=risk_envelope,
     )
+    capital_allocation = _workbench_capital_allocation_payload(
+        active_plan=active_plan,
+        risk_envelope=risk_envelope,
+        portfolio_impact_preview=portfolio_impact_preview,
+        position_sizing=position_sizing,
+        portfolio_position_rows=portfolio_position_rows,
+        portfolio_open_order_rows=portfolio_open_order_rows,
+        paper_trade_rows=paper_trade_rows,
+    )
     order_ticket_draft = _workbench_order_ticket_draft_payload(
         active_plan=active_plan,
         position_sizing=position_sizing,
@@ -1234,6 +1243,7 @@ def _trading_workbench_snapshot_payload(
         "risk_envelope": risk_envelope,
         "portfolio_impact_preview": portfolio_impact_preview,
         "position_sizing": position_sizing,
+        "capital_allocation": capital_allocation,
         "order_ticket_draft": order_ticket_draft,
         "paper_trade_preview": paper_trade_preview,
         "learning_loop": learning_loop,
@@ -4666,6 +4676,333 @@ def _workbench_position_sizing_check(
         "status": status,
         "scope": scope,
         "finding": finding,
+        "next_action": next_action,
+    }
+
+
+def _workbench_capital_allocation_payload(
+    *,
+    active_plan: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    portfolio_impact_preview: Mapping[str, object],
+    position_sizing: Mapping[str, object],
+    portfolio_position_rows: Sequence[Mapping[str, object]],
+    portfolio_open_order_rows: Sequence[Mapping[str, object]],
+    paper_trade_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    portfolio = _mapping(risk_envelope.get("portfolio_context"))
+    impact = _mapping(portfolio_impact_preview.get("impact"))
+    recommendation = _mapping(position_sizing.get("recommendation"))
+    active_ticker = _learning_loop_ticker(
+        _first_value(
+            position_sizing.get("ticker"),
+            portfolio_impact_preview.get("ticker"),
+            risk_envelope.get("ticker"),
+            active_plan.get("ticker"),
+        )
+    )
+    decision_card_id = _first_value(
+        position_sizing.get("decision_card_id"),
+        portfolio_impact_preview.get("decision_card_id"),
+        risk_envelope.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+    )
+    portfolio_equity = _optional_float(portfolio.get("portfolio_equity"))
+    buying_power = _optional_float(portfolio.get("buying_power"))
+    cash = _optional_float(portfolio.get("cash"))
+    proposed_notional = _optional_float(impact.get("proposed_notional"))
+    suggested_notional = _optional_float(recommendation.get("estimated_notional"))
+    suggested_max_loss = _optional_float(recommendation.get("estimated_max_loss"))
+    suggested_quantity = _optional_int(recommendation.get("suggested_quantity"))
+    risk_budget = _optional_float(recommendation.get("risk_budget"))
+    proposed_max_loss = _optional_float(impact.get("max_loss"))
+    effective_notional = _first_value(suggested_notional, proposed_notional)
+    effective_max_loss = _first_value(suggested_max_loss, proposed_max_loss)
+    buying_power_usage_pct = _workbench_round_ratio(
+        _workbench_ratio(_optional_float(effective_notional), buying_power)
+    )
+    notional_pct_of_equity = _workbench_round_ratio(
+        _workbench_ratio(_optional_float(effective_notional), portfolio_equity)
+    )
+    max_loss_pct_of_equity = _workbench_round_ratio(
+        _workbench_ratio(_optional_float(effective_max_loss), portfolio_equity)
+    )
+    broker_data_stale = bool(portfolio.get("broker_data_stale"))
+    exposure_ready_count = _first_nonnegative_int(
+        _mapping(portfolio_impact_preview.get("metrics")).get(
+            "ready_exposure_scope_count"
+        )
+    )
+    exposure_scope_count = _first_nonnegative_int(
+        _mapping(portfolio_impact_preview.get("metrics")).get(
+            "exposure_scope_count"
+        )
+    )
+    active_paper_rows = [
+        row
+        for row in _workbench_trade_monitor_matching_rows(
+            paper_trade_rows,
+            ticker=active_ticker,
+        )
+        if str(row.get("state") or "").strip().lower()
+        in {"open", "active", "entered", "monitoring"}
+    ]
+    active_paper_notional = sum(
+        _number_or_zero(row.get("notional")) for row in active_paper_rows
+    )
+    open_order_rows = [
+        row
+        for row in _workbench_trade_monitor_matching_rows(
+            portfolio_open_order_rows,
+            ticker=active_ticker,
+        )
+        if row.get("id")
+        and str(row.get("status") or "").strip().lower()
+        not in {"", "none", "cancelled", "canceled", "filled", "rejected"}
+    ]
+    current_position = _workbench_trade_monitor_match(
+        portfolio_position_rows,
+        ticker=active_ticker,
+    )
+    current_market_value = _optional_float(current_position.get("market_value"))
+    current_exposure_pct = _optional_float(current_position.get("exposure_pct"))
+    impact_blockers = _texts(portfolio_impact_preview.get("blockers"))
+    sizing_blockers = _texts(position_sizing.get("blockers"))
+    risk_blockers = _texts(risk_envelope.get("blockers"))
+    blockers = list(dict.fromkeys([*impact_blockers, *sizing_blockers, *risk_blockers]))
+    checks = [
+        _workbench_capital_allocation_check(
+            check_id="portfolio-capital-context",
+            label="Portfolio capital context",
+            status="blocked" if broker_data_stale else "ready",
+            scope="portfolio",
+            finding="stale_broker_data" if broker_data_stale else "capital_context_ready",
+            evidence=(
+                f"cash={_workbench_round_float(cash)}; "
+                f"buying_power={_workbench_round_float(buying_power)}"
+            ),
+            next_action=(
+                "Refresh read-only broker capital before relying on allocation."
+                if broker_data_stale
+                else "Use read-only capital context for allocation review."
+            ),
+        ),
+        _workbench_capital_allocation_check(
+            check_id="risk-budget-capacity",
+            label="Risk budget capacity",
+            status=(
+                "ready"
+                if risk_budget is not None and suggested_max_loss is not None
+                else "blocked"
+            ),
+            scope="risk-desk",
+            finding=f"risk_budget={_workbench_round_float(risk_budget)}"
+            if risk_budget is not None
+            else "missing_risk_budget",
+            evidence=(
+                f"max_loss={_workbench_round_float(suggested_max_loss)}; "
+                f"loss_pct={max_loss_pct_of_equity}"
+            ),
+            next_action="Compare risk budget with suggested max loss before allocation.",
+        ),
+        _workbench_capital_allocation_check(
+            check_id="buying-power-usage",
+            label="Buying power usage",
+            status="ready"
+            if buying_power not in (None, 0)
+            and _optional_float(effective_notional) is not None
+            and _optional_float(effective_notional) <= buying_power
+            else "blocked",
+            scope="portfolio",
+            finding=f"buying_power_usage={buying_power_usage_pct}"
+            if buying_power_usage_pct is not None
+            else "missing_buying_power_usage",
+            evidence=f"suggested_notional={_workbench_round_float(suggested_notional)}",
+            next_action="Review buying-power usage before creating any local ticket.",
+        ),
+        _workbench_capital_allocation_check(
+            check_id="exposure-deltas",
+            label="Exposure deltas",
+            status="ready" if exposure_ready_count else "blocked",
+            scope="risk-desk",
+            finding="exposure_deltas_available"
+            if exposure_ready_count
+            else "missing_portfolio_impact:exposure_deltas",
+            evidence=f"{exposure_ready_count}/{exposure_scope_count} exposure scopes ready",
+            next_action=(
+                "Review concentration deltas before allocating capital."
+                if exposure_ready_count
+                else "Refresh or rebuild portfolio impact before allocating capital."
+            ),
+        ),
+        _workbench_capital_allocation_check(
+            check_id="active-paper-capital",
+            label="Active paper capital",
+            status="review" if active_paper_rows else "ready",
+            scope="paper-trading",
+            finding="active_paper_trade_open"
+            if active_paper_rows
+            else "no_active_paper_trade",
+            evidence=(
+                f"{len(active_paper_rows)} active paper trades; "
+                f"notional={_workbench_round_float(active_paper_notional)}"
+            ),
+            next_action=(
+                "Review active paper exposure before adding capital to this idea."
+                if active_paper_rows
+                else "No active paper exposure is linked to this allocation."
+            ),
+        ),
+        _workbench_capital_allocation_check(
+            check_id="open-order-overlap",
+            label="Open order overlap",
+            status="review" if open_order_rows else "ready",
+            scope="broker",
+            finding="open_orders_present" if open_order_rows else "no_open_orders",
+            evidence=f"{len(open_order_rows)} open orders",
+            next_action=(
+                "Review open orders before changing allocation state."
+                if open_order_rows
+                else "No read-only open orders overlap this allocation."
+            ),
+        ),
+        _workbench_capital_allocation_check(
+            check_id="allocation-boundary",
+            label="Allocation boundary",
+            status="disabled",
+            scope="broker",
+            finding="broker_submission_disabled",
+            evidence="allocation changes require manual approval",
+            next_action="No allocation, order, or broker state is changed from browsing.",
+        ),
+    ]
+    ready_count = sum(1 for row in checks if row.get("status") == "ready")
+    blocked_count = sum(1 for row in checks if row.get("status") == "blocked")
+    review_count = sum(1 for row in checks if row.get("status") == "review")
+    disabled_count = sum(1 for row in checks if row.get("status") == "disabled")
+    primary_blocker = blockers[0] if blockers else None
+    if primary_blocker is None:
+        primary_blocker = next(
+            (
+                str(row.get("finding"))
+                for row in checks
+                if row.get("status") == "blocked" and row.get("finding")
+            ),
+            None,
+        )
+    return {
+        "schema_version": "trading-workbench-capital-allocation-v1",
+        "status": "blocked"
+        if blocked_count
+        else "review"
+        if review_count
+        else "ready",
+        "source_tool": "market-radar",
+        "ticker": active_ticker,
+        "decision_card_id": decision_card_id,
+        "allocation_id": (
+            f"capital-allocation-{str(active_ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "allocation_mode": "read_only_capital_review",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Resolve allocation blockers before changing capital exposure."
+            if primary_blocker
+            else "Review capital allocation manually before any local ticket."
+        ),
+        "capital_context": {
+            "broker_connected": bool(portfolio.get("broker_connected")),
+            "broker_data_stale": broker_data_stale,
+            "portfolio_equity": _workbench_round_float(portfolio_equity),
+            "cash": _workbench_round_float(cash),
+            "buying_power": _workbench_round_float(buying_power),
+            "gross_exposure_pct": portfolio.get("gross_exposure_pct"),
+            "position_count": _first_nonnegative_int(portfolio.get("position_count")),
+            "open_order_count": len(open_order_rows),
+            "current_position_market_value": _workbench_round_float(
+                current_market_value
+            ),
+            "current_position_exposure_pct": _workbench_round_ratio(
+                current_exposure_pct
+            ),
+        },
+        "allocation_plan": {
+            "proposed_notional": _workbench_round_float(proposed_notional),
+            "proposed_notional_pct_of_equity": impact.get(
+                "proposed_notional_pct_of_equity"
+            ),
+            "suggested_quantity": suggested_quantity,
+            "suggested_notional": _workbench_round_float(suggested_notional),
+            "suggested_notional_pct_of_equity": notional_pct_of_equity,
+            "risk_budget": _workbench_round_float(risk_budget),
+            "proposed_max_loss": _workbench_round_float(proposed_max_loss),
+            "suggested_max_loss": _workbench_round_float(suggested_max_loss),
+            "max_loss_pct_of_equity": max_loss_pct_of_equity,
+            "buying_power_usage_pct": buying_power_usage_pct,
+            "allocation_allowed": False,
+            "requires_manual_approval": True,
+            "no_execution": True,
+        },
+        "exposure_context": {
+            "exposure_scope_count": exposure_scope_count,
+            "ready_exposure_scope_count": exposure_ready_count,
+            "missing_exposure_scope_count": max(
+                0,
+                exposure_scope_count - exposure_ready_count,
+            ),
+            "current_gross_exposure_pct": portfolio.get("gross_exposure_pct"),
+            "projected_notional_pct_of_equity": notional_pct_of_equity,
+            "has_exposure_deltas": exposure_ready_count > 0,
+        },
+        "checks": checks,
+        "blockers": blockers,
+        "metrics": {
+            "check_count": len(checks),
+            "ready_check_count": ready_count,
+            "review_check_count": review_count,
+            "blocked_check_count": blocked_count,
+            "disabled_check_count": disabled_count,
+            "suggested_quantity": suggested_quantity,
+            "suggested_notional": _workbench_round_float(suggested_notional),
+            "buying_power_usage_pct": buying_power_usage_pct,
+            "active_paper_trade_count": len(active_paper_rows),
+            "open_order_count": len(open_order_rows),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "allocation_update_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_capital_allocation_check(
+    *,
+    check_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: str,
+    evidence: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "evidence": evidence,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "allocation_update_allowed": False,
+        "live_trading_enabled": False,
         "next_action": next_action,
     }
 
