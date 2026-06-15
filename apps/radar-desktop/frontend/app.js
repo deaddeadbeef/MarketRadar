@@ -432,6 +432,19 @@ function workbenchPositionSizingForPage(pageKey, snapshot = state.snapshot || {}
   return pages.has(pageKey) ? checks : [];
 }
 
+function workbenchCapitalAllocation(snapshot = state.snapshot || {}) {
+  const allocation = tradingWorkbenchSnapshot(snapshot)?.capital_allocation;
+  return allocation && typeof allocation === 'object' ? allocation : { checks: [] };
+}
+
+function workbenchCapitalAllocationForPage(pageKey, snapshot = state.snapshot || {}) {
+  const allocation = workbenchCapitalAllocation(snapshot);
+  const checks = Array.isArray(allocation.checks) ? allocation.checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return checks;
+  const pages = new Set(['portfolio', 'trade-planner', 'risk-desk', 'paper-trading', 'broker', 'agent']);
+  return pages.has(pageKey) ? checks : [];
+}
+
 function workbenchOrderTicketDraft(snapshot = state.snapshot || {}) {
   const draft = tradingWorkbenchSnapshot(snapshot)?.order_ticket_draft;
   return draft && typeof draft === 'object' ? draft : { checks: [] };
@@ -1045,6 +1058,12 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       position_sizing_ticker: compact(workbenchPositionSizing(snapshot)?.ticker, 'none'),
       position_sizing_suggested_shares: Number(workbenchPositionSizing(snapshot)?.recommendation?.suggested_quantity || 0),
       position_sizing_risk_budget: compact(workbenchPositionSizing(snapshot)?.recommendation?.risk_budget, 'none'),
+      capital_allocation_status: compact(workbenchCapitalAllocation(snapshot)?.status, 'unknown'),
+      capital_allocation_ticker: compact(workbenchCapitalAllocation(snapshot)?.ticker, 'none'),
+      capital_allocation_suggested_notional: compact(workbenchCapitalAllocation(snapshot)?.allocation_plan?.suggested_notional, 'none'),
+      capital_allocation_buying_power_usage_pct: compact(workbenchCapitalAllocation(snapshot)?.allocation_plan?.buying_power_usage_pct, 'none'),
+      capital_allocation_blocked_check_count: Number(workbenchCapitalAllocation(snapshot)?.metrics?.blocked_check_count || 0),
+      capital_allocation_allowed: Boolean(workbenchCapitalAllocation(snapshot)?.allocation_plan?.allocation_allowed),
       order_ticket_draft_status: compact(workbenchOrderTicketDraft(snapshot)?.status, 'unknown'),
       order_ticket_draft_ticker: compact(workbenchOrderTicketDraft(snapshot)?.ticker, 'none'),
       order_ticket_draft_suggested_shares: Number(workbenchOrderTicketDraft(snapshot)?.ticket?.suggested_quantity || 0),
@@ -1186,6 +1205,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
     ${renderWorkbenchPortfolioImpact(snapshot, 'overview')}
     ${renderWorkbenchPositionSizing(snapshot, 'overview')}
+    ${renderWorkbenchCapitalAllocation(snapshot, 'overview')}
     ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
     ${renderWorkbenchPaperTradePreview(snapshot, 'overview')}
     ${renderWorkbenchLearningLoop(snapshot, 'overview')}
@@ -1733,6 +1753,82 @@ function positionSizingSummary(sizing) {
     `risk budget ${compact(recommendation.risk_budget, 'n/a')}`,
     `${compact(metrics.blocked_check_count, '0')} blocked checks`,
     'review-only sizing',
+  ].join('; ');
+}
+
+function renderWorkbenchCapitalAllocation(snapshot, pageKey = 'overview') {
+  const allocation = workbenchCapitalAllocation(snapshot);
+  const checks = workbenchCapitalAllocationForPage(pageKey, snapshot);
+  const capital = allocation.capital_context || {};
+  const plan = allocation.allocation_plan || {};
+  const exposure = allocation.exposure_context || {};
+  if (!checks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-capital-allocation"
+      data-testid="workbench-capital-allocation"
+      data-capital-allocation-status="${escapeHtml(allocation.status || 'unknown')}"
+      data-capital-allocation-ticker="${escapeHtml(allocation.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Capital Allocation</h2>
+          <p>${escapeHtml(capitalAllocationSummary(allocation))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(allocation.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Equity</span><b>${escapeHtml(text(capital.portfolio_equity))}</b></div>
+        <div class="kv"><span>Cash</span><b>${escapeHtml(text(capital.cash))}</b></div>
+        <div class="kv"><span>Buying power</span><b>${escapeHtml(text(capital.buying_power))}</b></div>
+        <div class="kv"><span>Broker data</span><b>${escapeHtml(capital.broker_data_stale ? 'stale' : 'current')}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Suggested notional</span><b>${escapeHtml(text(plan.suggested_notional))}</b></div>
+        <div class="kv"><span>Risk budget</span><b>${escapeHtml(text(plan.risk_budget))}</b></div>
+        <div class="kv"><span>Buying power use</span><b>${escapeHtml(text(plan.buying_power_usage_pct))}</b></div>
+        <div class="kv"><span>Allocation</span><b>${escapeHtml(plan.allocation_allowed ? 'allowed' : 'disabled')}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Gross exposure</span><b>${escapeHtml(text(exposure.current_gross_exposure_pct))}</b></div>
+        <div class="kv"><span>Projected notional</span><b>${escapeHtml(text(exposure.projected_notional_pct_of_equity))}</b></div>
+        <div class="kv"><span>Exposure scopes</span><b>${escapeHtml(`${compact(exposure.ready_exposure_scope_count, '0')}/${compact(exposure.exposure_scope_count, '0')}`)}</b></div>
+        <div class="kv"><span>Open orders</span><b>${escapeHtml(text(capital.open_order_count || 0))}</b></div>
+      </div>
+      <div class="table-wrap capital-allocation-preview">
+        <table aria-label="Workbench capital allocation">
+          <thead><tr><th>Check</th><th>Scope</th><th>Status</th><th>Finding</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="capital-allocation-check"
+                data-capital-allocation-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-capital-allocation-check-scope="${escapeHtml(check.scope || 'unknown')}"
+              >
+                <td data-label="Check">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(check.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(check.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function capitalAllocationSummary(allocation) {
+  const metrics = allocation?.metrics || {};
+  const plan = allocation?.allocation_plan || {};
+  return [
+    `${compact(allocation?.ticker, 'No ticker')} ${catalogLabel(allocation?.status || 'unknown')}`,
+    `suggested ${compact(plan.suggested_notional, 'n/a')}`,
+    `buying power ${compact(plan.buying_power_usage_pct, 'n/a')}`,
+    `${compact(metrics.blocked_check_count, '0')} blocked checks`,
+    'allocation changes disabled',
   ].join('; ');
 }
 
@@ -2534,6 +2630,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
     ${renderWorkbenchPortfolioImpact(snapshot, pageKey)}
     ${renderWorkbenchPositionSizing(snapshot, pageKey)}
+    ${renderWorkbenchCapitalAllocation(snapshot, pageKey)}
     ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
     ${renderWorkbenchPaperTradePreview(snapshot, pageKey)}
     ${renderWorkbenchLearningLoop(snapshot, pageKey)}
