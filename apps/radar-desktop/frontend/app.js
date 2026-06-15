@@ -372,6 +372,22 @@ function workbenchOperatorState(snapshot = state.snapshot || {}) {
   return operator && typeof operator === 'object' ? operator : { state_cards: [] };
 }
 
+function workbenchExecutionSandbox(snapshot = state.snapshot || {}) {
+  const sandbox = tradingWorkbenchSnapshot(snapshot)?.execution_sandbox;
+  return sandbox && typeof sandbox === 'object' ? sandbox : { lanes: [] };
+}
+
+function workbenchExecutionSandboxForPage(pageKey, snapshot = state.snapshot || {}) {
+  const sandbox = workbenchExecutionSandbox(snapshot);
+  const lanes = Array.isArray(sandbox.lanes) ? sandbox.lanes : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return lanes;
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return lanes.filter((lane) => (
+    keys.has(lane?.module) || keys.has(lane?.target_page)
+  ));
+}
+
 function workbenchDecisionBrief(snapshot = state.snapshot || {}) {
   const brief = tradingWorkbenchSnapshot(snapshot)?.decision_brief;
   return brief && typeof brief === 'object' ? brief : {};
@@ -918,6 +934,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       operator_active_module: compact(workbenchOperatorState(snapshot)?.active_module, 'none'),
       operator_active_blocker: compact(workbenchOperatorState(snapshot)?.primary_blocker, 'none'),
       operator_next_command: compact(workbenchOperatorState(snapshot)?.primary_next_action?.command, 'none'),
+      execution_sandbox_status: compact(workbenchExecutionSandbox(snapshot)?.status, 'unknown'),
+      execution_sandbox_active_lane_id: compact(workbenchExecutionSandbox(snapshot)?.active_lane_id, 'none'),
+      execution_sandbox_preview_count: Number(workbenchExecutionSandbox(snapshot)?.metrics?.preview_lane_count || 0),
+      execution_sandbox_disabled_count: Number(workbenchExecutionSandbox(snapshot)?.metrics?.disabled_lane_count || 0),
       decision_brief_status: compact(workbenchDecisionBrief(snapshot)?.status, 'unknown'),
       decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none'),
       decision_brief_source_tool: compact(workbenchDecisionBrief(snapshot)?.source_tool, 'market-radar'),
@@ -1033,6 +1053,7 @@ function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
     ${renderWorkbenchOperatorState(snapshot)}
+    ${renderWorkbenchExecutionSandbox(snapshot, 'overview')}
     ${renderWorkbenchDecisionBrief(snapshot)}
     ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
@@ -1197,6 +1218,76 @@ function operatorStateSummary(operator) {
     `${compact(metrics.runbook_step_count, '0')} runbook steps`,
     `${compact(metrics.approval_required_count, '0')} approval required`,
     `provider calls ${compact(boundaries.external_calls_made, '0')}`,
+  ].join('; ');
+}
+
+function renderWorkbenchExecutionSandbox(snapshot, pageKey = 'overview') {
+  const sandbox = workbenchExecutionSandbox(snapshot);
+  const lanes = workbenchExecutionSandboxForPage(pageKey, snapshot);
+  if (!lanes.length) return '';
+  return `
+    <section
+      class="panel wide workbench-execution-sandbox"
+      data-testid="workbench-execution-sandbox"
+      data-execution-sandbox-status="${escapeHtml(sandbox.status || 'unknown')}"
+      data-execution-sandbox-active-lane="${escapeHtml(sandbox.active_lane_id || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Execution Sandbox</h2>
+          <p>${escapeHtml(executionSandboxSummary(sandbox))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(sandbox.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Active lane</span><b>${escapeHtml(compact(sandbox.active_lane_id, '-'))}</b></div>
+        <div class="kv"><span>Previews</span><b>${escapeHtml(compact(sandbox.metrics?.preview_lane_count, '0'))}</b></div>
+        <div class="kv"><span>Guarded writes</span><b>${escapeHtml(compact(sandbox.metrics?.guarded_write_lane_count, '0'))}</b></div>
+        <div class="kv"><span>Disabled</span><b>${escapeHtml(compact(sandbox.metrics?.disabled_lane_count, '0'))}</b></div>
+      </div>
+      <div class="table-wrap execution-sandbox-preview">
+        <table aria-label="Workbench execution sandbox">
+          <thead><tr><th>Rank</th><th>Lane</th><th>Module</th><th>Status</th><th>Control</th><th>Safety</th><th>Next</th></tr></thead>
+          <tbody>
+            ${lanes.map((lane) => `
+              <tr
+                data-testid="execution-sandbox-lane"
+                data-execution-lane-status="${escapeHtml(lane.status || 'unknown')}"
+                data-execution-lane-kind="${escapeHtml(lane.lane_kind || 'unknown')}"
+              >
+                <td data-label="Rank">${escapeHtml(compact(lane.rank, '-'))}</td>
+                <td data-label="Lane">${escapeHtml(compact(lane.label, lane.id || '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(lane.module || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(lane.status || '-'))}</td>
+                <td data-label="Control">${renderWorkbenchActionControl(executionSandboxLaneControl(lane))}</td>
+                <td data-label="Safety">${escapeHtml(catalogLabel(lane.safety || '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(lane.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function executionSandboxLaneControl(lane) {
+  const navigable = lane?.action_kind === 'page';
+  const preview = lane?.lane_kind === 'preview';
+  return {
+    ...lane,
+    status: (navigable || preview) ? 'enabled' : lane?.status,
+  };
+}
+
+function executionSandboxSummary(sandbox) {
+  const metrics = sandbox?.metrics || {};
+  return [
+    `${compact(sandbox?.ticker, 'No ticker')} ${catalogLabel(sandbox?.status || 'unknown')}`,
+    `${compact(metrics.preview_lane_count, '0')} preview lanes`,
+    `${compact(metrics.approval_required_count, '0')} approval required`,
+    `${compact(metrics.disabled_lane_count, '0')} disabled boundaries`,
+    'live trading disabled',
   ].join('; ');
 }
 
@@ -1773,6 +1864,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
       </div>
     </section>
     ${renderWorkbenchOperatorState(snapshot)}
+    ${renderWorkbenchExecutionSandbox(snapshot, pageKey)}
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}

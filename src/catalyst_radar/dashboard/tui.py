@@ -1157,6 +1157,12 @@ def _trading_workbench_snapshot_payload(
         priority_queue=priority_queue,
         supervision_gates=supervision_gates,
     )
+    execution_sandbox = _workbench_execution_sandbox_payload(
+        operator_state=operator_state,
+        trade_runbook=trade_runbook,
+        action_bus=action_bus,
+        risk_envelope=risk_envelope,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1178,6 +1184,7 @@ def _trading_workbench_snapshot_payload(
         "risk_envelope": risk_envelope,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
+        "execution_sandbox": execution_sandbox,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -4264,6 +4271,252 @@ def _workbench_runbook_step(
         "label": label,
         "status": status,
         "step_kind": step_kind,
+        "action_kind": action_kind,
+        "command": str(command or "").strip() or None,
+        "target_page": str(target_page or module).strip(),
+        "safety": str(safety or "").strip() or "zero_call_navigation",
+        "local_write_allowed": local_write_allowed,
+        "requires_arm_before_run": requires_arm_before_run,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_required": _first_nonnegative_int(db_writes_required),
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "source": source,
+        "evidence": evidence,
+        "next_action": next_action,
+    }
+
+
+def _workbench_execution_sandbox_payload(
+    *,
+    operator_state: Mapping[str, object],
+    trade_runbook: Mapping[str, object],
+    action_bus: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+) -> dict[str, object]:
+    actions = {
+        str(row.get("id")): row
+        for row in _rows(action_bus.get("actions"))
+        if row.get("id")
+    }
+    paper_preview = actions.get("paper-decision-preview", {})
+    ticket_preview = actions.get("order-ticket-preview", {})
+    paper_record = actions.get("paper-decision-record", {})
+    ticket_record = actions.get("order-ticket-record", {})
+    paper_record_writes = _first_nonnegative_int(
+        paper_record.get("db_writes_required")
+    )
+    if paper_record_writes <= 0:
+        paper_record_writes = 2
+    ticket_record_writes = _first_nonnegative_int(
+        ticket_record.get("db_writes_required")
+    )
+    if ticket_record_writes <= 0:
+        ticket_record_writes = 1
+    primary_next_action = (
+        "Review decision readiness before previewing or recording execution artifacts."
+    )
+    lanes = [
+        _workbench_execution_sandbox_lane(
+            lane_id="review-before-execution",
+            rank=1,
+            module="review",
+            label="Review before execution",
+            status="blocked",
+            lane_kind="precondition",
+            action_kind="page",
+            command="review",
+            target_page="review",
+            safety="zero_call_navigation",
+            source="trading_workbench.operator_state",
+            evidence=str(operator_state.get("primary_blocker") or "Decision readiness"),
+            next_action=primary_next_action,
+        ),
+        _workbench_execution_sandbox_lane(
+            lane_id="paper-preview",
+            rank=2,
+            module="paper-trading",
+            label="Paper decision preview",
+            status="ready"
+            if paper_preview.get("status") == "enabled"
+            else "blocked",
+            lane_kind="preview",
+            action_kind="backend_command",
+            command=paper_preview.get("command") or "paper-decision preview",
+            target_page=paper_preview.get("target_page") or "paper-trading",
+            safety=paper_preview.get("safety") or "local_backend_preview",
+            source="trading_workbench.action_bus.paper-decision-preview",
+            evidence="local preview",
+            next_action="Preview the paper decision only after blockers are reviewed.",
+        ),
+        _workbench_execution_sandbox_lane(
+            lane_id="ticket-preview",
+            rank=3,
+            module="broker",
+            label="Broker ticket preview",
+            status="ready"
+            if ticket_preview.get("status") == "enabled"
+            else "blocked",
+            lane_kind="preview",
+            action_kind="backend_command",
+            command=ticket_preview.get("command") or "order-ticket preview",
+            target_page=ticket_preview.get("target_page") or "broker",
+            safety=ticket_preview.get("safety") or "local_backend_preview",
+            source="trading_workbench.action_bus.order-ticket-preview",
+            evidence="blocked ticket preview",
+            next_action="Preview the local ticket; live submission stays disabled.",
+        ),
+        _workbench_execution_sandbox_lane(
+            lane_id="paper-record",
+            rank=4,
+            module="paper-trading",
+            label="Guarded paper record",
+            status="approval_required",
+            lane_kind="guarded_write",
+            action_kind="backend_command",
+            command=paper_record.get("command") or "paper-decision execute",
+            target_page=paper_record.get("target_page") or "paper-trading",
+            safety=paper_record.get("safety") or "local_db_write",
+            local_write_allowed=True,
+            requires_arm_before_run=True,
+            db_writes_required=paper_record_writes,
+            source="trading_workbench.action_bus.paper-decision-record",
+            evidence="guarded local write",
+            next_action="Arm and record only after manual approval.",
+        ),
+        _workbench_execution_sandbox_lane(
+            lane_id="ticket-record",
+            rank=5,
+            module="broker",
+            label="Guarded ticket record",
+            status="approval_required",
+            lane_kind="guarded_write",
+            action_kind="backend_command",
+            command=ticket_record.get("command") or "order-ticket record",
+            target_page=ticket_record.get("target_page") or "broker",
+            safety=ticket_record.get("safety") or "local_db_write",
+            local_write_allowed=True,
+            requires_arm_before_run=True,
+            db_writes_required=ticket_record_writes,
+            source="trading_workbench.action_bus.order-ticket-record",
+            evidence="blocked ticket local write",
+            next_action="Arm and save only after manual approval.",
+        ),
+        _workbench_execution_sandbox_lane(
+            lane_id="live-submit",
+            rank=6,
+            module="broker",
+            label="Live broker submission",
+            status="disabled",
+            lane_kind="external_boundary",
+            action_kind="boundary",
+            command="broker live submission",
+            target_page="broker",
+            safety="external_boundary",
+            source="trading_workbench.execution_boundary",
+            evidence="live trading disabled",
+            next_action="Live broker submission remains disabled.",
+        ),
+        _workbench_execution_sandbox_lane(
+            lane_id="agent-execute",
+            rank=7,
+            module="agent",
+            label="Agent execution",
+            status="disabled",
+            lane_kind="agent_boundary",
+            action_kind="boundary",
+            command="agent execute",
+            target_page="agent",
+            safety="agent_execution_boundary",
+            source="trading_workbench.supervision_gates",
+            evidence="agent execution disabled",
+            next_action="Agent execution remains disabled.",
+        ),
+    ]
+    blocked_lane_count = sum(1 for row in lanes if row.get("status") == "blocked")
+    approval_required_count = sum(
+        1 for row in lanes if row.get("status") == "approval_required"
+    )
+    disabled_lane_count = sum(1 for row in lanes if row.get("status") == "disabled")
+    return {
+        "schema_version": "trading-workbench-execution-sandbox-v1",
+        "status": "blocked"
+        if blocked_lane_count
+        else "approval_required"
+        if approval_required_count
+        else "ready",
+        "source_tool": operator_state.get("source_tool") or "market-radar",
+        "ticker": _first_value(
+            operator_state.get("ticker"),
+            trade_runbook.get("ticker"),
+            risk_envelope.get("ticker"),
+        ),
+        "decision_card_id": _first_value(
+            operator_state.get("decision_card_id"),
+            trade_runbook.get("decision_card_id"),
+            risk_envelope.get("decision_card_id"),
+        ),
+        "active_lane_id": next(
+            (
+                str(row.get("id"))
+                for row in lanes
+                if row.get("status") in {"blocked", "approval_required"}
+            ),
+            lanes[0]["id"] if lanes else None,
+        ),
+        "primary_next_action": primary_next_action,
+        "lanes": lanes,
+        "metrics": {
+            "lane_count": len(lanes),
+            "preview_lane_count": sum(
+                1 for row in lanes if row.get("lane_kind") == "preview"
+            ),
+            "guarded_write_lane_count": sum(
+                1 for row in lanes if row.get("lane_kind") == "guarded_write"
+            ),
+            "approval_required_count": approval_required_count,
+            "blocked_lane_count": blocked_lane_count,
+            "disabled_lane_count": disabled_lane_count,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_execution_sandbox_lane(
+    *,
+    lane_id: str,
+    rank: int,
+    module: str,
+    label: str,
+    status: str,
+    lane_kind: str,
+    action_kind: str,
+    command: object,
+    target_page: object,
+    safety: object,
+    source: str,
+    evidence: str,
+    next_action: str,
+    local_write_allowed: bool = False,
+    requires_arm_before_run: bool = False,
+    db_writes_required: object = 0,
+) -> dict[str, object]:
+    return {
+        "id": lane_id,
+        "rank": rank,
+        "module": module,
+        "label": label,
+        "status": status,
+        "lane_kind": lane_kind,
         "action_kind": action_kind,
         "command": str(command or "").strip() or None,
         "target_page": str(target_page or module).strip(),
