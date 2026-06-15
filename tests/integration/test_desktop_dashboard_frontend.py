@@ -467,6 +467,24 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchOperatorState(snapshot)?.primary_blocker, 'none')",
         "operator_next_command: compact("
         "workbenchOperatorState(snapshot)?.primary_next_action?.command, 'none')",
+        "function workbenchExecutionSandbox",
+        "function workbenchExecutionSandboxForPage",
+        "function renderWorkbenchExecutionSandbox",
+        "function executionSandboxLaneControl",
+        "function executionSandboxSummary",
+        'data-testid="workbench-execution-sandbox"',
+        'data-testid="execution-sandbox-lane"',
+        'data-execution-sandbox-status="${escapeHtml(sandbox.status || \'unknown\')}"',
+        'data-execution-lane-status="${escapeHtml(lane.status || \'unknown\')}"',
+        'data-execution-lane-kind="${escapeHtml(lane.lane_kind || \'unknown\')}"',
+        "execution_sandbox_status: compact("
+        "workbenchExecutionSandbox(snapshot)?.status, 'unknown')",
+        "execution_sandbox_active_lane_id: compact("
+        "workbenchExecutionSandbox(snapshot)?.active_lane_id, 'none')",
+        "execution_sandbox_preview_count: Number("
+        "workbenchExecutionSandbox(snapshot)?.metrics?.preview_lane_count || 0)",
+        "execution_sandbox_disabled_count: Number("
+        "workbenchExecutionSandbox(snapshot)?.metrics?.disabled_lane_count || 0)",
         "decision_brief_status: compact(workbenchDecisionBrief(snapshot)?.status, 'unknown')",
         "decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none')",
         "decision_brief_source_tool: compact("
@@ -553,6 +571,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".workbench-operator-state" in styles
     assert ".operator-state-grid" in styles
     assert ".operator-state-cards" in styles
+    assert ".workbench-execution-sandbox" in styles
+    assert ".execution-sandbox-preview" in styles
     assert ".workbench-decision-brief" in styles
     assert ".decision-brief-grid" in styles
     assert ".decision-brief-evidence" in styles

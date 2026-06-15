@@ -1084,6 +1084,99 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert operator_state["order_submission_allowed"] is False
     assert operator_state["live_trading_enabled"] is False
 
+    execution_sandbox = workbench["execution_sandbox"]
+    assert execution_sandbox["schema_version"] == "trading-workbench-execution-sandbox-v1"
+    assert execution_sandbox["status"] == "blocked"
+    assert execution_sandbox["source_tool"] == "market-radar"
+    assert execution_sandbox["ticker"] == "MSFT"
+    assert execution_sandbox["decision_card_id"] == "card-msft-latest"
+    assert execution_sandbox["active_lane_id"] == "review-before-execution"
+    assert execution_sandbox["primary_next_action"] == (
+        "Review decision readiness before previewing or recording execution artifacts."
+    )
+    assert execution_sandbox["metrics"] == {
+        "lane_count": 7,
+        "preview_lane_count": 2,
+        "guarded_write_lane_count": 2,
+        "approval_required_count": 2,
+        "blocked_lane_count": 1,
+        "disabled_lane_count": 2,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert execution_sandbox["external_calls_made"] == 0
+    assert execution_sandbox["db_writes_made"] == 0
+    assert execution_sandbox["broker_order_submitted"] is False
+    assert execution_sandbox["order_submission_allowed"] is False
+    assert execution_sandbox["live_trading_enabled"] is False
+    execution_lanes = {row["id"]: row for row in execution_sandbox["lanes"]}
+    assert list(execution_lanes) == [
+        "review-before-execution",
+        "paper-preview",
+        "ticket-preview",
+        "paper-record",
+        "ticket-record",
+        "live-submit",
+        "agent-execute",
+    ]
+    assert execution_lanes["review-before-execution"] == {
+        "id": "review-before-execution",
+        "rank": 1,
+        "module": "review",
+        "label": "Review before execution",
+        "status": "blocked",
+        "lane_kind": "precondition",
+        "action_kind": "page",
+        "command": "review",
+        "target_page": "review",
+        "safety": "zero_call_navigation",
+        "local_write_allowed": False,
+        "requires_arm_before_run": False,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "db_writes_required": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "source": "trading_workbench.operator_state",
+        "evidence": "Decision readiness",
+        "next_action": (
+            "Review decision readiness before previewing or recording execution artifacts."
+        ),
+    }
+    assert execution_lanes["paper-preview"]["status"] == "ready"
+    assert execution_lanes["paper-preview"]["command"] == "paper-decision preview"
+    assert execution_lanes["paper-preview"]["lane_kind"] == "preview"
+    assert execution_lanes["paper-preview"]["local_write_allowed"] is False
+    assert execution_lanes["ticket-preview"]["status"] == "ready"
+    assert execution_lanes["ticket-preview"]["command"] == "order-ticket preview"
+    assert execution_lanes["ticket-preview"]["safety"] == "local_backend_preview"
+    assert execution_lanes["paper-record"]["status"] == "approval_required"
+    assert execution_lanes["paper-record"]["command"] == "paper-decision execute"
+    assert execution_lanes["paper-record"]["local_write_allowed"] is True
+    assert execution_lanes["paper-record"]["requires_arm_before_run"] is True
+    assert execution_lanes["paper-record"]["db_writes_required"] == 2
+    assert execution_lanes["ticket-record"]["status"] == "approval_required"
+    assert execution_lanes["ticket-record"]["command"] == "order-ticket record"
+    assert execution_lanes["ticket-record"]["local_write_allowed"] is True
+    assert execution_lanes["ticket-record"]["requires_arm_before_run"] is True
+    assert execution_lanes["ticket-record"]["db_writes_required"] == 1
+    assert execution_lanes["live-submit"]["status"] == "disabled"
+    assert execution_lanes["live-submit"]["action_kind"] == "boundary"
+    assert execution_lanes["live-submit"]["safety"] == "external_boundary"
+    assert execution_lanes["agent-execute"]["status"] == "disabled"
+    assert execution_lanes["agent-execute"]["action_kind"] == "boundary"
+    assert execution_lanes["agent-execute"]["safety"] == "agent_execution_boundary"
+    assert all(row["external_calls_made"] == 0 for row in execution_sandbox["lanes"])
+    assert all(row["db_writes_made"] == 0 for row in execution_sandbox["lanes"])
+    assert all(
+        row["order_submission_allowed"] is False for row in execution_sandbox["lanes"]
+    )
+    assert all(
+        row["broker_order_submitted"] is False for row in execution_sandbox["lanes"]
+    )
+
     action_bus = workbench["action_bus"]
     assert action_bus["schema_version"] == "trading-workbench-action-bus-v1"
     assert action_bus["status"] == "ready"

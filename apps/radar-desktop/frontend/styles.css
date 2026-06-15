@@ -654,6 +654,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 }
 
 .workbench-operator-state,
+.workbench-execution-sandbox,
 .workbench-decision-brief,
 .workbench-scenario-matrix,
 .workbench-risk-envelope,
@@ -872,6 +873,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 .workflow-map-preview table,
 .scenario-matrix-preview table,
 .risk-envelope-preview table,
+.execution-sandbox-preview table,
 .trade-runbook-preview table,
 .priority-queue-preview table,
 .supervision-gate-preview table {
