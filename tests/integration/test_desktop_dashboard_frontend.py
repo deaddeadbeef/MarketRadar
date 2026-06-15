@@ -513,6 +513,23 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchPositionSizing(snapshot)?.recommendation?.suggested_quantity || 0)",
         "position_sizing_risk_budget: compact("
         "workbenchPositionSizing(snapshot)?.recommendation?.risk_budget, 'none')",
+        "function workbenchOrderTicketDraft",
+        "function workbenchOrderTicketDraftForPage",
+        "function renderWorkbenchOrderTicketDraft",
+        "function orderTicketDraftSummary",
+        'data-testid="workbench-order-ticket-draft"',
+        'data-testid="order-ticket-draft-check"',
+        "data-order-ticket-draft-status=\"${escapeHtml(draft.status || 'unknown')}\"",
+        "data-order-ticket-draft-check-status=\"${escapeHtml(check.status || 'unknown')}\"",
+        "data-order-ticket-draft-check-scope=\"${escapeHtml(check.scope || 'unknown')}\"",
+        "order_ticket_draft_status: compact("
+        "workbenchOrderTicketDraft(snapshot)?.status, 'unknown')",
+        "order_ticket_draft_ticker: compact("
+        "workbenchOrderTicketDraft(snapshot)?.ticker, 'none')",
+        "order_ticket_draft_suggested_shares: Number("
+        "workbenchOrderTicketDraft(snapshot)?.ticket?.suggested_quantity || 0)",
+        "order_ticket_draft_preview_command: compact("
+        "workbenchOrderTicketDraft(snapshot)?.commands?.preview, 'none')",
         "risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown')",
         "risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none')",
         "risk_sizing_status: compact("
@@ -597,6 +614,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".scenario-matrix-preview" in styles
     assert ".workbench-position-sizing" in styles
     assert ".position-sizing-preview" in styles
+    assert ".workbench-order-ticket-draft" in styles
+    assert ".order-ticket-draft-preview" in styles
     assert ".workbench-risk-envelope" in styles
     assert ".risk-envelope-preview" in styles
     assert ".workbench-trade-runbook" in styles

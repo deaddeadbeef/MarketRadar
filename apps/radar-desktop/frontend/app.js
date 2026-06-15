@@ -419,6 +419,19 @@ function workbenchPositionSizingForPage(pageKey, snapshot = state.snapshot || {}
   return pages.has(pageKey) ? checks : [];
 }
 
+function workbenchOrderTicketDraft(snapshot = state.snapshot || {}) {
+  const draft = tradingWorkbenchSnapshot(snapshot)?.order_ticket_draft;
+  return draft && typeof draft === 'object' ? draft : { checks: [] };
+}
+
+function workbenchOrderTicketDraftForPage(pageKey, snapshot = state.snapshot || {}) {
+  const draft = workbenchOrderTicketDraft(snapshot);
+  const checks = Array.isArray(draft.checks) ? draft.checks : [];
+  if (pageKey === 'overview' || pageKey === 'command-center') return checks;
+  const pages = new Set(['trade-planner', 'risk-desk', 'paper-trading', 'broker']);
+  return pages.has(pageKey) ? checks : [];
+}
+
 function workbenchRiskEnvelope(snapshot = state.snapshot || {}) {
   const envelope = tradingWorkbenchSnapshot(snapshot)?.risk_envelope;
   return envelope && typeof envelope === 'object' ? envelope : { checks: [] };
@@ -963,6 +976,10 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       position_sizing_ticker: compact(workbenchPositionSizing(snapshot)?.ticker, 'none'),
       position_sizing_suggested_shares: Number(workbenchPositionSizing(snapshot)?.recommendation?.suggested_quantity || 0),
       position_sizing_risk_budget: compact(workbenchPositionSizing(snapshot)?.recommendation?.risk_budget, 'none'),
+      order_ticket_draft_status: compact(workbenchOrderTicketDraft(snapshot)?.status, 'unknown'),
+      order_ticket_draft_ticker: compact(workbenchOrderTicketDraft(snapshot)?.ticker, 'none'),
+      order_ticket_draft_suggested_shares: Number(workbenchOrderTicketDraft(snapshot)?.ticket?.suggested_quantity || 0),
+      order_ticket_draft_preview_command: compact(workbenchOrderTicketDraft(snapshot)?.commands?.preview, 'none'),
       risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown'),
       risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none'),
       risk_sizing_status: compact(workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown'),
@@ -1074,6 +1091,7 @@ function renderOverview(snapshot) {
     ${renderWorkbenchDecisionBrief(snapshot)}
     ${renderWorkbenchScenarioMatrix(snapshot, 'overview')}
     ${renderWorkbenchPositionSizing(snapshot, 'overview')}
+    ${renderWorkbenchOrderTicketDraft(snapshot, 'overview')}
     ${renderWorkbenchRiskEnvelope(snapshot, 'overview')}
     ${renderWorkbenchTradeRunbook(snapshot, 'overview')}
     ${renderWorkbenchWorkflowMap(snapshot, 'overview')}
@@ -1529,6 +1547,79 @@ function positionSizingSummary(sizing) {
   ].join('; ');
 }
 
+function renderWorkbenchOrderTicketDraft(snapshot, pageKey = 'overview') {
+  const draft = workbenchOrderTicketDraft(snapshot);
+  const checks = workbenchOrderTicketDraftForPage(pageKey, snapshot);
+  const ticket = draft.ticket || {};
+  const commands = draft.commands || {};
+  if (!checks.length) return '';
+  return `
+    <section
+      class="panel wide workbench-order-ticket-draft"
+      data-testid="workbench-order-ticket-draft"
+      data-order-ticket-draft-status="${escapeHtml(draft.status || 'unknown')}"
+      data-order-ticket-draft-ticker="${escapeHtml(draft.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Order Ticket Draft</h2>
+          <p>${escapeHtml(orderTicketDraftSummary(draft))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(draft.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Suggested qty</span><b>${escapeHtml(compact(ticket.suggested_quantity, '-'))}</b></div>
+        <div class="kv"><span>Limit</span><b>${escapeHtml(text(ticket.limit_price))}</b></div>
+        <div class="kv"><span>Stop</span><b>${escapeHtml(text(ticket.stop_price))}</b></div>
+        <div class="kv"><span>Max loss</span><b>${escapeHtml(text(ticket.estimated_max_loss))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Side</span><b>${escapeHtml(catalogLabel(ticket.side || '-'))}</b></div>
+        <div class="kv"><span>Mode</span><b>${escapeHtml(catalogLabel(draft.ticket_mode || '-'))}</b></div>
+        <div class="kv"><span>Submission</span><b>${escapeHtml(ticket.submission_allowed ? 'allowed' : 'disabled')}</b></div>
+        <div class="kv"><span>Live</span><b>${escapeHtml(ticket.live_trading_enabled ? 'enabled' : 'disabled')}</b></div>
+      </div>
+      <div class="plan-command-list order-ticket-draft-commands">
+        <div><span>Preview</span><code>${escapeHtml(compact(commands.preview, 'order-ticket preview'))}</code></div>
+        <div><span>Record</span><code>${escapeHtml(compact(commands.record, 'order-ticket record'))}</code></div>
+        <div><span>Live boundary</span><code>${escapeHtml(compact(commands.live_submit, 'broker live submission'))}</code></div>
+      </div>
+      <div class="table-wrap order-ticket-draft-preview">
+        <table aria-label="Workbench order ticket draft">
+          <thead><tr><th>Check</th><th>Scope</th><th>Status</th><th>Finding</th><th>Next</th></tr></thead>
+          <tbody>
+            ${checks.map((check) => `
+              <tr
+                data-testid="order-ticket-draft-check"
+                data-order-ticket-draft-check-status="${escapeHtml(check.status || 'unknown')}"
+                data-order-ticket-draft-check-scope="${escapeHtml(check.scope || 'unknown')}"
+              >
+                <td data-label="Check">${escapeHtml(compact(check.label, check.id || '-'))}</td>
+                <td data-label="Scope">${escapeHtml(catalogLabel(check.scope || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(check.status || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(check.finding, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(check.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function orderTicketDraftSummary(draft) {
+  const metrics = draft?.metrics || {};
+  const ticket = draft?.ticket || {};
+  return [
+    `${compact(draft?.ticker, 'No ticker')} ${catalogLabel(draft?.status || 'unknown')}`,
+    `${compact(ticket.suggested_quantity, '0')} suggested shares`,
+    `limit ${compact(ticket.limit_price, 'n/a')}`,
+    `${compact(metrics.blocked_check_count, '0')} blocked checks`,
+    'live submission disabled',
+  ].join('; ');
+}
+
 function renderWorkbenchRiskEnvelope(snapshot, pageKey = 'overview') {
   const envelope = workbenchRiskEnvelope(snapshot);
   const checks = workbenchRiskEnvelopeForPage(pageKey, snapshot);
@@ -1953,6 +2044,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
     ${renderWorkbenchExecutionSandbox(snapshot, pageKey)}
     ${renderWorkbenchScenarioMatrix(snapshot, pageKey)}
     ${renderWorkbenchPositionSizing(snapshot, pageKey)}
+    ${renderWorkbenchOrderTicketDraft(snapshot, pageKey)}
     ${renderWorkbenchRiskEnvelope(snapshot, pageKey)}
     ${renderWorkbenchTradeRunbook(snapshot, pageKey)}
     ${renderWorkbenchWorkflowMap(snapshot, pageKey)}

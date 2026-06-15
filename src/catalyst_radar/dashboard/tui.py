@@ -1146,6 +1146,12 @@ def _trading_workbench_snapshot_payload(
         scenario_matrix=scenario_matrix,
         risk_envelope=risk_envelope,
     )
+    order_ticket_draft = _workbench_order_ticket_draft_payload(
+        active_plan=active_plan,
+        position_sizing=position_sizing,
+        risk_envelope=risk_envelope,
+        action_bus=action_bus,
+    )
     trade_runbook = _workbench_trade_runbook_payload(
         decision_brief=decision_brief,
         scenario_matrix=scenario_matrix,
@@ -1188,6 +1194,7 @@ def _trading_workbench_snapshot_payload(
         "scenario_matrix": scenario_matrix,
         "risk_envelope": risk_envelope,
         "position_sizing": position_sizing,
+        "order_ticket_draft": order_ticket_draft,
         "trade_runbook": trade_runbook,
         "operator_state": operator_state,
         "execution_sandbox": execution_sandbox,
@@ -4251,6 +4258,258 @@ def _workbench_position_sizing_payload(
 
 
 def _workbench_position_sizing_check(
+    *,
+    check_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "next_action": next_action,
+    }
+
+
+def _workbench_order_ticket_draft_payload(
+    *,
+    active_plan: Mapping[str, object],
+    position_sizing: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    action_bus: Mapping[str, object],
+) -> dict[str, object]:
+    order = _mapping(active_plan.get("order_intent"))
+    ticket_source = _mapping(active_plan.get("order_ticket"))
+    inputs = _mapping(position_sizing.get("inputs"))
+    recommendation = _mapping(position_sizing.get("recommendation"))
+    risk = _mapping(active_plan.get("risk_approval"))
+    actions = {
+        str(row.get("id")): row
+        for row in _rows(action_bus.get("actions"))
+        if row.get("id")
+    }
+    preview_action = _mapping(actions.get("order-ticket-preview"))
+    record_action = _mapping(actions.get("order-ticket-record"))
+    side = _first_value(ticket_source.get("side"), order.get("side"), inputs.get("side"))
+    entry_price = _optional_float(
+        _first_value(
+            ticket_source.get("entry_price"),
+            order.get("limit_price"),
+            inputs.get("entry_price"),
+        )
+    )
+    limit_price = _optional_float(_first_value(order.get("limit_price"), entry_price))
+    stop_price = _optional_float(
+        _first_value(
+            order.get("stop_price"),
+            ticket_source.get("invalidation_price"),
+            inputs.get("invalidation_price"),
+        )
+    )
+    invalidation_price = _optional_float(
+        _first_value(ticket_source.get("invalidation_price"), stop_price)
+    )
+    quantity = _optional_int(
+        _first_value(
+            order.get("quantity"),
+            ticket_source.get("quantity"),
+            ticket_source.get("shares"),
+        )
+    )
+    if quantity is not None and quantity <= 0:
+        quantity = None
+    suggested_quantity = _optional_int(recommendation.get("suggested_quantity"))
+    if suggested_quantity is not None and suggested_quantity <= 0:
+        suggested_quantity = None
+    effective_quantity = quantity if quantity is not None else suggested_quantity
+    risk_per_share = _optional_float(inputs.get("risk_per_share"))
+    risk_budget = _optional_float(recommendation.get("risk_budget"))
+    estimated_notional = _optional_float(recommendation.get("estimated_notional"))
+    estimated_max_loss = _optional_float(recommendation.get("estimated_max_loss"))
+    if (
+        estimated_notional is None
+        and effective_quantity is not None
+        and limit_price is not None
+    ):
+        estimated_notional = effective_quantity * limit_price
+    if (
+        estimated_max_loss is None
+        and effective_quantity is not None
+        and risk_per_share is not None
+    ):
+        estimated_max_loss = effective_quantity * risk_per_share
+    blockers = list(
+        dict.fromkeys(
+            _texts(position_sizing.get("blockers"))
+            or _texts(risk_envelope.get("blockers"))
+        )
+    )
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    if not blockers:
+        blockers = list(dict.fromkeys([*paper_blocks, *live_blocks]))
+    primary_blocker = (
+        "missing_position_sizing:shares"
+        if quantity is None
+        else paper_blocks[0]
+        if paper_blocks
+        else blockers[0]
+        if blockers
+        else None
+    )
+    checks = [
+        _workbench_order_ticket_draft_check(
+            check_id="entry-stop-inputs",
+            label="Entry and stop",
+            status="ready"
+            if entry_price is not None and invalidation_price is not None
+            else "blocked",
+            scope="trade-planner",
+            finding="entry_stop_available"
+            if entry_price is not None and invalidation_price is not None
+            else "missing_entry_stop",
+            next_action="Review entry, limit, and stop before saving a local blocked ticket.",
+        ),
+        _workbench_order_ticket_draft_check(
+            check_id="quantity-confirmation",
+            label="Quantity confirmation",
+            status="blocked" if quantity is None else "ready",
+            scope="trade-planner",
+            finding=(
+                "missing_position_sizing:shares"
+                if quantity is None
+                else "shares_confirmed"
+            ),
+            next_action=(
+                "Confirm share quantity before saving a local blocked ticket."
+                if quantity is None
+                else "Use confirmed shares for the local blocked ticket."
+            ),
+        ),
+        _workbench_order_ticket_draft_check(
+            check_id="risk-budget",
+            label="Risk budget",
+            status="ready" if risk_budget is not None else "blocked",
+            scope="risk-desk",
+            finding=f"risk_budget={_workbench_round_float(risk_budget)}"
+            if risk_budget is not None
+            else "risk_budget_missing",
+            next_action="Use the risk budget as a ticket sizing ceiling.",
+        ),
+        _workbench_order_ticket_draft_check(
+            check_id="paper-trade-gate",
+            label="Paper trade gate",
+            status="blocked" if paper_blocks else "ready",
+            scope="paper-trading",
+            finding=paper_blocks[0] if paper_blocks else "paper_trade_gate_clear",
+            next_action=(
+                "Resolve paper blocks before saving a local blocked ticket."
+                if paper_blocks
+                else "Paper gate is ready for a supervised local ticket."
+            ),
+        ),
+        _workbench_order_ticket_draft_check(
+            check_id="live-submission-gate",
+            label="Live submission gate",
+            status="disabled",
+            scope="broker",
+            finding=(
+                "broker_submission_disabled"
+                if "broker_submission_disabled" in live_blocks
+                else "live_submission_disabled"
+            ),
+            next_action="Live broker submission remains disabled.",
+        ),
+    ]
+    ready_check_count = sum(1 for row in checks if row.get("status") == "ready")
+    blocked_check_count = sum(1 for row in checks if row.get("status") == "blocked")
+    disabled_check_count = sum(1 for row in checks if row.get("status") == "disabled")
+    ticker = _first_value(
+        ticket_source.get("ticker"),
+        position_sizing.get("ticker"),
+        risk_envelope.get("ticker"),
+        active_plan.get("ticker"),
+    )
+    decision_card_id = _first_value(
+        position_sizing.get("decision_card_id"),
+        risk_envelope.get("decision_card_id"),
+        active_plan.get("decision_card_id"),
+    )
+    return {
+        "schema_version": "trading-workbench-order-ticket-draft-v1",
+        "status": "blocked" if blocked_check_count else "ready",
+        "source_tool": position_sizing.get("source_tool") or "market-radar",
+        "ticker": ticker,
+        "decision_card_id": decision_card_id,
+        "draft_id": f"draft-{str(ticker or 'unknown').lower()}-{decision_card_id or 'no-card'}",
+        "ticket_mode": "local_blocked_preview",
+        "primary_blocker": primary_blocker,
+        "primary_next_action": (
+            "Confirm share quantity before saving a local blocked ticket."
+            if primary_blocker
+            else "Preview the local blocked ticket before any record step."
+        ),
+        "ticket": {
+            "ticker": ticker,
+            "side": side,
+            "order_type": "stop_limit",
+            "time_in_force": "day",
+            "entry_price": _workbench_round_float(entry_price),
+            "limit_price": _workbench_round_float(limit_price),
+            "stop_price": _workbench_round_float(stop_price),
+            "invalidation_price": _workbench_round_float(invalidation_price),
+            "quantity": quantity,
+            "suggested_quantity": suggested_quantity,
+            "risk_per_share": _workbench_round_float(risk_per_share),
+            "risk_budget": _workbench_round_float(risk_budget),
+            "estimated_notional": _workbench_round_float(estimated_notional),
+            "estimated_max_loss": _workbench_round_float(estimated_max_loss),
+            "estimated_notional_pct_of_equity": recommendation.get(
+                "estimated_notional_pct_of_equity"
+            ),
+            "estimated_max_loss_pct_of_equity": recommendation.get(
+                "estimated_max_loss_pct_of_equity"
+            ),
+            "submission_allowed": False,
+            "broker_order_submitted": False,
+            "live_trading_enabled": False,
+        },
+        "commands": {
+            "preview": preview_action.get("command")
+            or ticket_source.get("preview_command")
+            or "order-ticket preview",
+            "record": record_action.get("command")
+            or ticket_source.get("record_command")
+            or "order-ticket record",
+            "live_submit": "broker live submission",
+        },
+        "checks": checks,
+        "blockers": blockers,
+        "metrics": {
+            "check_count": len(checks),
+            "ready_check_count": ready_check_count,
+            "blocked_check_count": blocked_check_count,
+            "disabled_check_count": disabled_check_count,
+            "suggested_quantity": suggested_quantity,
+            "estimated_notional": _workbench_round_float(estimated_notional),
+            "estimated_max_loss": _workbench_round_float(estimated_max_loss),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_order_ticket_draft_check(
     *,
     check_id: str,
     label: str,
