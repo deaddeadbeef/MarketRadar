@@ -460,6 +460,30 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "approval_required_count: Number("
         "workbenchSupervisionGates(snapshot)?.metrics?.approval_required_count || 0)",
         "armed_local_write: compact(state.pendingLocalWrite?.command, 'none')",
+        "function workbenchCaseFile",
+        "function workbenchCaseToolsForPage",
+        "function renderWorkbenchCaseFile",
+        "function caseFileSummary",
+        "${renderWorkbenchCaseFile(snapshot, 'overview')}",
+        "${renderWorkbenchCaseFile(snapshot, pageKey)}",
+        'data-testid="workbench-case-file"',
+        'data-testid="case-file-tool"',
+        "data-case-file-status=\"${escapeHtml(caseFile.status || 'unknown')}\"",
+        "data-case-tool-status=\"${escapeHtml(tool.status || 'unknown')}\"",
+        "data-case-tool-kind=\"${escapeHtml(tool.tool_kind || 'unknown')}\"",
+        "data-case-tool-module=\"${escapeHtml(tool.module || 'unknown')}\"",
+        "case_file_status: compact(",
+        "case_file_ticker: compact(",
+        "case_file_decision_card_id: compact(",
+        "case_file_active_stage_id: compact(",
+        "case_file_primary_tool_id: compact(",
+        "case_file_primary_blocker: compact(",
+        "case_file_linked_tool_count: Number(",
+        "case_file_blocked_tool_count: Number(",
+        "case_file_disabled_tool_count: Number(",
+        "case_file_paper_record_allowed: Boolean(",
+        "case_file_broker_handoff_allowed: Boolean(",
+        "case_file_strategy_update_allowed: Boolean(",
         "operator_status: compact(workbenchOperatorState(snapshot)?.status, 'unknown')",
         "operator_active_module: compact("
         "workbenchOperatorState(snapshot)?.active_module, 'none')",
@@ -815,6 +839,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
 
     assert ".platform-tools" in styles
     assert ".platform-tool-card" in styles
+    assert ".workbench-case-file" in styles
+    assert ".case-file-preview" in styles
     assert ".workbench-market-intelligence-dossier" in styles
     assert ".market-intelligence-preview" in styles
     assert ".workbench-operator-state" in styles

@@ -1264,10 +1264,31 @@ def _trading_workbench_snapshot_payload(
         trade_readiness_brief=trade_readiness_brief,
         agent_playbook=agent_playbook,
     )
+    case_file = _workbench_case_file_payload(
+        active_plan=active_plan,
+        decision_brief=decision_brief,
+        scenario_matrix=scenario_matrix,
+        risk_envelope=risk_envelope,
+        capital_allocation=capital_allocation,
+        paper_trade_preview=paper_trade_preview,
+        pretrade_compliance=pretrade_compliance,
+        learning_loop=learning_loop,
+        strategy_review=strategy_review,
+        trade_monitor=trade_monitor,
+        workflow_map=workflow_map,
+        priority_queue=priority_queue,
+        supervision_gates=supervision_gates,
+        operator_state=operator_state,
+        execution_sandbox=execution_sandbox,
+        trade_readiness_brief=trade_readiness_brief,
+        agent_playbook=agent_playbook,
+        market_intelligence_dossier=market_intelligence_dossier,
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
         "primary_tool": "market-radar",
+        "case_file": case_file,
         "active_plan": active_plan,
         "execution_boundary": {
             "live_trading_enabled": False,
@@ -2074,6 +2095,7 @@ def _trading_workbench_snapshot_payload(
                 "source_keys": [
                     "runtime_context",
                     "agent_brief",
+                    "trading_workbench.case_file",
                     "trading_workbench.agent_playbook",
                     "trading_workbench.market_intelligence_dossier",
                     "trading_workbench.active_plan.capability_map",
@@ -2214,6 +2236,7 @@ def _workbench_agent_brief_module(
             "agent_brief.agents",
             "agent_brief.next_actions",
             "agent_brief.security_checks",
+            "trading_workbench.case_file",
             "trading_workbench.agent_playbook",
             "trading_workbench.market_intelligence_dossier",
             "trading_workbench.active_plan.capability_map",
@@ -6606,6 +6629,389 @@ def _workbench_agent_playbook_task(
         "external_calls_allowed": False,
         "external_calls_made": 0,
         "db_writes_required": _first_nonnegative_int(db_writes_required),
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_case_file_payload(
+    *,
+    active_plan: Mapping[str, object],
+    decision_brief: Mapping[str, object],
+    scenario_matrix: Mapping[str, object],
+    risk_envelope: Mapping[str, object],
+    capital_allocation: Mapping[str, object],
+    paper_trade_preview: Mapping[str, object],
+    pretrade_compliance: Mapping[str, object],
+    learning_loop: Mapping[str, object],
+    strategy_review: Mapping[str, object],
+    trade_monitor: Mapping[str, object],
+    workflow_map: Mapping[str, object],
+    priority_queue: Mapping[str, object],
+    supervision_gates: Mapping[str, object],
+    operator_state: Mapping[str, object],
+    execution_sandbox: Mapping[str, object],
+    trade_readiness_brief: Mapping[str, object],
+    agent_playbook: Mapping[str, object],
+    market_intelligence_dossier: Mapping[str, object],
+) -> dict[str, object]:
+    ticker = str(
+        _first_value(
+            active_plan.get("ticker"),
+            market_intelligence_dossier.get("ticker"),
+            trade_readiness_brief.get("ticker"),
+            agent_playbook.get("ticker"),
+        )
+        or ""
+    ).strip().upper()
+    decision_card_id = _first_value(
+        active_plan.get("decision_card_id"),
+        decision_brief.get("decision_card_id"),
+        market_intelligence_dossier.get("decision_card_id"),
+    )
+    headline = _first_value(
+        market_intelligence_dossier.get("headline"),
+        decision_brief.get("headline"),
+        _mapping(market_intelligence_dossier.get("primary_signal")).get("subject"),
+        ticker,
+    )
+    setup = _mapping(decision_brief.get("setup"))
+    signal = _mapping(market_intelligence_dossier.get("primary_signal"))
+    readiness_metrics = _mapping(trade_readiness_brief.get("metrics"))
+    scenario_metrics = _mapping(scenario_matrix.get("metrics"))
+    risk_metrics = _mapping(risk_envelope.get("metrics"))
+    allocation_metrics = _mapping(capital_allocation.get("metrics"))
+    paper_metrics = _mapping(paper_trade_preview.get("metrics"))
+    pretrade_metrics = _mapping(pretrade_compliance.get("metrics"))
+    learning_metrics = _mapping(learning_loop.get("metrics"))
+    monitor_metrics = _mapping(trade_monitor.get("metrics"))
+    playbook_metrics = _mapping(agent_playbook.get("metrics"))
+    supervision_metrics = _mapping(supervision_gates.get("metrics"))
+    handoff = _mapping(agent_playbook.get("agent_handoff"))
+    workflow_stage = _first_value(
+        workflow_map.get("active_stage_id"),
+        operator_state.get("active_step_id"),
+        handoff.get("next_page"),
+    )
+    primary_blocker = _first_value(
+        trade_readiness_brief.get("primary_blocker"),
+        operator_state.get("primary_blocker"),
+        pretrade_compliance.get("primary_blocker"),
+        active_plan.get("next_action"),
+    )
+    paper_record_allowed = bool(trade_readiness_brief.get("paper_record_allowed"))
+    broker_handoff_allowed = bool(trade_readiness_brief.get("broker_handoff_allowed"))
+    strategy_update_allowed = bool(
+        trade_readiness_brief.get("strategy_update_allowed")
+        or strategy_review.get("strategy_update_allowed")
+    )
+    monitoring_ready = bool(trade_readiness_brief.get("monitoring_ready"))
+    tools = [
+        _workbench_case_file_tool(
+            tool_id="market-radar-scout",
+            rank=1,
+            module="market-radar",
+            label="MarketRadar scout",
+            status="ready" if ticker else "blocked",
+            tool_kind="scout",
+            target_page="market-radar",
+            finding=signal.get("subject") or headline,
+            evidence=(
+                f"signal={signal.get('state')}; "
+                f"score={signal.get('score')}; "
+                f"dossier={market_intelligence_dossier.get('primary_card_id')}"
+            ),
+            next_action="Open the MarketRadar scout before changing the case.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="decision-review",
+            rank=2,
+            module="review",
+            label="Decision review",
+            status=str(decision_brief.get("status") or "unknown"),
+            tool_kind="decision",
+            target_page="review",
+            finding=decision_brief.get("recommended_paper_decision")
+            or decision_brief.get("status"),
+            evidence=f"card={decision_card_id}; stage={workflow_stage}",
+            command="review",
+            next_action=market_intelligence_dossier.get("primary_next_action")
+            or "Resolve decision readiness before planning execution.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="trade-planner",
+            rank=3,
+            module="trade-planner",
+            label="Trade planner",
+            status=str(scenario_matrix.get("status") or "unknown"),
+            tool_kind="planning",
+            target_page="trade-planner",
+            finding="scenario_matrix",
+            evidence=(
+                f"scenarios={scenario_metrics.get('scenario_count')}; "
+                f"reward_risk={scenario_metrics.get('risk_reward')}; "
+                f"max_loss={scenario_metrics.get('estimated_max_loss')}"
+            ),
+            next_action="Review scenario matrix before sizing or allocation.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="risk-envelope",
+            rank=4,
+            module="risk-desk",
+            label="Risk envelope",
+            status=str(risk_envelope.get("status") or "unknown"),
+            tool_kind="risk",
+            target_page="risk-desk",
+            finding=primary_blocker or risk_envelope.get("status"),
+            evidence=(
+                "blocked_checks="
+                f"{_first_nonnegative_int(risk_metrics.get('blocked_check_count'))}; "
+                f"max_loss={risk_metrics.get('estimated_max_loss')}"
+            ),
+            next_action=risk_envelope.get("primary_next_action")
+            or "Review risk envelope before any paper or broker handoff.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="capital-allocation",
+            rank=5,
+            module="portfolio",
+            label="Capital allocation",
+            status=str(capital_allocation.get("status") or "unknown"),
+            tool_kind="capital",
+            target_page="portfolio",
+            finding="allocation_blocked"
+            if not capital_allocation.get("allocation_allowed")
+            else "allocation_ready",
+            evidence=(
+                f"suggested_notional={allocation_metrics.get('suggested_notional')}; "
+                "buying_power_usage_pct="
+                f"{allocation_metrics.get('buying_power_usage_pct')}"
+            ),
+            next_action="Review portfolio impact and allocation before sizing.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="paper-broker-boundary",
+            rank=6,
+            module="paper-trading",
+            label="Paper and broker boundary",
+            status=str(pretrade_compliance.get("status") or "unknown"),
+            tool_kind="execution-boundary",
+            target_page="paper-trading",
+            finding=pretrade_compliance.get("primary_blocker")
+            or "paper_record_blocked",
+            evidence=(
+                f"paper_allowed={str(paper_record_allowed).lower()}; "
+                f"broker_handoff={str(broker_handoff_allowed).lower()}; "
+                f"paper_blocks={paper_metrics.get('paper_block_count')}"
+            ),
+            command=_mapping(paper_trade_preview.get("commands")).get("preview"),
+            next_action="Keep paper and broker actions behind explicit review.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="learning-validation",
+            rank=7,
+            module="validation",
+            label="Learning and validation",
+            status=str(learning_loop.get("status") or "unknown"),
+            tool_kind="learning",
+            target_page="validation",
+            finding=learning_loop.get("learning_stage"),
+            evidence=(
+                f"validation_results={learning_metrics.get('validation_result_count')}; "
+                f"outcomes={learning_metrics.get('outcome_count')}; "
+                f"strategy_update_allowed={str(strategy_update_allowed).lower()}"
+            ),
+            next_action="Use validation as evidence; strategy updates remain supervised.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="trade-monitor",
+            rank=8,
+            module="alerts",
+            label="Trade monitor",
+            status=str(trade_monitor.get("status") or "unknown"),
+            tool_kind="monitoring",
+            target_page="alerts",
+            finding=trade_monitor.get("monitor_stage"),
+            evidence=(
+                f"active_paper_trades={monitor_metrics.get('active_paper_trade_count')}; "
+                f"alerts={monitor_metrics.get('alert_count')}; "
+                f"triggers={monitor_metrics.get('trigger_count')}"
+            ),
+            next_action="Review monitoring context before changing watch state.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="agent-handoff",
+            rank=9,
+            module="agent",
+            label="Agent handoff",
+            status=str(agent_playbook.get("status") or "unknown"),
+            tool_kind="agent",
+            target_page=handoff.get("next_page") or "agent",
+            finding=agent_playbook.get("primary_task_id"),
+            evidence=(
+                f"tasks={playbook_metrics.get('task_count')}; "
+                f"blocked={playbook_metrics.get('blocked_task_count')}; "
+                f"safe_previews={playbook_metrics.get('safe_preview_task_count')}"
+            ),
+            command=handoff.get("next_command") or "agent",
+            safety=handoff.get("safety") or "zero_call_navigation",
+            next_action=agent_playbook.get("primary_next_action")
+            or "Use the supervised playbook as the next action list.",
+        ),
+        _workbench_case_file_tool(
+            tool_id="live-execution-boundary",
+            rank=10,
+            module="broker",
+            label="Live execution boundary",
+            status="disabled",
+            tool_kind="boundary",
+            target_page="broker",
+            finding="live_trading_disabled",
+            evidence="broker_submission=disabled; autonomous_execution=disabled",
+            next_action="Do not submit live orders from this workbench.",
+        ),
+    ]
+    ready_count = sum(1 for row in tools if row.get("status") == "ready")
+    blocked_count = sum(1 for row in tools if row.get("status") == "blocked")
+    disabled_count = sum(1 for row in tools if row.get("status") == "disabled")
+    review_count = sum(1 for row in tools if row.get("status") == "review")
+    primary_tool = next(
+        (row for row in tools if row.get("status") == "blocked"),
+        tools[0] if tools else {},
+    )
+    approval_required_count = max(
+        _first_nonnegative_int(supervision_metrics.get("approval_required_count")),
+        _first_nonnegative_int(playbook_metrics.get("approval_required_count")),
+        _first_nonnegative_int(pretrade_metrics.get("approval_required_count")),
+    )
+    status = "blocked" if blocked_count else "review" if review_count else "ready"
+    return {
+        "schema_version": "trading-workbench-case-file-v1",
+        "status": status,
+        "case_id": (
+            f"case-{str(ticker or 'unknown').lower()}-"
+            f"{decision_card_id or 'no-card'}"
+        ),
+        "source_tool": "market-radar",
+        "operating_mode": "supervised_trade_case",
+        "ticker": ticker or None,
+        "decision_card_id": decision_card_id,
+        "headline": headline,
+        "active_stage_id": workflow_stage,
+        "active_module": operator_state.get("active_module"),
+        "primary_tool_id": primary_tool.get("id"),
+        "primary_blocker": primary_blocker,
+        "primary_next_action": primary_tool.get("next_action"),
+        "identity": {
+            "ticker": ticker or None,
+            "decision_card_id": decision_card_id,
+            "headline": headline,
+            "setup": setup.get("setup_type"),
+            "direction": setup.get("direction"),
+            "score": signal.get("score"),
+            "signal_state": signal.get("state"),
+            "recommended_paper_decision": active_plan.get(
+                "recommended_paper_decision"
+            ),
+        },
+        "handoff": {
+            "next_page": handoff.get("next_page"),
+            "next_command": handoff.get("next_command"),
+            "safety": handoff.get("safety"),
+            "primary_task_id": agent_playbook.get("primary_task_id"),
+            "can_execute_without_approval": bool(
+                handoff.get("can_execute_without_approval")
+            ),
+        },
+        "permissions": {
+            "paper_record_allowed": paper_record_allowed,
+            "broker_handoff_allowed": broker_handoff_allowed,
+            "strategy_update_allowed": strategy_update_allowed,
+            "monitoring_ready": monitoring_ready,
+            "exit_update_allowed": bool(trade_monitor.get("exit_update_allowed")),
+            "order_submission_allowed": False,
+            "live_trading_enabled": False,
+            "autonomous_execution_enabled": False,
+        },
+        "workflow": {
+            "status": workflow_map.get("status"),
+            "active_stage_id": workflow_stage,
+            "priority_item_id": priority_queue.get("primary_item_id"),
+            "supervision_gate_id": supervision_gates.get("primary_gate_id"),
+            "execution_lane_id": execution_sandbox.get("active_lane_id"),
+        },
+        "tools": tools,
+        "source_keys": [
+            "trading_workbench.market_intelligence_dossier",
+            "trading_workbench.decision_brief",
+            "trading_workbench.scenario_matrix",
+            "trading_workbench.risk_envelope",
+            "trading_workbench.capital_allocation",
+            "trading_workbench.paper_trade_preview",
+            "trading_workbench.pretrade_compliance",
+            "trading_workbench.learning_loop",
+            "trading_workbench.strategy_review",
+            "trading_workbench.trade_monitor",
+            "trading_workbench.agent_playbook",
+        ],
+        "metrics": {
+            "linked_tool_count": len(tools),
+            "ready_tool_count": ready_count,
+            "blocked_tool_count": blocked_count,
+            "review_tool_count": review_count,
+            "disabled_tool_count": disabled_count,
+            "approval_required_count": approval_required_count,
+            "safe_preview_task_count": _first_nonnegative_int(
+                playbook_metrics.get("safe_preview_task_count")
+            ),
+            "guarded_write_task_count": _first_nonnegative_int(
+                playbook_metrics.get("guarded_write_task_count")
+            ),
+            "blocked_check_count": _first_nonnegative_int(
+                readiness_metrics.get("blocked_check_count")
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_case_file_tool(
+    *,
+    tool_id: str,
+    rank: int,
+    module: str,
+    label: str,
+    status: str,
+    tool_kind: str,
+    target_page: object,
+    finding: object,
+    evidence: object,
+    next_action: object,
+    command: object = None,
+    safety: object = "zero_call_navigation",
+) -> dict[str, object]:
+    return {
+        "id": tool_id,
+        "rank": rank,
+        "module": module,
+        "label": label,
+        "status": status,
+        "tool_kind": tool_kind,
+        "target_page": target_page,
+        "finding": finding,
+        "evidence": evidence,
+        "command": command,
+        "safety": safety,
+        "next_action": next_action,
+        "external_calls_made": 0,
         "db_writes_made": 0,
         "broker_order_submitted": False,
         "order_submission_allowed": False,

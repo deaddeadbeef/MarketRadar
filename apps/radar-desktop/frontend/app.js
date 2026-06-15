@@ -367,6 +367,28 @@ function tradingWorkbenchSnapshot(snapshot = state.snapshot || {}) {
   return snapshot?.trading_workbench || {};
 }
 
+function workbenchCaseFile(snapshot = state.snapshot || {}) {
+  const caseFile = tradingWorkbenchSnapshot(snapshot)?.case_file;
+  return caseFile && typeof caseFile === 'object' ? caseFile : { tools: [] };
+}
+
+function workbenchCaseToolsForPage(pageKey, snapshot = state.snapshot || {}) {
+  const caseFile = workbenchCaseFile(snapshot);
+  const tools = Array.isArray(caseFile.tools) ? caseFile.tools : [];
+  if (
+    pageKey === 'overview'
+    || pageKey === 'command-center'
+    || pageKey === 'agent'
+  ) {
+    return tools;
+  }
+  const module = platformModuleForPage(pageKey);
+  const keys = new Set([pageKey, module?.key, module?.page].filter(Boolean));
+  return tools.filter((tool) => (
+    keys.has(tool?.module) || keys.has(tool?.target_page)
+  ));
+}
+
 function workbenchMarketIntelligenceDossier(snapshot = state.snapshot || {}) {
   const dossier = tradingWorkbenchSnapshot(snapshot)?.market_intelligence_dossier;
   return dossier && typeof dossier === 'object' ? dossier : { cards: [] };
@@ -1117,6 +1139,18 @@ function updateAutomationJson(snapshot = state.snapshot || {}, status = null, pa
       primary_supervision_gate_id: compact(workbenchSupervisionGates(snapshot)?.primary_gate_id, 'none'),
       approval_required_count: Number(workbenchSupervisionGates(snapshot)?.metrics?.approval_required_count || 0),
       armed_local_write: compact(state.pendingLocalWrite?.command, 'none'),
+      case_file_status: compact(workbenchCaseFile(snapshot)?.status, 'unknown'),
+      case_file_ticker: compact(workbenchCaseFile(snapshot)?.ticker, 'none'),
+      case_file_decision_card_id: compact(workbenchCaseFile(snapshot)?.decision_card_id, 'none'),
+      case_file_active_stage_id: compact(workbenchCaseFile(snapshot)?.active_stage_id, 'none'),
+      case_file_primary_tool_id: compact(workbenchCaseFile(snapshot)?.primary_tool_id, 'none'),
+      case_file_primary_blocker: compact(workbenchCaseFile(snapshot)?.primary_blocker, 'none'),
+      case_file_linked_tool_count: Number(workbenchCaseFile(snapshot)?.metrics?.linked_tool_count || 0),
+      case_file_blocked_tool_count: Number(workbenchCaseFile(snapshot)?.metrics?.blocked_tool_count || 0),
+      case_file_disabled_tool_count: Number(workbenchCaseFile(snapshot)?.metrics?.disabled_tool_count || 0),
+      case_file_paper_record_allowed: Boolean(workbenchCaseFile(snapshot)?.permissions?.paper_record_allowed),
+      case_file_broker_handoff_allowed: Boolean(workbenchCaseFile(snapshot)?.permissions?.broker_handoff_allowed),
+      case_file_strategy_update_allowed: Boolean(workbenchCaseFile(snapshot)?.permissions?.strategy_update_allowed),
       operator_status: compact(workbenchOperatorState(snapshot)?.status, 'unknown'),
       operator_active_module: compact(workbenchOperatorState(snapshot)?.active_module, 'none'),
       operator_active_blocker: compact(workbenchOperatorState(snapshot)?.primary_blocker, 'none'),
@@ -1320,6 +1354,7 @@ function metric(label, value, caption) {
 function renderOverview(snapshot) {
   return `
     ${renderTradingWorkbenchOverview(snapshot)}
+    ${renderWorkbenchCaseFile(snapshot, 'overview')}
     ${renderWorkbenchMarketIntelligenceDossier(snapshot, 'overview')}
     ${renderWorkbenchOperatorState(snapshot)}
     ${renderWorkbenchExecutionSandbox(snapshot, 'overview')}
@@ -1408,6 +1443,79 @@ function platformToolCard(module) {
       </div>
     </article>
   `;
+}
+
+function renderWorkbenchCaseFile(snapshot, pageKey = 'overview') {
+  const caseFile = workbenchCaseFile(snapshot);
+  const tools = workbenchCaseToolsForPage(pageKey, snapshot);
+  const identity = caseFile.identity || {};
+  const handoff = caseFile.handoff || {};
+  const permissions = caseFile.permissions || {};
+  const metrics = caseFile.metrics || {};
+  if (!tools.length) return '';
+  return `
+    <section
+      class="panel wide workbench-case-file"
+      data-testid="workbench-case-file"
+      data-case-file-status="${escapeHtml(caseFile.status || 'unknown')}"
+      data-case-file-ticker="${escapeHtml(caseFile.ticker || '')}"
+    >
+      <div class="module-title-row">
+        <div>
+          <h2>Workbench Case File</h2>
+          <p>${escapeHtml(caseFileSummary(caseFile))}</p>
+        </div>
+        <span class="tool-status">${escapeHtml(catalogLabel(caseFile.status || 'unknown'))}</span>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Case</span><b>${escapeHtml(compact(caseFile.case_id, '-'))}</b></div>
+        <div class="kv"><span>Stage</span><b>${escapeHtml(compact(caseFile.active_stage_id, '-'))}</b></div>
+        <div class="kv"><span>Primary tool</span><b>${escapeHtml(compact(caseFile.primary_tool_id, '-'))}</b></div>
+        <div class="kv"><span>Next command</span><b>${escapeHtml(compact(handoff.next_command, '-'))}</b></div>
+      </div>
+      <div class="module-kpis">
+        <div class="kv"><span>Signal</span><b>${escapeHtml(compact(identity.signal_state, '-'))}</b></div>
+        <div class="kv"><span>Tools</span><b>${escapeHtml(compact(metrics.linked_tool_count, '0'))}</b></div>
+        <div class="kv"><span>Blocked</span><b>${escapeHtml(compact(metrics.blocked_tool_count, '0'))}</b></div>
+        <div class="kv"><span>Live</span><b>${escapeHtml(permissions.live_trading_enabled ? 'enabled' : 'disabled')}</b></div>
+      </div>
+      <div class="table-wrap case-file-preview">
+        <table aria-label="Workbench case file tools">
+          <thead><tr><th>Rank</th><th>Tool</th><th>Module</th><th>Status</th><th>Kind</th><th>Finding</th><th>Evidence</th><th>Next</th></tr></thead>
+          <tbody>
+            ${tools.map((tool) => `
+              <tr
+                data-testid="case-file-tool"
+                data-case-tool-status="${escapeHtml(tool.status || 'unknown')}"
+                data-case-tool-kind="${escapeHtml(tool.tool_kind || 'unknown')}"
+                data-case-tool-module="${escapeHtml(tool.module || 'unknown')}"
+              >
+                <td data-label="Rank">${escapeHtml(compact(tool.rank, '-'))}</td>
+                <td data-label="Tool">${escapeHtml(compact(tool.label, tool.id || '-'))}</td>
+                <td data-label="Module">${escapeHtml(catalogLabel(tool.module || '-'))}</td>
+                <td data-label="Status">${escapeHtml(catalogLabel(tool.status || '-'))}</td>
+                <td data-label="Kind">${escapeHtml(catalogLabel(tool.tool_kind || '-'))}</td>
+                <td data-label="Finding">${escapeHtml(compact(tool.finding, '-'))}</td>
+                <td data-label="Evidence">${escapeHtml(compact(tool.evidence, '-'))}</td>
+                <td data-label="Next">${escapeHtml(compact(tool.next_action, '-'))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function caseFileSummary(caseFile) {
+  const metrics = caseFile?.metrics || {};
+  return [
+    `${compact(caseFile?.ticker, 'No ticker')} ${catalogLabel(caseFile?.status || 'unknown')}`,
+    `${compact(caseFile?.active_stage_id, 'no stage')}`,
+    `${compact(metrics.blocked_tool_count, '0')} blocked tools`,
+    `${compact(caseFile?.primary_blocker, 'no blocker')}`,
+    'supervised case only',
+  ].join('; ');
 }
 
 function renderWorkbenchMarketIntelligenceDossier(snapshot, pageKey = 'overview') {
@@ -3059,6 +3167,7 @@ function renderPlatformModulePage(pageKey, snapshot) {
         <div class="kv"><span>Provider calls</span><b>${escapeHtml(compact(snapshot.external_calls_made, '0'))}</b></div>
       </div>
     </section>
+    ${renderWorkbenchCaseFile(snapshot, pageKey)}
     ${renderWorkbenchMarketIntelligenceDossier(snapshot, pageKey)}
     ${renderWorkbenchOperatorState(snapshot)}
     ${renderWorkbenchExecutionSandbox(snapshot, pageKey)}

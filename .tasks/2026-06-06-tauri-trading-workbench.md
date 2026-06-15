@@ -347,3 +347,15 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the dossier makes no provider calls, submits no
   broker order, performs no autonomous execution, and writes no database rows
   from browsing the dossier.
+
+## Current Slice: Workbench Case File
+
+- Add a supervised case-file snapshot contract that identifies the active
+  ticker, decision card, workflow stage, blocker, and linked platform tools.
+- Render the case file in the Tauri Command Center and relevant MarketRadar,
+  planner, risk, portfolio, paper, validation, alerts, broker, and agent pages.
+- Expose case status, ticker, decision card, active stage, primary tool,
+  blocker, tool counts, and permission gates in automation JSON.
+- Preserve the same boundary: the case file makes no provider calls, submits no
+  broker order, performs no autonomous execution, and writes no database rows
+  from browsing the case.

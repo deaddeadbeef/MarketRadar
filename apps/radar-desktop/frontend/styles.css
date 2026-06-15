@@ -654,6 +654,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 }
 
 .workbench-market-intelligence-dossier,
+.workbench-case-file,
 .workbench-operator-state,
 .workbench-execution-sandbox,
 .workbench-decision-brief,
@@ -883,6 +884,7 @@ tr[data-testid="queue-row"]:focus-visible td {
 }
 
 .market-intelligence-preview table,
+.case-file-preview table,
 .workflow-map-preview table,
 .scenario-matrix-preview table,
 .portfolio-impact-preview table,

@@ -513,6 +513,136 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert boundary["paper_trading"] == "preview_only"
     assert boundary["provider_calls_for_browsing"] == 0
 
+    case_file = workbench["case_file"]
+    assert case_file["schema_version"] == "trading-workbench-case-file-v1"
+    assert case_file["status"] == "blocked"
+    assert case_file["case_id"] == "case-msft-card-msft-latest"
+    assert case_file["source_tool"] == "market-radar"
+    assert case_file["operating_mode"] == "supervised_trade_case"
+    assert case_file["ticker"] == "MSFT"
+    assert case_file["decision_card_id"] == "card-msft-latest"
+    assert case_file["headline"] == "MSFT: MSFT guidance raised"
+    assert case_file["active_stage_id"] == "decision-review"
+    assert case_file["active_module"] == "review"
+    assert case_file["primary_tool_id"] == "decision-review"
+    assert case_file["primary_blocker"] == "action_state_not_manual_review_eligible"
+    assert case_file["primary_next_action"] == (
+        "Resolve decision-readiness context before using the thesis."
+    )
+    assert case_file["identity"] == {
+        "ticker": "MSFT",
+        "decision_card_id": "card-msft-latest",
+        "headline": "MSFT: MSFT guidance raised",
+        "setup": "breakout",
+        "direction": "bullish",
+        "score": 88.0,
+        "signal_state": "Warning",
+        "recommended_paper_decision": "deferred",
+    }
+    assert case_file["handoff"] == {
+        "next_page": "review",
+        "next_command": "review",
+        "safety": "zero_call_navigation",
+        "primary_task_id": "priority-stage-decision-review",
+        "can_execute_without_approval": False,
+    }
+    assert case_file["permissions"] == {
+        "paper_record_allowed": False,
+        "broker_handoff_allowed": False,
+        "strategy_update_allowed": False,
+        "monitoring_ready": False,
+        "exit_update_allowed": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "autonomous_execution_enabled": False,
+    }
+    assert case_file["workflow"] == {
+        "status": "blocked",
+        "active_stage_id": "decision-review",
+        "priority_item_id": "priority-stage-decision-review",
+        "supervision_gate_id": "guarded-local-write",
+        "execution_lane_id": "review-before-execution",
+    }
+    assert case_file["metrics"] == {
+        "linked_tool_count": 10,
+        "ready_tool_count": 1,
+        "blocked_tool_count": 8,
+        "review_tool_count": 0,
+        "disabled_tool_count": 1,
+        "approval_required_count": 2,
+        "safe_preview_task_count": 3,
+        "guarded_write_task_count": 2,
+        "blocked_check_count": 7,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert [row["id"] for row in case_file["tools"]] == [
+        "market-radar-scout",
+        "decision-review",
+        "trade-planner",
+        "risk-envelope",
+        "capital-allocation",
+        "paper-broker-boundary",
+        "learning-validation",
+        "trade-monitor",
+        "agent-handoff",
+        "live-execution-boundary",
+    ]
+    assert [row["status"] for row in case_file["tools"]] == [
+        "ready",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "blocked",
+        "disabled",
+    ]
+    assert [row["tool_kind"] for row in case_file["tools"]] == [
+        "scout",
+        "decision",
+        "planning",
+        "risk",
+        "capital",
+        "execution-boundary",
+        "learning",
+        "monitoring",
+        "agent",
+        "boundary",
+    ]
+    case_tools = {row["id"]: row for row in case_file["tools"]}
+    assert case_tools["market-radar-scout"]["evidence"] == (
+        "signal=Warning; score=88.0; dossier=decision-brief"
+    )
+    assert case_tools["decision-review"]["command"] == "review"
+    assert case_tools["trade-planner"]["evidence"] == (
+        "scenarios=3; reward_risk=2.7; max_loss=200.0"
+    )
+    assert case_tools["paper-broker-boundary"]["command"] == (
+        "paper-decision preview"
+    )
+    assert case_tools["paper-broker-boundary"]["evidence"] == (
+        "paper_allowed=false; broker_handoff=false; paper_blocks=2"
+    )
+    assert case_tools["learning-validation"]["evidence"] == (
+        "validation_results=1; outcomes=1; strategy_update_allowed=false"
+    )
+    assert case_tools["trade-monitor"]["evidence"] == (
+        "active_paper_trades=1; alerts=2; triggers=1"
+    )
+    assert case_tools["live-execution-boundary"]["status"] == "disabled"
+    assert all(row["external_calls_made"] == 0 for row in case_file["tools"])
+    assert all(row["db_writes_made"] == 0 for row in case_file["tools"])
+    assert all(row["order_submission_allowed"] is False for row in case_file["tools"])
+    assert all(row["broker_order_submitted"] is False for row in case_file["tools"])
+    assert case_file["external_calls_made"] == 0
+    assert case_file["db_writes_made"] == 0
+    assert case_file["broker_order_submitted"] is False
+    assert case_file["order_submission_allowed"] is False
+    assert case_file["live_trading_enabled"] is False
+
     decision_brief = workbench["decision_brief"]
     assert decision_brief["schema_version"] == "trading-workbench-decision-brief-v1"
     assert decision_brief["status"] == "blocked"
