@@ -564,10 +564,10 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "execution_lane_id": "review-before-execution",
     }
     assert case_file["metrics"] == {
-        "linked_tool_count": 11,
+        "linked_tool_count": 12,
         "ready_tool_count": 1,
         "blocked_tool_count": 9,
-        "review_tool_count": 0,
+        "review_tool_count": 1,
         "disabled_tool_count": 1,
         "approval_required_count": 2,
         "safe_preview_task_count": 3,
@@ -585,6 +585,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "portfolio-guardrails",
         "paper-broker-boundary",
         "learning-validation",
+        "performance-attribution",
         "trade-monitor",
         "agent-handoff",
         "live-execution-boundary",
@@ -598,6 +599,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "blocked",
         "blocked",
         "blocked",
+        "review",
         "blocked",
         "blocked",
         "disabled",
@@ -611,6 +613,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
         "guardrails",
         "execution-boundary",
         "learning",
+        "attribution",
         "monitoring",
         "agent",
         "boundary",
@@ -635,6 +638,11 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert case_tools["learning-validation"]["evidence"] == (
         "validation_results=1; outcomes=1; strategy_update_allowed=false"
     )
+    assert case_tools["performance-attribution"]["evidence"] == (
+        "avg_return_20d=0.08; spy_relative=0.05; outcomes=1"
+    )
+    assert case_tools["performance-attribution"]["target_page"] == "journal"
+    assert case_tools["performance-attribution"]["status"] == "review"
     assert case_tools["trade-monitor"]["evidence"] == (
         "active_paper_trades=1; alerts=2; triggers=1"
     )
@@ -2479,6 +2487,138 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert trade_monitor["exit_update_allowed"] is False
     assert trade_monitor["live_trading_enabled"] is False
 
+    performance_attribution = workbench["performance_attribution"]
+    assert (
+        performance_attribution["schema_version"]
+        == "trading-workbench-performance-attribution-v1"
+    )
+    assert performance_attribution["status"] == "review"
+    assert performance_attribution["source_tool"] == "market-radar"
+    assert performance_attribution["ticker"] == "MSFT"
+    assert performance_attribution["decision_card_id"] == "card-msft-latest"
+    assert (
+        performance_attribution["attribution_id"]
+        == "performance-attribution-msft-card-msft-latest"
+    )
+    assert (
+        performance_attribution["attribution_mode"]
+        == "read_only_performance_evidence"
+    )
+    assert performance_attribution["performance_stage"] == "outcome_computed"
+    assert performance_attribution["primary_blocker"] == "validation_warning"
+    assert performance_attribution["primary_next_action"] == (
+        "Review performance attribution before any strategy or sizing update."
+    )
+    assert performance_attribution["attribution"] == {
+        "paper_trade_id": "paper-msft",
+        "paper_state": "open",
+        "ledger_entry_id": "value-ledger-msft",
+        "outcome_id": "value-outcome-msft",
+        "validation_result_id": "validation-result-msft",
+        "outcome_status": "computed",
+        "return_20d": 0.08,
+        "spy_relative_return_20d": 0.05,
+        "max_adverse_excursion": -0.03,
+        "max_favorable_excursion": 0.11,
+        "invalidation_touched": False,
+        "primary_command": "outcome show value-outcome-msft",
+    }
+    assert performance_attribution["commands"] == {
+        "paper": "paper",
+        "validation": "validation",
+        "journal": "outcome show value-outcome-msft",
+        "strategy_update_boundary": "agent execute",
+    }
+    assert [row["id"] for row in performance_attribution["attribution_rows"]] == [
+        "paper-performance",
+        "benchmark-relative",
+        "excursion-risk",
+        "evidence-coverage",
+        "validation-quality",
+        "strategy-update-boundary",
+    ]
+    assert [
+        row["status"] for row in performance_attribution["attribution_rows"]
+    ] == [
+        "ready",
+        "ready",
+        "ready",
+        "ready",
+        "review",
+        "disabled",
+    ]
+    assert [
+        row["scope"] for row in performance_attribution["attribution_rows"]
+    ] == [
+        "paper-trading",
+        "validation",
+        "risk-desk",
+        "journal",
+        "validation",
+        "agent",
+    ]
+    assert (
+        performance_attribution["attribution_rows"][0]["evidence"]
+        == "avg_return_20d=0.08; hit_rate=1.0"
+    )
+    assert (
+        performance_attribution["attribution_rows"][2]["evidence"]
+        == "avg_mae=-0.03; avg_mfe=0.11; invalidation_touches=0"
+    )
+    assert (
+        performance_attribution["attribution_rows"][4]["finding"]
+        == "validation_warning"
+    )
+    assert (
+        performance_attribution["attribution_rows"][4]["evidence"]
+        == "results=1; warnings=1; leakage=0; labels=1"
+    )
+    assert performance_attribution["metrics"] == {
+        "attribution_row_count": 6,
+        "ready_attribution_count": 4,
+        "review_attribution_count": 1,
+        "blocked_attribution_count": 0,
+        "disabled_attribution_count": 1,
+        "paper_trade_count": 1,
+        "active_paper_trade_count": 1,
+        "trade_lifecycle_count": 1,
+        "ledger_entry_count": 1,
+        "outcome_count": 1,
+        "computed_outcome_count": 1,
+        "missing_outcome_count": 0,
+        "validation_result_count": 1,
+        "validation_warning_count": 1,
+        "positive_label_count": 1,
+        "leakage_flag_count": 0,
+        "avg_return_20d": 0.08,
+        "avg_spy_relative_return_20d": 0.05,
+        "hit_rate_20d": 1.0,
+        "avg_max_adverse_excursion": -0.03,
+        "avg_max_favorable_excursion": 0.11,
+        "invalidation_touch_count": 0,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert all(
+        row["external_calls_made"] == 0
+        for row in performance_attribution["attribution_rows"]
+    )
+    assert all(
+        row["db_writes_made"] == 0
+        for row in performance_attribution["attribution_rows"]
+    )
+    assert all(
+        row["broker_order_submitted"] is False
+        for row in performance_attribution["attribution_rows"]
+    )
+    assert performance_attribution["external_calls_made"] == 0
+    assert performance_attribution["db_writes_made"] == 0
+    assert performance_attribution["broker_order_submitted"] is False
+    assert performance_attribution["order_submission_allowed"] is False
+    assert performance_attribution["strategy_update_allowed"] is False
+    assert performance_attribution["autonomous_update_allowed"] is False
+    assert performance_attribution["live_trading_enabled"] is False
+
     trade_runbook = workbench["trade_runbook"]
     assert trade_runbook["schema_version"] == "trading-workbench-runbook-v1"
     assert trade_runbook["status"] == "blocked"
@@ -4104,6 +4244,7 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert agent["agent_execute_boundary_command"] == "agent execute"
     assert agent["primary_command"] == "agent"
     assert "agent_brief.next_actions" in agent["source_keys"]
+    assert "trading_workbench.performance_attribution" in agent["source_keys"]
     assert "trading_workbench.active_plan.capability_map" in agent["source_keys"]
     assert agent["next_action"] == (
         "Seed the ticker universe before calling this a full-market scan."

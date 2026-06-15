@@ -785,6 +785,33 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "workbenchTradeMonitor(snapshot)?.alert_watch?.primary_trigger_id, 'none')",
         "trade_monitor_exit_update_allowed: Boolean("
         "workbenchTradeMonitor(snapshot)?.exit_update_allowed)",
+        "function workbenchPerformanceAttribution",
+        "function workbenchPerformanceAttributionForPage",
+        "function renderWorkbenchPerformanceAttribution",
+        "function performanceAttributionSummary",
+        "${renderWorkbenchPerformanceAttribution(snapshot, 'overview')}",
+        "${renderWorkbenchPerformanceAttribution(snapshot, pageKey)}",
+        'data-testid="workbench-performance-attribution"',
+        'data-testid="performance-attribution-row"',
+        "data-performance-attribution-status=\"${escapeHtml(attribution.status || 'unknown')}\"",
+        "data-performance-attribution-row-status=\"${escapeHtml(row.status || 'unknown')}\"",
+        "data-performance-attribution-row-scope=\"${escapeHtml(row.scope || 'unknown')}\"",
+        "performance_attribution_status: compact("
+        "workbenchPerformanceAttribution(snapshot)?.status, 'unknown')",
+        "performance_attribution_ticker: compact("
+        "workbenchPerformanceAttribution(snapshot)?.ticker, 'none')",
+        "performance_attribution_stage: compact("
+        "workbenchPerformanceAttribution(snapshot)?.performance_stage, 'unlinked')",
+        "performance_attribution_row_count: Number("
+        "workbenchPerformanceAttribution(snapshot)?.metrics?.attribution_row_count || 0)",
+        "performance_attribution_computed_outcome_count: Number("
+        "workbenchPerformanceAttribution(snapshot)?.metrics?.computed_outcome_count || 0)",
+        "performance_attribution_avg_return_20d: compact("
+        "workbenchPerformanceAttribution(snapshot)?.metrics?.avg_return_20d, 'none')",
+        "performance_attribution_spy_relative_20d: compact("
+        "workbenchPerformanceAttribution(snapshot)?.metrics?.avg_spy_relative_return_20d, 'none')",
+        "performance_attribution_strategy_update_allowed: Boolean("
+        "workbenchPerformanceAttribution(snapshot)?.strategy_update_allowed)",
         "risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown')",
         "risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none')",
         "risk_sizing_status: compact("
@@ -896,6 +923,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".strategy-review-preview" in styles
     assert ".workbench-trade-monitor" in styles
     assert ".trade-monitor-preview" in styles
+    assert ".workbench-performance-attribution" in styles
+    assert ".performance-attribution-preview" in styles
     assert ".workbench-risk-envelope" in styles
     assert ".risk-envelope-preview" in styles
     assert ".workbench-trade-runbook" in styles
