@@ -320,3 +320,16 @@ engine, but it is not the whole product frame.
 - Preserve the same boundary: the readiness brief makes no provider calls,
   submits no broker order, performs no autonomous strategy/execution change,
   and writes no database rows from browsing the dossier.
+
+## Current Slice: Agent Playbook
+
+- Add a supervised agent-playbook snapshot contract that turns readiness,
+  priority queue, action bus, and execution sandbox evidence into ranked agent
+  tasks.
+- Render the playbook in the Tauri Command Center and relevant market-radar,
+  portfolio, trade-planner, risk, paper, broker, journal, and agent pages.
+- Expose playbook status, ticker, primary task, handoff, task counts, safe
+  preview count, and guarded-write count in automation JSON.
+- Preserve the same boundary: the playbook makes no provider calls, submits no
+  broker order, performs no autonomous execution, and writes no database rows
+  from browsing the dossier.

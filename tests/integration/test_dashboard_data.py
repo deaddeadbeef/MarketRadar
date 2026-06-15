@@ -1656,6 +1656,129 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert trade_readiness_brief["strategy_update_allowed"] is False
     assert trade_readiness_brief["monitoring_ready"] is False
 
+    agent_playbook = workbench["agent_playbook"]
+    assert agent_playbook["schema_version"] == "trading-workbench-agent-playbook-v1"
+    assert agent_playbook["status"] == "blocked"
+    assert agent_playbook["source_tool"] == "market-radar"
+    assert agent_playbook["ticker"] == "MSFT"
+    assert agent_playbook["decision_card_id"] == "card-msft-latest"
+    assert agent_playbook["playbook_id"] == "agent-playbook-msft-card-msft-latest"
+    assert agent_playbook["operating_mode"] == "supervised_agent_playbook"
+    assert agent_playbook["primary_task_id"] == "priority-stage-decision-review"
+    assert (
+        agent_playbook["primary_blocker"]
+        == "action_state_not_manual_review_eligible"
+    )
+    assert agent_playbook["primary_action"] == {
+        "task_id": "priority-stage-decision-review",
+        "module": "review",
+        "command": "review",
+        "target_page": "review",
+        "safety": "zero_call_navigation",
+        "requires_arm_before_run": False,
+        "can_execute_without_approval": False,
+    }
+    assert agent_playbook["agent_handoff"] == {
+        "next_page": "review",
+        "next_command": "review",
+        "safety": "zero_call_navigation",
+        "can_execute_without_approval": False,
+        "local_write_requires_arm": False,
+    }
+    assert agent_playbook["permissions"] == {
+        "provider_calls_for_browsing": 0,
+        "external_calls_allowed": False,
+        "external_calls_made": 0,
+        "local_write_requires_arm": True,
+        "autonomous_execution": "disabled",
+        "broker_order_submission": "disabled",
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+        "strategy_update_allowed": False,
+    }
+    assert agent_playbook["metrics"] == {
+        "task_count": 10,
+        "ready_task_count": 3,
+        "blocked_task_count": 4,
+        "approval_required_count": 2,
+        "disabled_task_count": 1,
+        "safe_preview_task_count": 3,
+        "guarded_write_task_count": 2,
+        "zero_call_navigation_count": 4,
+        "external_boundary_count": 1,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+    assert [row["id"] for row in agent_playbook["tasks"]] == [
+        "priority-stage-decision-review",
+        "priority-stage-trade-planning",
+        "priority-stage-risk-approval",
+        "priority-action-agent-preview",
+        "priority-action-paper-decision-preview",
+        "priority-action-order-ticket-preview",
+        "execution-lane-paper-record",
+        "execution-lane-ticket-record",
+        "readiness-monitoring",
+        "execution-lane-agent-execute",
+    ]
+    assert [row["status"] for row in agent_playbook["tasks"]] == [
+        "blocked",
+        "blocked",
+        "blocked",
+        "ready",
+        "ready",
+        "ready",
+        "approval_required",
+        "approval_required",
+        "blocked",
+        "disabled",
+    ]
+    assert [row["task_kind"] for row in agent_playbook["tasks"]] == [
+        "readiness_gate",
+        "planning_gate",
+        "risk_gate",
+        "safe_preview",
+        "safe_preview",
+        "safe_preview",
+        "guarded_local_write",
+        "guarded_local_write",
+        "monitor",
+        "agent_boundary",
+    ]
+    agent_tasks = {row["id"]: row for row in agent_playbook["tasks"]}
+    assert agent_tasks["priority-action-agent-preview"]["command"] == "agent"
+    assert (
+        agent_tasks["priority-action-agent-preview"][
+            "can_execute_without_approval"
+        ]
+        is True
+    )
+    assert agent_tasks["execution-lane-paper-record"]["local_write_allowed"] is True
+    assert (
+        agent_tasks["execution-lane-paper-record"]["requires_arm_before_run"]
+        is True
+    )
+    assert agent_tasks["execution-lane-paper-record"]["db_writes_required"] == 2
+    assert agent_tasks["execution-lane-ticket-record"]["db_writes_required"] == 1
+    assert (
+        agent_tasks["execution-lane-agent-execute"]["safety"]
+        == "agent_execution_boundary"
+    )
+    assert all(row["external_calls_made"] == 0 for row in agent_playbook["tasks"])
+    assert all(row["db_writes_made"] == 0 for row in agent_playbook["tasks"])
+    assert all(
+        row["order_submission_allowed"] is False
+        for row in agent_playbook["tasks"]
+    )
+    assert all(
+        row["broker_order_submitted"] is False for row in agent_playbook["tasks"]
+    )
+    assert agent_playbook["external_calls_made"] == 0
+    assert agent_playbook["db_writes_made"] == 0
+    assert agent_playbook["broker_order_submitted"] is False
+    assert agent_playbook["order_submission_allowed"] is False
+    assert agent_playbook["live_trading_enabled"] is False
+
     learning_loop = workbench["learning_loop"]
     assert learning_loop["schema_version"] == "trading-workbench-learning-loop-v1"
     assert learning_loop["status"] == "blocked"
