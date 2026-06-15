@@ -83,6 +83,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "function workbenchDecisionBrief",
         "function workbenchScenarioMatrix",
         "function workbenchScenarioMatrixForPage",
+        "function workbenchRiskEnvelope",
+        "function workbenchRiskEnvelopeForPage",
         "function workbenchActionBus",
         "function workbenchWorkflowMap",
         "function workbenchWorkflowStagesForPage",
@@ -112,6 +114,13 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "data-scenario-matrix-status",
         "data-scenario-kind",
         "data-scenario-status",
+        "function renderWorkbenchRiskEnvelope",
+        "function riskEnvelopeSummary",
+        'data-testid="workbench-risk-envelope"',
+        'data-testid="workbench-risk-check"',
+        "data-risk-envelope-status",
+        "data-risk-check-status",
+        "data-risk-check-scope",
         "function renderWorkbenchWorkflowMap",
         "function workflowMapSummary",
         'data-testid="workbench-workflow-map"',
@@ -445,6 +454,13 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "scenario_count: Number(workbenchScenarioMatrix(snapshot)?.metrics?.scenario_count || 0)",
         "scenario_reward_risk: compact("
         "workbenchScenarioMatrix(snapshot)?.metrics?.risk_reward, 'none')",
+        "risk_envelope_status: compact(workbenchRiskEnvelope(snapshot)?.status, 'unknown')",
+        "risk_envelope_ticker: compact(workbenchRiskEnvelope(snapshot)?.ticker, 'none')",
+        "risk_sizing_status: compact("
+        "workbenchRiskEnvelope(snapshot)?.sizing_context?.sizing_status, 'unknown')",
+        "risk_block_count: Number(workbenchRiskEnvelope(snapshot)?.blockers?.length || 0)",
+        "risk_max_loss: compact("
+        "workbenchRiskEnvelope(snapshot)?.sizing_context?.estimated_max_loss, 'none')",
         "pendingLocalWrite: null",
         "function localWriteArmKey",
         "function clearPendingLocalWrite",
@@ -508,6 +524,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
     assert ".decision-brief-evidence" in styles
     assert ".workbench-scenario-matrix" in styles
     assert ".scenario-matrix-preview" in styles
+    assert ".workbench-risk-envelope" in styles
+    assert ".risk-envelope-preview" in styles
     assert ".workbench-workflow-map" in styles
     assert ".workflow-map-preview" in styles
     assert ".workbench-priority-queue" in styles

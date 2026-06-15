@@ -1129,6 +1129,18 @@ def _trading_workbench_snapshot_payload(
         active_plan=active_plan,
         decision_brief=decision_brief,
     )
+    risk_envelope = _workbench_risk_envelope_payload(
+        active_plan=active_plan,
+        decision_brief=decision_brief,
+        scenario_matrix=scenario_matrix,
+        broker_snapshot=broker_snapshot,
+        broker_exposure=broker_exposure,
+        broker_connected=broker_connected,
+        open_order_count=_first_nonnegative_int(
+            broker_snapshot.get("open_order_count"),
+            len(broker_open_orders),
+        ),
+    )
     return {
         "schema_version": "trading-workbench-snapshot-v1",
         "external_calls_made": 0,
@@ -1147,6 +1159,7 @@ def _trading_workbench_snapshot_payload(
         "supervision_gates": supervision_gates,
         "decision_brief": decision_brief,
         "scenario_matrix": scenario_matrix,
+        "risk_envelope": risk_envelope,
         "modules": {
             "portfolio": {
                 "status": "ready" if broker_summary else "blocked",
@@ -3779,6 +3792,226 @@ def _workbench_scenario_row(
 
 def _workbench_round_float(value: float | None) -> float | None:
     return round(value, 1) if value is not None else None
+
+
+def _workbench_risk_envelope_payload(
+    *,
+    active_plan: Mapping[str, object],
+    decision_brief: Mapping[str, object],
+    scenario_matrix: Mapping[str, object],
+    broker_snapshot: Mapping[str, object],
+    broker_exposure: Mapping[str, object],
+    broker_connected: bool,
+    open_order_count: int,
+) -> dict[str, object]:
+    risk = _mapping(active_plan.get("risk_approval"))
+    order = _mapping(active_plan.get("order_intent"))
+    ticket = _mapping(active_plan.get("order_ticket"))
+    boundary = {
+        "broker_order_submission": "disabled",
+        "live_trading_enabled": False,
+        "autonomous_execution": "disabled",
+    }
+    assumptions = _mapping(scenario_matrix.get("assumptions"))
+    portfolio_equity = _optional_float(
+        _first_value(
+            broker_exposure.get("portfolio_equity"),
+            broker_snapshot.get("portfolio_equity"),
+        )
+    )
+    estimated_notional = _optional_float(order.get("estimated_notional"))
+    estimated_max_loss = _optional_float(
+        _first_value(
+            assumptions.get("estimated_max_loss"),
+            order.get("estimated_max_loss"),
+            risk.get("estimated_max_loss"),
+        )
+    )
+    raw_quantity = _optional_int(
+        _first_value(order.get("quantity"), ticket.get("quantity"), ticket.get("shares"))
+    )
+    quantity = raw_quantity if raw_quantity is not None and raw_quantity > 0 else None
+    blockers = list(dict.fromkeys(_texts(scenario_matrix.get("blockers"))))
+    paper_blocks = _texts(risk.get("paper_trade_blocks"))
+    live_blocks = _texts(risk.get("live_submission_blocks"))
+    if not blockers:
+        blockers = list(dict.fromkeys([*paper_blocks, *live_blocks]))
+    broker_data_stale = bool(broker_exposure.get("broker_data_stale"))
+    sizing_status = str(assumptions.get("sizing_status") or "")
+    if not sizing_status:
+        sizing_status = "blocked" if quantity is None or blockers else "ready"
+    checks = [
+        _workbench_risk_envelope_check(
+            check_id="broker-data-freshness",
+            label="Broker data freshness",
+            status="blocked" if broker_data_stale else "ready",
+            scope="portfolio",
+            finding="stale_broker_data" if broker_data_stale else "broker_data_current",
+            next_action=(
+                "Refresh read-only broker context before relying on sizing."
+                if broker_data_stale
+                else "Broker context is current enough for sizing review."
+            ),
+        ),
+        _workbench_risk_envelope_check(
+            check_id="position-sizing",
+            label="Position sizing",
+            status="blocked" if quantity is None else "ready",
+            scope="trade-planner",
+            finding=(
+                "missing_position_sizing:shares"
+                if quantity is None
+                else "shares_sized"
+            ),
+            next_action=(
+                "Resolve share sizing before paper review."
+                if quantity is None
+                else "Use sized shares as paper-review input."
+            ),
+        ),
+        _workbench_risk_envelope_check(
+            check_id="paper-trade-gate",
+            label="Paper trade gate",
+            status="blocked" if paper_blocks else "ready",
+            scope="paper-trading",
+            finding=paper_blocks[0] if paper_blocks else "paper_trade_gate_clear",
+            next_action=(
+                "Resolve paper blocks before recording a local decision."
+                if paper_blocks
+                else "Paper gate is ready for supervised local review."
+            ),
+        ),
+        _workbench_risk_envelope_check(
+            check_id="live-submission-gate",
+            label="Live submission gate",
+            status="disabled",
+            scope="broker",
+            finding=(
+                "broker_submission_disabled"
+                if "broker_submission_disabled" in live_blocks
+                else "live_submission_disabled"
+            ),
+            next_action="Live broker submission remains disabled.",
+        ),
+        _workbench_risk_envelope_check(
+            check_id="execution-boundary",
+            label="Execution boundary",
+            status="disabled",
+            scope="supervision",
+            finding="live_trading_disabled",
+            next_action="Use local preview or paper-only commands after approval.",
+        ),
+    ]
+    blocked_check_count = sum(1 for row in checks if row.get("status") == "blocked")
+    disabled_check_count = sum(1 for row in checks if row.get("status") == "disabled")
+    status = "blocked" if blocked_check_count else "ready"
+    return {
+        "schema_version": "trading-workbench-risk-envelope-v1",
+        "status": status,
+        "source_tool": decision_brief.get("source_tool") or "market-radar",
+        "ticker": _first_value(decision_brief.get("ticker"), active_plan.get("ticker")),
+        "decision_card_id": _first_value(
+            decision_brief.get("decision_card_id"),
+            active_plan.get("decision_card_id"),
+        ),
+        "portfolio_context": {
+            "broker_connected": broker_connected,
+            "broker_data_stale": broker_data_stale,
+            "position_count": _first_nonnegative_int(
+                broker_exposure.get("position_count"),
+                broker_snapshot.get("position_count"),
+            ),
+            "open_order_count": open_order_count,
+            "portfolio_equity": portfolio_equity,
+            "cash": _first_value(broker_exposure.get("cash")),
+            "buying_power": _first_value(broker_exposure.get("buying_power")),
+            "gross_exposure_pct": _first_value(
+                _nested(broker_exposure, "exposure_before", "gross_exposure_pct")
+            ),
+            "single_name_exposure_count": len(
+                _mapping(_nested(broker_exposure, "exposure_before", "single_name"))
+            ),
+        },
+        "sizing_context": {
+            "side": _first_value(order.get("side"), ticket.get("side")),
+            "quantity": quantity,
+            "sizing_status": sizing_status,
+            "entry_price": assumptions.get("entry_price"),
+            "invalidation_price": assumptions.get("invalidation_price"),
+            "target_price": assumptions.get("target_price"),
+            "risk_per_share": assumptions.get("risk_per_share"),
+            "reward_risk": assumptions.get("reward_risk"),
+            "estimated_notional": _workbench_round_float(estimated_notional),
+            "estimated_notional_pct_of_equity": _workbench_round_ratio(
+                _workbench_ratio(estimated_notional, portfolio_equity)
+            ),
+            "estimated_max_loss": _workbench_round_float(estimated_max_loss),
+            "max_loss_pct_of_equity": _workbench_round_ratio(
+                _workbench_ratio(estimated_max_loss, portfolio_equity)
+            ),
+            "risk_per_trade_pct": ticket.get("risk_per_trade_pct"),
+        },
+        "gate_context": {
+            "paper_approved": bool(risk.get("approved_for_paper_trade")),
+            "live_approved": bool(risk.get("approved_for_live_submission")),
+            "requires_manual_approval": bool(risk.get("requires_manual_approval")),
+            "paper_block_count": len(paper_blocks),
+            "live_block_count": len(live_blocks),
+            "open_order_count": open_order_count,
+            **boundary,
+        },
+        "checks": checks,
+        "blockers": blockers,
+        "metrics": {
+            "check_count": len(checks),
+            "blocked_check_count": blocked_check_count,
+            "disabled_check_count": disabled_check_count,
+            "paper_block_count": len(paper_blocks),
+            "live_block_count": len(live_blocks),
+            "estimated_max_loss": _workbench_round_float(estimated_max_loss),
+            "max_loss_pct_of_equity": _workbench_round_ratio(
+                _workbench_ratio(estimated_max_loss, portfolio_equity)
+            ),
+            "external_calls_made": 0,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "broker_order_submitted": False,
+        "order_submission_allowed": False,
+        "live_trading_enabled": False,
+    }
+
+
+def _workbench_risk_envelope_check(
+    *,
+    check_id: str,
+    label: str,
+    status: str,
+    scope: str,
+    finding: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "label": label,
+        "status": status,
+        "scope": scope,
+        "finding": finding,
+        "next_action": next_action,
+    }
+
+
+def _workbench_ratio(
+    numerator: float | None,
+    denominator: float | None,
+) -> float | None:
+    if numerator is None or denominator in (None, 0):
+        return None
+    return numerator / denominator
+
+
+def _workbench_round_ratio(value: float | None) -> float | None:
+    return round(value, 4) if value is not None else None
 
 
 def _workbench_priority_action_sort_key(

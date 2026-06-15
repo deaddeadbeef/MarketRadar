@@ -645,6 +645,114 @@ def test_dashboard_snapshot_payload_exposes_trading_workbench_contract(
     assert scenario_matrix["order_submission_allowed"] is False
     assert scenario_matrix["live_trading_enabled"] is False
 
+    risk_envelope = workbench["risk_envelope"]
+    assert risk_envelope["schema_version"] == "trading-workbench-risk-envelope-v1"
+    assert risk_envelope["status"] == "blocked"
+    assert risk_envelope["source_tool"] == "market-radar"
+    assert risk_envelope["ticker"] == "MSFT"
+    assert risk_envelope["decision_card_id"] == "card-msft-latest"
+    assert risk_envelope["portfolio_context"] == {
+        "broker_connected": True,
+        "broker_data_stale": True,
+        "position_count": 1,
+        "open_order_count": 0,
+        "portfolio_equity": 250000.0,
+        "cash": 50000.0,
+        "buying_power": 100000.0,
+        "gross_exposure_pct": 0.038,
+        "single_name_exposure_count": 1,
+    }
+    assert risk_envelope["sizing_context"] == {
+        "side": "buy",
+        "quantity": None,
+        "sizing_status": "blocked",
+        "entry_price": 100.0,
+        "invalidation_price": 94.0,
+        "target_price": 116.2,
+        "risk_per_share": 6.0,
+        "reward_risk": 2.7,
+        "estimated_notional": 0.0,
+        "estimated_notional_pct_of_equity": 0.0,
+        "estimated_max_loss": 200.0,
+        "max_loss_pct_of_equity": 0.0008,
+        "risk_per_trade_pct": 0.005,
+    }
+    assert risk_envelope["gate_context"] == {
+        "paper_approved": False,
+        "live_approved": False,
+        "requires_manual_approval": True,
+        "paper_block_count": 2,
+        "live_block_count": 3,
+        "open_order_count": 0,
+        "broker_order_submission": "disabled",
+        "live_trading_enabled": False,
+        "autonomous_execution": "disabled",
+    }
+    assert risk_envelope["checks"] == [
+        {
+            "id": "broker-data-freshness",
+            "label": "Broker data freshness",
+            "status": "blocked",
+            "scope": "portfolio",
+            "finding": "stale_broker_data",
+            "next_action": "Refresh read-only broker context before relying on sizing.",
+        },
+        {
+            "id": "position-sizing",
+            "label": "Position sizing",
+            "status": "blocked",
+            "scope": "trade-planner",
+            "finding": "missing_position_sizing:shares",
+            "next_action": "Resolve share sizing before paper review.",
+        },
+        {
+            "id": "paper-trade-gate",
+            "label": "Paper trade gate",
+            "status": "blocked",
+            "scope": "paper-trading",
+            "finding": "action_state_not_manual_review_eligible",
+            "next_action": "Resolve paper blocks before recording a local decision.",
+        },
+        {
+            "id": "live-submission-gate",
+            "label": "Live submission gate",
+            "status": "disabled",
+            "scope": "broker",
+            "finding": "broker_submission_disabled",
+            "next_action": "Live broker submission remains disabled.",
+        },
+        {
+            "id": "execution-boundary",
+            "label": "Execution boundary",
+            "status": "disabled",
+            "scope": "supervision",
+            "finding": "live_trading_disabled",
+            "next_action": "Use local preview or paper-only commands after approval.",
+        },
+    ]
+    assert risk_envelope["blockers"] == [
+        "action_state_not_manual_review_eligible",
+        "missing_position_sizing:shares",
+        "broker_submission_disabled",
+        "stale_broker_data",
+        "zero_preview_size",
+    ]
+    assert risk_envelope["metrics"] == {
+        "check_count": 5,
+        "blocked_check_count": 3,
+        "disabled_check_count": 2,
+        "paper_block_count": 2,
+        "live_block_count": 3,
+        "estimated_max_loss": 200.0,
+        "max_loss_pct_of_equity": 0.0008,
+        "external_calls_made": 0,
+    }
+    assert risk_envelope["external_calls_made"] == 0
+    assert risk_envelope["db_writes_made"] == 0
+    assert risk_envelope["broker_order_submitted"] is False
+    assert risk_envelope["order_submission_allowed"] is False
+    assert risk_envelope["live_trading_enabled"] is False
+
     action_bus = workbench["action_bus"]
     assert action_bus["schema_version"] == "trading-workbench-action-bus-v1"
     assert action_bus["status"] == "ready"
