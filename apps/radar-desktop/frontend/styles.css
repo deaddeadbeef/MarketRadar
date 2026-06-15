@@ -653,6 +653,69 @@ tr[data-testid="queue-row"]:focus-visible td {
   text-transform: uppercase;
 }
 
+.workbench-decision-brief {
+  margin-top: 12px;
+}
+
+.decision-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.decision-brief-block {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #081018;
+}
+
+.decision-brief-block h3 {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.decision-brief-action {
+  margin-top: 10px;
+}
+
+.decision-brief-evidence {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.decision-brief-evidence article {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(148, 163, 184, .06);
+}
+
+.decision-brief-evidence span,
+.decision-brief-evidence b {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.decision-brief-evidence span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.decision-brief-evidence p {
+  margin-top: 6px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .plan-command-list {
   display: grid;
   gap: 8px;
@@ -1224,6 +1287,11 @@ dialog::backdrop {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .decision-brief-grid,
+  .decision-brief-evidence {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .boundary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1282,6 +1350,8 @@ dialog::backdrop {
   .metric-grid,
   .kv-grid,
   .platform-tools,
+  .decision-brief-grid,
+  .decision-brief-evidence,
   .module-data-columns,
   .active-plan-grid,
   .module-kpis,

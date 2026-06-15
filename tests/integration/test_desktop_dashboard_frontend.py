@@ -80,6 +80,7 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "fallbackPlatformModules",
         "function renderTradingWorkbenchOverview",
         "function tradingWorkbenchSnapshot",
+        "function workbenchDecisionBrief",
         "function workbenchActionBus",
         "function workbenchWorkflowMap",
         "function workbenchWorkflowStagesForPage",
@@ -92,6 +93,16 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "trading_workbench",
         "function compactMapping",
         'data-testid="trading-workbench-overview"',
+        "function renderWorkbenchDecisionBrief",
+        "function decisionBriefSummary",
+        'data-testid="workbench-decision-brief"',
+        'data-testid="decision-brief-source"',
+        'data-testid="decision-brief-setup"',
+        'data-testid="decision-brief-risk"',
+        'data-testid="decision-brief-next-action"',
+        'data-testid="decision-brief-evidence-row"',
+        "data-decision-brief-status",
+        "data-decision-brief-ticker",
         "function renderWorkbenchWorkflowMap",
         "function workflowMapSummary",
         'data-testid="workbench-workflow-map"',
@@ -414,6 +425,12 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         "approval_required_count: Number("
         "workbenchSupervisionGates(snapshot)?.metrics?.approval_required_count || 0)",
         "armed_local_write: compact(state.pendingLocalWrite?.command, 'none')",
+        "decision_brief_status: compact(workbenchDecisionBrief(snapshot)?.status, 'unknown')",
+        "decision_brief_ticker: compact(workbenchDecisionBrief(snapshot)?.ticker, 'none')",
+        "decision_brief_source_tool: compact("
+        "workbenchDecisionBrief(snapshot)?.source_tool, 'market-radar')",
+        "decision_brief_next_command: compact("
+        "workbenchDecisionBrief(snapshot)?.next_action?.command, 'none')",
         "pendingLocalWrite: null",
         "function localWriteArmKey",
         "function clearPendingLocalWrite",
@@ -472,6 +489,9 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
 
     assert ".platform-tools" in styles
     assert ".platform-tool-card" in styles
+    assert ".workbench-decision-brief" in styles
+    assert ".decision-brief-grid" in styles
+    assert ".decision-brief-evidence" in styles
     assert ".workbench-workflow-map" in styles
     assert ".workflow-map-preview" in styles
     assert ".workbench-priority-queue" in styles
