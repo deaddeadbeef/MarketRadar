@@ -896,29 +896,57 @@ function bindControls() {
   document.addEventListener('keydown', handleKeyboard);
 }
 
+function isDiscoveryHome() {
+  return navigationPageKey(state.page) === 'world-events';
+}
+
+function applyChromeMode() {
+  const shell = qs('.shell');
+  if (shell) shell.classList.toggle('discovery-focus', isDiscoveryHome());
+  const navTitle = qs('.nav-title');
+  if (navTitle) navTitle.textContent = isDiscoveryHome() ? 'Discover' : 'Tools';
+  const eyebrow = qs('.eyebrow');
+  if (eyebrow) {
+    eyebrow.textContent = isDiscoveryHome()
+      ? 'MarketRadar · Event-first discovery'
+      : 'MarketRadar · Workbench';
+  }
+}
+
 function renderNav() {
   const host = qs('#workflow-tabs');
   const activePage = navigationPageKey(state.page);
-  host.innerHTML = state.config.pages.map((page) => `
+  const pages = isDiscoveryHome()
+    ? state.config.pages.filter((page) => (
+      page.key === 'world-events'
+      || page.key === 'overview'
+      || page.key === 'help'
+    ))
+    : state.config.pages;
+  host.innerHTML = pages.map((page) => {
+    const label = page.key === 'overview' ? 'Workbench' : page.label.replace(/^\d+\s*/, '');
+    const shortcut = page.key === 'world-events' ? '1' : page.key === 'overview' ? 'W' : page.shortcut;
+    return `
     <button
       class="workflow-tab"
       type="button"
       role="tab"
       aria-selected="${page.key === activePage}"
       aria-current="${page.key === activePage ? 'page' : 'false'}"
-      aria-keyshortcuts="${escapeHtml(page.shortcut)}"
+      aria-keyshortcuts="${escapeHtml(shortcut)}"
       aria-controls="dashboard-main"
       id="tab-${escapeHtml(page.key)}"
       data-testid="${escapeHtml(page.test_id)}"
       data-page="${escapeHtml(page.key)}"
       tabindex="${page.key === activePage ? '0' : '-1'}"
-      aria-label="Open ${escapeHtml(page.label)} dashboard page"
+      aria-label="Open ${escapeHtml(label)} dashboard page"
       title="${escapeHtml(page.description)}"
     >
-      <span class="shortcut">${escapeHtml(page.shortcut)}</span>
-      <span class="tab-label">${escapeHtml(page.label)}</span>
+      <span class="shortcut">${escapeHtml(shortcut)}</span>
+      <span class="tab-label">${escapeHtml(label)}</span>
     </button>
-  `).join('');
+  `;
+  }).join('');
   host.querySelectorAll('button').forEach((button) => {
     button.addEventListener('click', () => setPage(button.dataset.page));
   });
@@ -997,14 +1025,35 @@ function renderSnapshot() {
   const snapshot = state.snapshot || {};
   const status = compact(snapshot.status || at(snapshot, ['readiness', 'status']), 'unknown');
   const pageInfo = state.config.pages.find((page) => page.key === navigationPageKey(state.page));
-  const label = pageLabelFor(state.page, pageInfo);
+  const label = isDiscoveryHome() ? 'World Events' : pageLabelFor(state.page, pageInfo);
+  applyChromeMode();
+  renderNav();
   setText('#page-title', label);
-  setStatus(status);
+  setStatus(isDiscoveryHome() ? 'discovery' : status);
   setText('#refresh-label', `refresh=${state.lastRefresh ? state.lastRefresh.toLocaleTimeString() : 'pending'}`);
   setText('#provider-calls', `provider_calls=${compact(snapshot.external_calls_made, '0')}`);
-  setText('#next-action', compact(snapshot.next_action || snapshot.canonical_next_action, 'Review the current page.'));
-  setText('#next-command', compact(snapshot.next_command || snapshot.canonical_next_command, 'No command reported.'));
-  setText('#boundary-copy', `Snapshot mode ${compact(snapshot.snapshot_mode, 'unknown')}; provider calls reported ${compact(snapshot.external_calls_made, '0')}; live trading disabled.`);
+  const discovery = at(snapshot, ['event_discovery'], {}) || {};
+  if (isDiscoveryHome()) {
+    setText(
+      '#next-action',
+      compact(
+        discovery.next_action || snapshot.next_action,
+        'Scan today’s events, pick a ticker that may lag, then confirm with primary sources.',
+      ),
+    );
+    setText(
+      '#next-command',
+      compact(discovery.next_command || snapshot.next_command, 'Review discovery queue'),
+    );
+    setText(
+      '#boundary-copy',
+      'Research only · not investment advice · 0 provider calls while browsing',
+    );
+  } else {
+    setText('#next-action', compact(snapshot.next_action || snapshot.canonical_next_action, 'Review the current page.'));
+    setText('#next-command', compact(snapshot.next_command || snapshot.canonical_next_command, 'No command reported.'));
+    setText('#boundary-copy', `Snapshot mode ${compact(snapshot.snapshot_mode, 'unknown')}; provider calls reported ${compact(snapshot.external_calls_made, '0')}; live trading disabled.`);
+  }
   renderSnapshotMeta(snapshot, pageInfo);
   updateAutomationState(snapshot, status, pageInfo);
   updateFilterState();
@@ -1020,6 +1069,7 @@ function renderSnapshot() {
   bindWorkbenchReviewControls();
   bindWorkbenchActionBusControls();
   bindQueueRows();
+  bindDiscoveryInteractions();
 }
 
 function renderLoadingDashboard() {
@@ -1404,6 +1454,10 @@ function renderContent(snapshot) {
     help: renderHelp,
   };
   const renderer = renderers[state.page] || renderOverview;
+  if (isDiscoveryHome()) {
+    qs('#content').innerHTML = renderer(snapshot);
+    return;
+  }
   qs('#content').innerHTML = `${metricGrid(snapshot)}${renderer(snapshot)}${rawJsonPanel(snapshot)}`;
 }
 
@@ -1494,121 +1548,149 @@ function renderWorldEvents(snapshot) {
   const discovery = at(snapshot, ['event_discovery'], {}) || {};
   const events = Array.isArray(discovery.events) ? discovery.events : [];
   const discoveries = Array.isArray(discovery.discoveries) ? discovery.discoveries : [];
-  const counts = discovery.counts && typeof discovery.counts === 'object' ? discovery.counts : {};
-  const join = discovery.join_coverage && typeof discovery.join_coverage === 'object' ? discovery.join_coverage : {};
   const freshness = compact(discovery.freshness_status, 'unknown');
-  const staleBanner = freshness === 'stale'
-    ? `<p class="badge-warning" data-testid="world-events-stale-banner">Events are stale (${escapeHtml(String(discovery.events_age_hours ?? '?'))}h old). Refresh data/local/world_events.json from the Grok daily task.</p>`
-    : '';
-  const eventRows = events.map((event) => {
+  const selected = (qs('#filter-ticker')?.value || '').trim().toUpperCase();
+  const top = discoveries[0] || null;
+  const focusTicker = selected || compact(top?.ticker, '');
+
+  const eventCards = events.map((event) => {
     const tickers = [
       ...(Array.isArray(event.tickers) ? event.tickers : []),
       ...(Array.isArray(event.secondary_tickers) ? event.secondary_tickers : []),
-    ].slice(0, 8).join(', ');
-    const themes = Array.isArray(event.themes) ? event.themes.join(', ') : '';
-    return `<tr data-testid="world-event-row">
-      <td>${escapeHtml(compact(event.title, 'Untitled event'))}</td>
-      <td>${escapeHtml(compact(event.direction, 'mixed'))}</td>
-      <td>${escapeHtml(themes || '—')}</td>
-      <td><code>${escapeHtml(tickers || '—')}</code></td>
-      <td>${escapeHtml(String(event.materiality ?? '—'))}</td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="5">No world events loaded. Write data/local/world_events.json or use the sample fixture.</td></tr>';
+    ].slice(0, 6).join(' · ');
+    const direction = compact(event.direction, 'mixed');
+    return `
+      <article class="discover-card" data-testid="world-event-row">
+        <div class="discover-card-top">
+          <span class="pill direction-${escapeHtml(direction)}">${escapeHtml(direction)}</span>
+          <span class="muted">${escapeHtml(String(event.materiality ?? ''))}</span>
+        </div>
+        <h3>${escapeHtml(compact(event.title, 'Untitled event'))}</h3>
+        <p class="muted">${escapeHtml(tickers || 'No tickers mapped')}</p>
+      </article>
+    `;
+  }).join('') || `
+    <article class="discover-card empty">
+      <h3>No world events yet</h3>
+      <p class="muted">Drop a world-events file into data/local/world_events.json (or run the Grok daily task).</p>
+    </article>
+  `;
 
-  const discoveryRows = discoveries.map((row) => `<tr data-testid="discovery-row" data-ticker="${escapeHtml(compact(row.ticker, ''))}">
-      <td><strong>${escapeHtml(compact(row.ticker, '—'))}</strong></td>
-      <td>${escapeHtml(String(row.discovery_score ?? '—'))}</td>
-      <td>${escapeHtml(String(row.emotion_reaction_gap ?? '—'))}</td>
-      <td>${escapeHtml(compact(row.join_status, 'no_db'))}</td>
-      <td>${escapeHtml(row.quiet_tape ? 'yes' : 'no')}</td>
-      <td>${escapeHtml(compact(row.usefulness, 'research_only'))}</td>
-      <td>${escapeHtml(compact(row.event_title || row.event_id, '—'))}</td>
-      <td>${escapeHtml(compact(row.why_now, ''))}</td>
-    </tr>`).join('') || '<tr><td colspan="8">No discovery rows yet.</td></tr>';
+  const leadRows = discoveries.slice(0, 12).map((row) => {
+    const ticker = compact(row.ticker, '');
+    const active = ticker && ticker === focusTicker ? 'is-active' : '';
+    const why = compact(row.event_title || row.why_now, 'World event map');
+    return `
+      <button type="button" class="lead-row ${active}" data-testid="discovery-row" data-ticker="${escapeHtml(ticker)}">
+        <span class="lead-ticker">${escapeHtml(ticker || '—')}</span>
+        <span class="lead-why">${escapeHtml(why)}</span>
+        <span class="lead-gap" title="Emotion vs reaction gap">${escapeHtml(String(row.emotion_reaction_gap ?? '—'))}</span>
+      </button>
+    `;
+  }).join('') || '<p class="muted">No discovery leads yet.</p>';
+
+  const caseFile = discovery.case_file && typeof discovery.case_file === 'object'
+    ? discovery.case_file
+    : null;
 
   return `
-    <section class="panel wide" data-testid="world-events-header">
-      <h2>World Events → Discovery</h2>
-      <p>${escapeHtml(compact(discovery.headline, 'Event-first radar for under-discovered narratives.'))}</p>
-      ${staleBanner}
-      <p class="muted">${escapeHtml(compact(discovery.next_action || discovery.canonical_next_action, 'Research only. Not investment advice.'))}</p>
-      <p><code>${escapeHtml(compact(discovery.next_command || discovery.canonical_next_command, 'catalyst-radar discovery-brief --json'))}</code></p>
-    </section>
-    <div class="metric-grid" data-testid="world-events-metrics" aria-label="World event discovery metrics">
-      ${metric('Events', String(discovery.event_count ?? events.length ?? 0), compact(freshness, 'local file'))}
-      ${metric('Discoveries', String(discovery.discovery_count ?? discoveries.length ?? 0), 'ranked leads')}
-      ${metric('Joined', `${join.joined ?? counts.joined ?? 0}/${discovery.discovery_count ?? discoveries.length ?? 0}`, `${join.coverage_pct ?? 0}% reaction join`)}
-      ${metric('Quiet tape', String(counts.quiet_tape ?? 0), 'low reaction when joined')}
-      ${metric('Research only', String(counts.research_only ?? '—'), 'social-safe default')}
-      ${metric('Provider calls', String(discovery.external_calls_made ?? 0), 'browse stays zero-call')}
-    </div>
-    <section class="panel wide" data-testid="world-events-table">
-      <h2>World Events</h2>
-      <div class="table-wrap">
-        <table aria-label="World events inbox">
-          <thead><tr><th>Event</th><th>Direction</th><th>Themes</th><th>Tickers</th><th>Materiality</th></tr></thead>
-          <tbody>${eventRows}</tbody>
-        </table>
+    <section class="discover-hero" data-testid="world-events-header">
+      <div>
+        <p class="discover-kicker">What might the market not have priced yet?</p>
+        <h2 class="discover-title">${escapeHtml(compact(discovery.headline, 'Load world events to start'))}</h2>
+        <p class="muted">${escapeHtml(
+          freshness === 'stale'
+            ? `Events look stale (${String(discovery.events_age_hours ?? '?')}h). Refresh data/local/world_events.json.`
+            : 'Research only — confirm with primary sources before any capital decision.',
+        )}</p>
+      </div>
+      <div class="discover-stats" data-testid="world-events-metrics">
+        <div><b>${escapeHtml(String(events.length))}</b><span>events</span></div>
+        <div><b>${escapeHtml(String(discoveries.length))}</b><span>leads</span></div>
+        <div><b>0</b><span>calls</span></div>
       </div>
     </section>
-    <section class="panel wide" data-testid="discovery-queue-table">
-      <h2>Discovery Queue</h2>
-      <p class="muted">Emotion vs reaction gap when local scan rows exist; otherwise emotion from event materiality. Social-only rows stay research-only. Quiet-tape boosts under-reacted joined names. Filter ticker to focus the case file.</p>
-      <div class="table-wrap">
-        <table aria-label="Discovery queue">
-          <thead><tr><th>Ticker</th><th>Score</th><th>Gap</th><th>Join</th><th>Quiet</th><th>Use</th><th>Event</th><th>Why now</th></tr></thead>
-          <tbody>${discoveryRows}</tbody>
-        </table>
+
+    <section class="discover-section" data-testid="world-events-table">
+      <div class="discover-section-head">
+        <h2>1 · What happened</h2>
+        <p class="muted">World narratives mapped to equities</p>
       </div>
+      <div class="discover-card-grid">${eventCards}</div>
     </section>
-    ${renderDiscoveryCaseFile(discovery.case_file)}
+
+    <section class="discover-split">
+      <section class="discover-section" data-testid="discovery-queue-table">
+        <div class="discover-section-head">
+          <h2>2 · Who may lag</h2>
+          <p class="muted">Click a ticker to open its case</p>
+        </div>
+        <div class="lead-list">${leadRows}</div>
+      </section>
+      ${renderDiscoveryCaseFile(caseFile, focusTicker)}
+    </section>
   `;
 }
 
-function renderDiscoveryCaseFile(caseFile) {
-  if (!caseFile || typeof caseFile !== 'object') {
+function renderDiscoveryCaseFile(caseFile, focusTicker) {
+  if (!caseFile || caseFile.status !== 'ready') {
     return `
-      <section class="panel wide" data-testid="discovery-case-file">
-        <h2>Case File</h2>
-        <p class="muted">No case file yet. Load world events and discovery rows first.</p>
+      <section class="discover-section case" data-testid="discovery-case-file">
+        <div class="discover-section-head">
+          <h2>3 · Look closer</h2>
+          <p class="muted">${escapeHtml(focusTicker ? `No case for ${focusTicker}` : 'Pick a ticker from the list')}</p>
+        </div>
+        <p class="muted">Select a lead to see why it showed up and what would kill the thesis.</p>
       </section>
     `;
   }
   const price = caseFile.price_reaction && typeof caseFile.price_reaction === 'object' ? caseFile.price_reaction : {};
   const confirm = caseFile.confirmation && typeof caseFile.confirmation === 'object' ? caseFile.confirmation : {};
   const invalidation = Array.isArray(caseFile.invalidation) ? caseFile.invalidation : [];
-  const invalidateRows = invalidation.map((row) => `
-    <tr>
-      <td><code>${escapeHtml(compact(row.id, '—'))}</code></td>
-      <td>${escapeHtml(compact(row.check, ''))}</td>
-      <td>${escapeHtml(compact(row.action, ''))}</td>
-    </tr>
-  `).join('') || '<tr><td colspan="3">No invalidation checks.</td></tr>';
-  const notDiscovered = price.price_not_fully_discovered;
-  const notDiscoveredLabel = notDiscovered === true ? 'yes — tape may lag event' : notDiscovered === false ? 'no — already reacted or fully priced' : 'unknown — need join';
+  const kills = invalidation.slice(0, 4).map((row) => `
+    <li><strong>${escapeHtml(humanizeId(row.id))}</strong> — ${escapeHtml(compact(row.check, ''))}</li>
+  `).join('');
+  const lag = price.price_not_fully_discovered;
+  const lagLabel = lag === true ? 'Tape may lag' : lag === false ? 'Likely already priced' : 'Need price join';
 
   return `
-    <section class="panel wide" data-testid="discovery-case-file">
-      <h2>Case File · ${escapeHtml(compact(caseFile.ticker, '—'))}</h2>
-      <p>${escapeHtml(compact(caseFile.headline, 'Research case file'))}</p>
-      <p class="muted">${escapeHtml(compact(caseFile.why_this_ticker, ''))}</p>
-      <div class="metric-grid" aria-label="Case file metrics">
-        ${metric('Price lag?', notDiscoveredLabel, compact(price.join_status, 'join'))}
-        ${metric('Gap', String(price.emotion_reaction_gap ?? '—'), `emotion ${price.emotion_score ?? '—'} / reaction ${price.reaction_score ?? '—'}`)}
-        ${metric('Confirm', compact(confirm.status, 'unconfirmed'), compact(confirm.detail, 'social-only until primary'))}
-        ${metric('Usefulness', compact(caseFile.usefulness, 'research_only'), 'not investment advice')}
+    <section class="discover-section case" data-testid="discovery-case-file">
+      <div class="discover-section-head">
+        <h2>3 · Look closer · ${escapeHtml(compact(caseFile.ticker, '—'))}</h2>
+        <p class="muted">${escapeHtml(compact(caseFile.usefulness, 'research_only'))} · ${escapeHtml(compact(confirm.status, 'unconfirmed'))}</p>
       </div>
-      <p><strong>Next:</strong> ${escapeHtml(compact(caseFile.next_action, 'Review invalidation checklist.'))}</p>
-      <p><code>${escapeHtml(compact(caseFile.label_command_preview || caseFile.next_command, 'discovery-label --preview'))}</code></p>
-      <h3>Invalidation checklist</h3>
-      <div class="table-wrap">
-        <table aria-label="Invalidation checklist">
-          <thead><tr><th>ID</th><th>Check</th><th>Action</th></tr></thead>
-          <tbody>${invalidateRows}</tbody>
-        </table>
+      <p class="case-why">${escapeHtml(compact(caseFile.why_this_ticker, caseFile.headline || ''))}</p>
+      <div class="case-chips">
+        <span class="pill">${escapeHtml(lagLabel)}</span>
+        <span class="pill">Gap ${escapeHtml(String(price.emotion_reaction_gap ?? '—'))}</span>
+        <span class="pill">${escapeHtml(compact(price.join_status, 'no join'))}</span>
+      </div>
+      <p class="case-next"><strong>Next:</strong> ${escapeHtml(compact(caseFile.next_action, 'Confirm with primary sources.'))}</p>
+      <div class="case-kills">
+        <h3>Kill the thesis if…</h3>
+        <ul>${kills || '<li>No invalidation checks.</li>'}</ul>
       </div>
     </section>
   `;
+}
+
+function humanizeId(value) {
+  return String(value || '')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function bindDiscoveryInteractions() {
+  if (!isDiscoveryHome()) return;
+  qs('#content')?.querySelectorAll('.lead-row[data-ticker]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const ticker = button.getAttribute('data-ticker') || '';
+      const input = qs('#filter-ticker');
+      if (input) input.value = ticker;
+      state.lastCommand = `ticker ${ticker}`;
+      await refreshSnapshot();
+    });
+  });
 }
 
 function renderTradingWorkbenchOverview(snapshot) {
