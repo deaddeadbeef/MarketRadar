@@ -33,8 +33,8 @@ powershell -ExecutionPolicy Bypass -File scripts/import-world-events.ps1 -Events
 catalyst-radar discovery-brief --events data\local\world_events.json --json
 ```
 
-3. Open the desktop **World Events** page (`radar` then command `events` or
-   `discovery`).
+3. Open the desktop app (`radar`). It defaults to **World Events** (event-first
+   discovery). Workbench / ops pages remain secondary (`workbench`, `ops`).
 4. Review the Discovery Queue. Social/X-only rows stay `research_only`.
 5. Open a case file and optionally label the lead:
 

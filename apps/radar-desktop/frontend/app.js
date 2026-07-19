@@ -22,8 +22,16 @@ const keyAliases = new Map([
   ['learn', 'tutorial'],
   ['start', 'tutorial'],
   ['tut', 'tutorial'],
-  ['1', 'overview'],
-  ['home', 'overview'],
+  ['1', 'world-events'],
+  ['home', 'world-events'],
+  ['inbox', 'world-events'],
+  ['world', 'world-events'],
+  ['world-events', 'world-events'],
+  ['world_events', 'world-events'],
+  ['events', 'world-events'],
+  ['discovery', 'world-events'],
+  ['x-events', 'world-events'],
+  ['event-radar', 'world-events'],
   ['insight', 'overview'],
   ['insights', 'overview'],
   ['mail', 'overview'],
@@ -31,6 +39,7 @@ const keyAliases = new Map([
   ['command-center', 'overview'],
   ['command_center', 'overview'],
   ['workbench', 'overview'],
+  ['overview', 'overview'],
   ['portfolio', 'portfolio'],
   ['portfolio-monitor', 'portfolio'],
   ['portfolio_monitor', 'portfolio'],
@@ -40,13 +49,6 @@ const keyAliases = new Map([
   ['radar', 'market-radar'],
   ['scout', 'market-radar'],
   ['scanner', 'market-radar'],
-  ['world', 'world-events'],
-  ['world-events', 'world-events'],
-  ['world_events', 'world-events'],
-  ['events', 'world-events'],
-  ['discovery', 'world-events'],
-  ['x-events', 'world-events'],
-  ['event-radar', 'world-events'],
   ['trade', 'trade-planner'],
   ['trade-plan', 'trade-planner'],
   ['trade_plan', 'trade-planner'],
@@ -874,7 +876,7 @@ async function invoke(command, payload) {
 async function boot() {
   bindControls();
   state.config = await invoke('desktop_config');
-  state.page = state.config.initial_page || 'overview';
+  state.page = state.config.initial_page || 'world-events';
   updatePlatformState();
   renderNav();
   renderAutomation();
@@ -1021,8 +1023,8 @@ function renderSnapshot() {
 }
 
 function renderLoadingDashboard() {
-  setText('#page-title', 'Command Center');
-  setText('#next-action', 'Loading local snapshot.');
+  setText('#page-title', 'World Events');
+  setText('#next-action', 'Loading local discovery snapshot.');
   setText('#next-command', 'dashboard-snapshot --json --fast');
   setText('#boundary-copy', 'Rendering remains local and makes zero provider calls.');
   setText('#provider-calls', 'provider_calls=0');
@@ -1034,9 +1036,9 @@ function renderLoadingDashboard() {
   updateAutomationJson();
   qs('#content').innerHTML = `
     <section class="panel wide loading-dashboard" data-testid="loading-dashboard">
-      <h2>Trading Workbench</h2>
-      <p>Loading market snapshot</p>
-      <p>MarketRadar is reading the local trading platform contract.</p>
+      <h2>World Events</h2>
+      <p>Loading discovery snapshot</p>
+      <p>MarketRadar is reading the local event-first discovery contract.</p>
       <p>Rendering remains local and makes zero provider calls.</p>
     </section>
     <div class="metric-grid" data-testid="loading-metric-strip" aria-label="Loading dashboard metrics">
@@ -1423,7 +1425,32 @@ function metric(label, value, caption) {
 }
 
 function renderOverview(snapshot) {
+  const discovery = at(snapshot, ['event_discovery'], {}) || {};
+  const discoveryHeadline = compact(
+    discovery.headline,
+    'Open World Events for event-first discovery (primary product surface).',
+  );
+  const discoveryNext = compact(
+    discovery.next_action || discovery.canonical_next_action,
+    'Use World Events / discovery for under-discovered leads.',
+  );
+  const discoveryCmd = compact(
+    discovery.next_command || discovery.canonical_next_command,
+    'catalyst-radar discovery-brief --json',
+  );
+  const opsBlocker = compact(
+    snapshot.first_blocker || at(snapshot, ['readiness', 'first_blocker']),
+    'none',
+  );
   return `
+    <section class="panel wide" data-testid="discovery-primary-path">
+      <h2>Primary path: World Events</h2>
+      <p>MarketRadar’s main goal is event-first discovery — not residual market-bar ops.</p>
+      <p>${escapeHtml(discoveryHeadline)}</p>
+      <p class="muted">${escapeHtml(discoveryNext)}</p>
+      <p><code>${escapeHtml(discoveryCmd)}</code></p>
+      <p class="muted">Open page <strong>1 World Events</strong> (command: <code>events</code> / <code>discovery</code>). This Workbench page is secondary trading tooling.</p>
+    </section>
     ${renderTradingWorkbenchOverview(snapshot)}
     ${renderWorkbenchCaseFile(snapshot, 'overview')}
     ${renderWorkbenchMarketIntelligenceDossier(snapshot, 'overview')}
@@ -1452,14 +1479,12 @@ function renderOverview(snapshot) {
     ${renderWorkbenchSupervisionGates(snapshot, 'overview')}
     ${renderWorkbenchActionBus(snapshot, 'overview')}
     ${renderLiveTradingBoundary()}
-    <section class="panel" data-testid="first-blocker">
-      <h2>First Blocker</h2>
-      <p>${escapeHtml(compact(snapshot.first_blocker || at(snapshot, ['readiness', 'first_blocker']), 'No blocker reported.'))}</p>
-    </section>
-    <section class="panel" data-testid="operator-move">
-      <h2>Operator Move</h2>
-      <p>${escapeHtml(compact(snapshot.next_action || snapshot.canonical_next_action, 'Review the current page.'))}</p>
-      <code>${escapeHtml(compact(snapshot.next_command || snapshot.canonical_next_command, 'No command reported.'))}</code>
+    <section class="panel" data-testid="ops-secondary-blockers">
+      <h2>Secondary ops blockers</h2>
+      <p class="muted">Full-market residual repair and trust gates live under Ops / Evidence Gaps. They do not block the World Events discovery path.</p>
+      <p>First ops blocker: ${escapeHtml(opsBlocker)}</p>
+      <p>${escapeHtml(compact(snapshot.next_action || snapshot.canonical_next_action, 'Use World Events unless you intentionally need ops repair.'))}</p>
+      <code>${escapeHtml(compact(snapshot.next_command || snapshot.canonical_next_command, 'catalyst-radar discovery-brief --json'))}</code>
     </section>
     ${queuePanel('Attention Queue', rowsFromSnapshot(snapshot))}
   `;

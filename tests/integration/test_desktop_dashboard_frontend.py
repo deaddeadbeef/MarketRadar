@@ -11,15 +11,15 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     )
 
     assert 'data-testid="dashboard-page"' in source
-    assert 'data-current-page="overview"' in source
-    assert 'data-current-nav-page="overview"' in source
+    assert 'data-current-page="world-events"' in source
+    assert 'data-current-nav-page="world-events"' in source
     assert 'data-testid="automation-state"' in source
-    assert "page=overview nav=overview status=loading provider_calls=0" in source
+    assert "page=world-events nav=world-events status=loading provider_calls=0" in source
     assert 'data-testid="filter-state"' in source
     assert "ticker=all scan_mode=all stocks_only=false limit=50 offset=0" in source
     assert 'data-testid="command-state"' in source
-    assert 'last_command=none page=overview nav=overview provider_calls=0' in source
-    assert "<title>MarketRadar Trading Workbench</title>" in source
+    assert 'last_command=none page=world-events nav=world-events provider_calls=0' in source
+    assert "<title>MarketRadar Discovery</title>" in source
     assert 'data-testid="platform-state"' in source
     assert "primary_tool=market-radar live_trading_enabled=false" in source
     assert 'data-testid="automation-json"' in source
@@ -30,7 +30,7 @@ def test_tauri_dashboard_static_shell_exposes_initial_navigation_contract() -> N
     assert match is not None
     automation_payload = json.loads(match.group("payload"))
     assert automation_payload["contract_version"] == "market-radar-desktop-automation-v1"
-    assert automation_payload["page"] == "overview"
+    assert automation_payload["page"] == "world-events"
     assert automation_payload["provider_calls"] == 0
     assert automation_payload["filters"]["scan_mode"] == "all"
     assert automation_payload["filters"]["stocks_only"] is False
@@ -1039,7 +1039,7 @@ def test_tauri_dashboard_loading_state_is_not_blank() -> None:
         'data-testid="loading-dashboard"',
         'data-testid="loading-metric-strip"',
         'data-testid="loading-preview-queue"',
-        "Loading market snapshot",
+        "Loading discovery snapshot",
         "Rendering remains local and makes zero provider calls.",
         "[loading]",
         "resolving dashboard contract",
@@ -1050,7 +1050,7 @@ def test_tauri_dashboard_loading_state_is_not_blank() -> None:
     assert "function renderLoadingDashboard()" in source
     assert "if (!state.snapshot) renderLoadingDashboard();" in source
     assert "function loadingMetric(label, value)" in source
-    assert "setText('#next-action', 'Loading local snapshot.');" in source
+    assert "setText('#next-action', 'Loading local discovery snapshot.');" in source
     assert "setText('#provider-calls', 'provider_calls=0');" in source
     assert "data-testid=\"loading-dashboard\"" in source
     assert "data-testid=\"loading-preview-queue\"" in source
@@ -1581,7 +1581,7 @@ def test_tauri_dashboard_command_aliases_cover_legacy_page_words() -> None:
 
     for alias in (
         "['learn', 'tutorial']",
-        "['home', 'overview']",
+        "['home', 'world-events']",
         "['mail', 'overview']",
         "['evidence_gaps', 'readiness']",
         "['call_plan', 'run']",
