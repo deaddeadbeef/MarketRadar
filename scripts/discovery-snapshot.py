@@ -44,6 +44,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def _local_engine(database_url: str | None = None):
+    """Best-effort read-only local DB for priced-in reaction join (no external calls)."""
+    try:
+        from catalyst_radar.core.config import AppConfig
+        from catalyst_radar.storage.db import create_schema, engine_from_url
+
+        config = AppConfig.from_env()
+        url = (database_url or config.database_url or "").strip()
+        if not url:
+            return None
+        engine = engine_from_url(url)
+        create_schema(engine)
+        return engine
+    except Exception:
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     events_path = args.events or default_events_path()
@@ -53,11 +70,12 @@ def main(argv: list[str] | None = None) -> int:
 
     limit = max(1, min(int(args.scan_limit or 25), 50))
     focus = (args.ticker or "").strip().upper()
+    engine = _local_engine(args.database_url)
 
     try:
         brief = build_discovery_brief(
             events_path=events_path,
-            engine=None,
+            engine=engine,
             limit=limit,
         )
         brief["status"] = "ready"
@@ -68,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             brief["case_file"] = build_discovery_case_file(
                 ticker=focus,
                 events_path=events_path,
-                engine=None,
+                engine=engine,
             )
     except Exception as exc:
         brief = {
