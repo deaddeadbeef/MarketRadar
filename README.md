@@ -36,7 +36,16 @@ catalyst-radar discovery-brief --events data\local\world_events.json --json
 3. Open the desktop **World Events** page (`radar` then command `events` or
    `discovery`).
 4. Review the Discovery Queue. Social/X-only rows stay `research_only`.
-5. Confirm interesting leads with primary sources before any capital decision.
+5. Open a case file and optionally label the lead:
+
+```powershell
+catalyst-radar discovery-case MU --events data\local\world_events.json --json
+catalyst-radar discovery-label --ticker MU --label good-research --preview --json
+```
+
+6. Confirm interesting leads with primary sources before any capital decision.
+
+Goal and phases: `docs/superpowers/plans/2026-07-19-goal-and-phases.md`.
 
 Optional: fan out mapped tickers into the local event store as low-quality
 SOCIAL rows (preview first):

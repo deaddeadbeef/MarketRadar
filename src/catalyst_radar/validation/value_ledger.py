@@ -59,6 +59,7 @@ ALLOWED_ARTIFACT_TYPES = frozenset(
         "priced_in_answer",
         "shadow_run",
         "manual_note",
+        "discovery_row",
     }
 )
 USEFUL_DEFINITION = (

@@ -85,3 +85,48 @@ def test_build_discovery_brief_rejects_bad_schema(tmp_path: Path) -> None:
         raise AssertionError("expected ValueError")
     except ValueError as exc:
         assert "schema_version" in str(exc)
+
+
+def test_discovery_case_file_research_only() -> None:
+    from catalyst_radar.discovery.case_file import build_discovery_case_file
+
+    case = build_discovery_case_file(
+        ticker="MU",
+        events_path=Path("data/sample/world_events.json"),
+        engine=None,
+    )
+    assert case["schema_version"] == "discovery-case-file-v1"
+    assert case["status"] == "ready"
+    assert case["ticker"] == "MU"
+    assert case["investment_advice"] is False
+    assert case["can_make_investment_decision"] is False
+    assert case["confirmation"]["status"] in {
+        "unconfirmed_social",
+        "corroborated_social",
+        "unconfirmed",
+        "primary_confirmed",
+    }
+    assert case["invalidation"]
+    assert "price_reaction" in case
+
+
+def test_discovery_row_allowed_in_value_ledger() -> None:
+    from catalyst_radar.validation.value_ledger import (
+        ALLOWED_ARTIFACT_TYPES,
+        build_value_ledger_entry,
+    )
+
+    assert "discovery_row" in ALLOWED_ARTIFACT_TYPES
+    entry = build_value_ledger_entry(
+        artifact_type="discovery_row",
+        artifact_id="evt_semi_vol_bear_2026_07:MU",
+        label="good-research",
+        estimated_value_usd=5.0,
+        confidence=0.5,
+        source="test",
+        ticker="MU",
+        supported_action="research",
+        user_decision="wait",
+    )
+    assert entry.artifact_type == "discovery_row"
+    assert entry.ticker == "MU"

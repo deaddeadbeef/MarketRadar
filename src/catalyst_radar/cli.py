@@ -1311,6 +1311,42 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discovery_ingest.add_argument("--json", action="store_true")
 
+    discovery_case = subparsers.add_parser(
+        "discovery-case",
+        help="Build a research case file for one discovery ticker (zero provider calls).",
+    )
+    discovery_case.add_argument("ticker")
+    discovery_case.add_argument("--database-url")
+    discovery_case.add_argument("--events", type=Path)
+    discovery_case.add_argument("--event-id")
+    discovery_case.add_argument("--theme-peers", type=Path, default=Path("config/theme_peers.yaml"))
+    discovery_case.add_argument("--no-db", action="store_true")
+    discovery_case.add_argument("--json", action="store_true")
+
+    discovery_label = subparsers.add_parser(
+        "discovery-label",
+        help="Preview/write a value-ledger discovery_row label for a discovery lead.",
+    )
+    discovery_label.add_argument("--database-url")
+    discovery_label.add_argument("--ticker", required=True)
+    discovery_label.add_argument("--event-id")
+    discovery_label.add_argument("--events", type=Path)
+    discovery_label.add_argument(
+        "--label",
+        required=True,
+        help="useful|noisy|too-late|false-positive|good-research|acted|ignored|...",
+    )
+    discovery_label.add_argument("--estimated-value-usd", type=float, default=5.0)
+    discovery_label.add_argument("--confidence", type=float, default=0.55)
+    discovery_label.add_argument("--notes")
+    discovery_label.add_argument("--supported-action", default="research")
+    discovery_label.add_argument("--user-decision", default="wait")
+    discovery_label_mode = discovery_label.add_mutually_exclusive_group()
+    discovery_label_mode.add_argument("--preview", dest="execute", action="store_false")
+    discovery_label_mode.add_argument("--execute", action="store_true")
+    discovery_label.set_defaults(execute=False)
+    discovery_label.add_argument("--json", action="store_true")
+
     priced_in_audit = subparsers.add_parser("priced-in-audit")
     priced_in_audit.add_argument("--database-url")
     priced_in_audit.add_argument("--available-at", type=_parse_aware_datetime)
@@ -2519,6 +2555,51 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _print_discovery_ingest(payload)
         return 0 if payload.get("valid", True) is not False else 1
+
+    if args.command == "discovery-case":
+        from catalyst_radar.discovery.brief import default_events_path
+        from catalyst_radar.discovery.case_file import build_discovery_case_file
+
+        events_path = args.events or default_events_path()
+        join_engine = None if args.no_db else engine
+        if join_engine is not None:
+            create_schema(join_engine)
+        payload = build_discovery_case_file(
+            ticker=args.ticker,
+            events_path=events_path,
+            theme_peers_path=args.theme_peers,
+            engine=join_engine,
+            event_id=args.event_id,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_discovery_case(payload)
+        return 0 if payload.get("status") in {"ready", "not_found"} else 1
+
+    if args.command == "discovery-label":
+        from catalyst_radar.discovery.brief import default_events_path
+        from catalyst_radar.discovery.label import build_discovery_label_payload
+
+        create_schema(engine)
+        payload = build_discovery_label_payload(
+            engine=engine,
+            ticker=args.ticker,
+            label=args.label,
+            event_id=args.event_id,
+            events_path=args.events or default_events_path(),
+            estimated_value_usd=args.estimated_value_usd,
+            confidence=args.confidence,
+            notes=args.notes,
+            execute=bool(args.execute),
+            supported_action=args.supported_action,
+            user_decision=args.user_decision,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_discovery_label(payload)
+        return 0 if payload.get("label_status") != "blocked" else 1
 
     if args.command == "priced-in-audit":
         create_schema(engine)
@@ -8951,6 +9032,50 @@ def _print_discovery_ingest(payload: Mapping[str, object]) -> None:
         print(f"next={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"cmd={payload.get('next_command')}")
+
+
+def _print_discovery_case(payload: Mapping[str, object]) -> None:
+    confirmation = _mapping_value(payload.get("confirmation"))
+    print(
+        "discovery_case "
+        f"status={payload.get('status')} "
+        f"ticker={payload.get('ticker')} "
+        f"use={payload.get('usefulness')} "
+        f"confirm={confirmation.get('status')} "
+        f"calls={payload.get('external_calls_made')}"
+    )
+    print(f"headline={payload.get('headline')}")
+    print(f"why={payload.get('why_this_ticker')}")
+    price = _mapping_value(payload.get("price_reaction"))
+    print(
+        "price "
+        f"join={price.get('join_status')} "
+        f"gap={price.get('emotion_reaction_gap')} "
+        f"quiet={price.get('quiet_tape')} "
+        f"not_discovered={price.get('price_not_fully_discovered')}"
+    )
+    print(f"next={payload.get('next_action')}")
+    invalidation = payload.get("invalidation")
+    if isinstance(invalidation, Sequence):
+        for row in invalidation[:5]:
+            if isinstance(row, Mapping):
+                print(f"  invalidate[{row.get('id')}] {row.get('check')}")
+
+
+def _print_discovery_label(payload: Mapping[str, object]) -> None:
+    print(
+        "discovery_label "
+        f"status={payload.get('label_status')} "
+        f"ticker={payload.get('ticker')} "
+        f"label={payload.get('label')} "
+        f"writes={payload.get('db_writes_made')}/"
+        f"{payload.get('db_writes_required')}"
+    )
+    print(f"next={payload.get('next_action')}")
+    ledger = _mapping_value(payload.get("value_ledger"))
+    entry = _mapping_value(ledger.get("entry"))
+    if entry:
+        print(f"ledger_id={entry.get('id')} artifact={entry.get('artifact_id')}")
 
 
 def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
