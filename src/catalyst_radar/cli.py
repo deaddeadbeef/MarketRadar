@@ -1269,6 +1269,48 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discovery_brief.add_argument("--json", action="store_true")
 
+    discovery_ingest = subparsers.add_parser(
+        "discovery-ingest",
+        help=(
+            "Validate or install world-events-v1 JSON for event-first discovery. "
+            "Optional SOCIAL event-store fan-out is preview-first."
+        ),
+    )
+    discovery_ingest.add_argument("--database-url")
+    discovery_ingest.add_argument(
+        "--events",
+        type=Path,
+        required=True,
+        help="Path to world-events-v1 JSON.",
+    )
+    discovery_ingest.add_argument(
+        "--destination",
+        type=Path,
+        default=Path("data/local/world_events.json"),
+        help="Local install path (default data/local/world_events.json).",
+    )
+    discovery_ingest.add_argument(
+        "--theme-peers",
+        type=Path,
+        default=Path("config/theme_peers.yaml"),
+    )
+    discovery_ingest.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate schema only; zero writes.",
+    )
+    discovery_ingest.add_argument(
+        "--fanout-events",
+        action="store_true",
+        help="Fan out mapped tickers into local SOCIAL CanonicalEvents.",
+    )
+    discovery_ingest.add_argument(
+        "--execute",
+        action="store_true",
+        help="Perform local file write and/or event-store fan-out.",
+    )
+    discovery_ingest.add_argument("--json", action="store_true")
+
     priced_in_audit = subparsers.add_parser("priced-in-audit")
     priced_in_audit.add_argument("--database-url")
     priced_in_audit.add_argument("--available-at", type=_parse_aware_datetime)
@@ -2417,6 +2459,66 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _print_discovery_brief(payload)
         return 0
+
+    if args.command == "discovery-ingest":
+        from catalyst_radar.discovery.ingest import (
+            fanout_world_events_to_store,
+            import_world_events_local,
+            validate_world_events_file,
+        )
+
+        if args.validate_only and args.execute:
+            msg = "discovery-ingest: use either --validate-only or --execute, not both"
+            if args.json:
+                print(json.dumps({"status": "error", "error": msg}, sort_keys=True))
+            else:
+                print(msg)
+            return 2
+
+        if args.validate_only or (not args.execute and not args.fanout_events):
+            payload = validate_world_events_file(args.events)
+            if not args.validate_only and not args.execute:
+                # Default path: validate + local import preview.
+                payload = import_world_events_local(
+                    events_path=args.events,
+                    destination=args.destination,
+                    execute=False,
+                )
+        elif args.fanout_events:
+            create_schema(engine)
+            if args.execute:
+                # Install local file first, then fan-out.
+                local_result = import_world_events_local(
+                    events_path=args.events,
+                    destination=args.destination,
+                    execute=True,
+                )
+                payload = fanout_world_events_to_store(
+                    events_path=args.destination if local_result.get("valid") else args.events,
+                    engine=engine,
+                    theme_peers_path=args.theme_peers,
+                    execute=True,
+                )
+                payload["local_import"] = local_result
+            else:
+                payload = fanout_world_events_to_store(
+                    events_path=args.events,
+                    engine=engine,
+                    theme_peers_path=args.theme_peers,
+                    execute=False,
+                )
+        else:
+            payload = import_world_events_local(
+                events_path=args.events,
+                destination=args.destination,
+                execute=bool(args.execute),
+            )
+
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_discovery_ingest(payload)
+        return 0 if payload.get("valid", True) is not False else 1
 
     if args.command == "priced-in-audit":
         create_schema(engine)
@@ -8802,15 +8904,19 @@ def _print_discovery_brief(payload: Mapping[str, object]) -> None:
     counts = payload.get("counts") if isinstance(payload.get("counts"), Mapping) else {}
     print(
         "discovery_brief "
+        f"fresh={payload.get('freshness_status')} "
+        f"age_h={payload.get('events_age_hours')} "
         f"events={payload.get('event_count')} "
         f"discoveries={payload.get('discovery_count')} "
+        f"joined={counts.get('joined')} "
+        f"missing_scan={counts.get('missing_scan')} "
         f"research_only={counts.get('research_only')} "
-        f"watch={counts.get('watch')} "
         f"calls={payload.get('external_calls_made')} "
         f"writes={payload.get('db_writes_made')}"
     )
     print(f"headline={payload.get('headline')}")
     print(f"next={payload.get('next_action')}")
+    print(f"cmd={payload.get('canonical_next_command') or payload.get('next_command')}")
     discoveries = payload.get("discoveries")
     if isinstance(discoveries, Sequence):
         for row in discoveries[:10]:
@@ -8820,9 +8926,31 @@ def _print_discovery_brief(payload: Mapping[str, object]) -> None:
                 f"  {row.get('ticker')} "
                 f"score={row.get('discovery_score')} "
                 f"gap={row.get('emotion_reaction_gap')} "
+                f"join={row.get('join_status')} "
+                f"quiet={row.get('quiet_tape')} "
                 f"use={row.get('usefulness')} "
                 f"event={row.get('event_id')}"
             )
+
+
+def _print_discovery_ingest(payload: Mapping[str, object]) -> None:
+    print(
+        "discovery_ingest "
+        f"status={payload.get('status')} "
+        f"mode={payload.get('mode')} "
+        f"valid={payload.get('valid')} "
+        f"events={payload.get('event_count')} "
+        f"writes={payload.get('db_writes_made')}/"
+        f"{payload.get('db_writes_required')} "
+        f"fanout={payload.get('fanout_rows_written') or 0}/"
+        f"{payload.get('fanout_rows_planned') or 0}"
+    )
+    if payload.get("errors"):
+        print(f"errors={payload.get('errors')}")
+    if payload.get("next_action"):
+        print(f"next={payload.get('next_action')}")
+    if payload.get("next_command"):
+        print(f"cmd={payload.get('next_command')}")
 
 
 def _print_priced_in_answer(payload: Mapping[str, object]) -> None:

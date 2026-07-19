@@ -1,8 +1,9 @@
 # Event-First Discovery Radar — Design
 
 **Date:** 2026-07-19  
-**Status:** Accepted for P0  
-**Product goal:** Surface stocks that may still be **under-discovered by price** relative to **world events**, for human research only (not investment advice, not autonomous trading).
+**Status:** Multi-phase — P0 shipped (PR #1114); Phase 1 daily loop in progress  
+**Product goal:** Surface stocks that may still be **under-discovered by price** relative to **world events**, for human research only (not investment advice, not autonomous trading).  
+**Full product plan:** `docs/superpowers/plans/2026-07-19-marketradar-event-first-product.md`
 
 ## Problem
 
