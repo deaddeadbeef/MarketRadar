@@ -1,3 +1,8 @@
+"""DEPRECATED as primary product surface: decision-card capital workflow.
+
+Discovery uses case files + proof labels instead. See docs/PRODUCT_SCOPE.md.
+"""
+
 from catalyst_radar.decision_cards.builder import (
     attach_llm_review_to_decision_card,
     build_decision_card,

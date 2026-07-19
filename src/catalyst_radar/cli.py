@@ -1323,6 +1323,15 @@ def build_parser() -> argparse.ArgumentParser:
     discovery_case.add_argument("--no-db", action="store_true")
     discovery_case.add_argument("--json", action="store_true")
 
+    product_scope = subparsers.add_parser(
+        "product-scope",
+        help=(
+            "Show the active event-first product scope and deprecated surfaces "
+            "(see docs/PRODUCT_SCOPE.md)."
+        ),
+    )
+    product_scope.add_argument("--json", action="store_true")
+
     discovery_label = subparsers.add_parser(
         "discovery-label",
         help="Preview/write a value-ledger discovery_row label for a discovery lead.",
@@ -1635,6 +1644,41 @@ def _print_ops_capabilities(payload: Mapping[str, object]) -> None:
 def main(argv: list[str] | None = None) -> int:
     dotenv_loaded = load_app_dotenv()
     args = build_parser().parse_args(argv)
+    from catalyst_radar.deprecation import product_scope_payload, warn_if_deprecated_cli
+
+    if args.command == "product-scope":
+        payload = product_scope_payload()
+        if args.json:
+            print(json.dumps(payload, sort_keys=True, default=str))
+        else:
+            print(f"scope={payload['scope_version']} date={payload['scope_date']}")
+            print(f"product={payload['product']}")
+            print(f"docs.scope={payload['docs']['scope']}")
+            print(f"docs.deprecation={payload['docs']['deprecation']}")
+            print(
+                "desktop.active="
+                + ",".join(payload["desktop_pages"]["active"])
+            )
+            print(
+                "cli.active="
+                + ",".join(payload["cli_commands"]["active"])
+            )
+            print(
+                "cli.deprecated_count="
+                + str(len(payload["cli_commands"]["deprecated"]))
+            )
+            print(
+                "phases="
+                + ",".join(
+                    f"{row['id']}:{row['status']}" for row in payload["removal_phases"]
+                )
+            )
+        return 0
+
+    deprecated_warning = warn_if_deprecated_cli(str(args.command or ""))
+    if deprecated_warning:
+        print(deprecated_warning, file=sys.stderr)
+
     config = AppConfig.from_env()
     database_url = getattr(args, "database_url", None) or config.database_url
     config = replace(config, database_url=database_url)

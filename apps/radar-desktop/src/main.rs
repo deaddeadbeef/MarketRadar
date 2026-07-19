@@ -795,33 +795,77 @@ fn page_shortcut(page: Page) -> &'static str {
 
 fn page_description(page: Page) -> &'static str {
     match page {
-        Page::Tutorial => "First-run path and safe operating boundary.",
-        Page::Overview => "Secondary trading workbench: portfolio, tickets, and ops tools.",
-        Page::Portfolio => "Positions, exposure, cash, and portfolio context.",
-        Page::MarketRadar => "MarketRadar catalyst scout, mispricing queue, and evidence gaps.",
-        Page::WorldEvents => {
-            "Primary product surface: world events, discovery queue, and research case files."
+        Page::Tutorial => {
+            "DEPRECATED legacy onboarding. Use World Events + docs/PRODUCT_SCOPE.md."
         }
-        Page::TradePlanner => "Trade thesis, sizing, reward/risk, and decision-card planning.",
-        Page::RiskDesk => "Policy gates, portfolio impact, concentration, and hard blocks.",
-        Page::PaperTrading => "Paper-only tickets, fills, and shadow validation.",
-        Page::Backtest => "Replay, backtest, and validation evidence.",
-        Page::Readiness => "Evidence gaps and setup blockers before relying on output.",
-        Page::Run => "Safe run plan, provider-call budget, and execution gates.",
-        Page::Candidates => "Candidate queue with source and decision gaps.",
-        Page::Review => "Decision-ready rows filtered to useful review candidates.",
-        Page::Alerts => "Research alerts and routing status.",
-        Page::Ipo => "IPO/S-1 catalyst evidence rows.",
-        Page::Broker => "Read-only broker and portfolio context.",
-        Page::Ops => "Provider health, runtime context, and run diagnostics.",
-        Page::Telemetry => "Audit tape and telemetry coverage.",
-        Page::Agent => "Zero-call agent preview and gated OpenAI execution status.",
-        Page::Themes => "Clustered catalyst patterns and repeated theme context.",
-        Page::Validation => "Shadow, paper, and value validation evidence.",
-        Page::Costs => "Value ledger, outcomes, validation, and cost evidence.",
-        Page::Features => "Feature inventory and where each feature lives.",
-        Page::Journal => "Decision journal, feedback, value ledger, and outcome review.",
-        Page::Help => "Keyboard, automation, and command reference.",
+        Page::Overview => {
+            "DEPRECATED legacy workbench. Product scope is World Events discovery only."
+        }
+        Page::Portfolio => {
+            "DEPRECATED. Not part of the event-first discovery product surface."
+        }
+        Page::MarketRadar => {
+            "DEPRECATED full-market scout UX. Prefer World Events discovery queue."
+        }
+        Page::WorldEvents => {
+            "Primary product: world events, discovery queue, case analysis, and proof labels."
+        }
+        Page::TradePlanner => {
+            "DEPRECATED. Not part of the event-first discovery product surface."
+        }
+        Page::RiskDesk => {
+            "DEPRECATED. Not part of the event-first discovery product surface."
+        }
+        Page::PaperTrading => {
+            "DEPRECATED paper-trading desk. Out of product scope for discovery."
+        }
+        Page::Backtest => {
+            "DEPRECATED replay desk. Out of product scope for discovery."
+        }
+        Page::Readiness => {
+            "DEPRECATED evidence-gaps hero. Mapped-ticker fill is the discovery data path."
+        }
+        Page::Run => {
+            "DEPRECATED full radar-run hero. Use discovery fill + mapped scan only as support."
+        }
+        Page::Candidates => {
+            "DEPRECATED candidate-review desk. Use World Events discovery queue."
+        }
+        Page::Review => {
+            "DEPRECATED decision-review desk. Use case file + proof labels."
+        }
+        Page::Alerts => {
+            "DEPRECATED alerts product surface (optional later, not discovery core)."
+        }
+        Page::Ipo => "DEPRECATED IPO/S-1 surface. Out of product scope.",
+        Page::Broker => {
+            "DEPRECATED broker desk. No order product path in event-first scope."
+        }
+        Page::Ops => {
+            "DEPRECATED as primary UX. Keep only for emergency data repair."
+        }
+        Page::Telemetry => {
+            "DEPRECATED as primary UX. Audit tape is supporting ops only."
+        }
+        Page::Agent => {
+            "DEPRECATED agent cockpit UX. Sparse Grok remains optional via CLI gates."
+        }
+        Page::Themes => {
+            "DEPRECATED themes page. Theme maps live under discovery mapper config."
+        }
+        Page::Validation => {
+            "DEPRECATED validation desk. Discovery proof uses value-ledger labels."
+        }
+        Page::Costs => {
+            "DEPRECATED costs desk. Discovery proof summarizes claimable labels."
+        }
+        Page::Features => {
+            "DEPRECATED feature inventory page. Out of product scope."
+        }
+        Page::Journal => {
+            "DEPRECATED journal desk. Use Proof labels on World Events."
+        }
+        Page::Help => "Keyboard, automation, and command reference for discovery.",
     }
 }
 

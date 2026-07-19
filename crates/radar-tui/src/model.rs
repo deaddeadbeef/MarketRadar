@@ -89,33 +89,39 @@ impl Page {
     }
 
     pub fn label(self) -> &'static str {
+        // Product scope: only World Events + Help are active. Other pages are
+        // legacy workbench surfaces scheduled for removal (docs/PRODUCT_SCOPE.md).
         match self {
-            Page::Tutorial => "0 Start",
+            Page::Tutorial => "0 Legacy · Start",
             Page::WorldEvents => "1 World Events",
-            Page::Overview => "Workbench",
-            Page::Portfolio => "Portfolio",
-            Page::MarketRadar => "Market Radar",
-            Page::TradePlanner => "Trade Planner",
-            Page::RiskDesk => "Risk Desk",
-            Page::PaperTrading => "Paper Trading",
-            Page::Backtest => "Backtest",
-            Page::Readiness => "2 Evidence Gaps",
-            Page::Run => "3 Safe Run",
-            Page::Candidates => "4 Candidate Review",
-            Page::Review => "Review",
-            Page::Alerts => "5 Alerts",
-            Page::Ipo => "6 IPO/S-1",
-            Page::Broker => "7 Broker",
-            Page::Ops => "8 Ops",
-            Page::Telemetry => "9 Telemetry",
-            Page::Agent => "Ctrl+A Agent",
-            Page::Themes => "Themes",
-            Page::Validation => "Validation",
-            Page::Costs => "Costs",
-            Page::Features => "F Features",
-            Page::Journal => "Journal",
+            Page::Overview => "Legacy · Workbench",
+            Page::Portfolio => "Legacy · Portfolio",
+            Page::MarketRadar => "Legacy · Market Radar",
+            Page::TradePlanner => "Legacy · Trade Planner",
+            Page::RiskDesk => "Legacy · Risk Desk",
+            Page::PaperTrading => "Legacy · Paper Trading",
+            Page::Backtest => "Legacy · Backtest",
+            Page::Readiness => "2 Legacy · Evidence Gaps",
+            Page::Run => "3 Legacy · Safe Run",
+            Page::Candidates => "4 Legacy · Candidates",
+            Page::Review => "Legacy · Review",
+            Page::Alerts => "5 Legacy · Alerts",
+            Page::Ipo => "6 Legacy · IPO/S-1",
+            Page::Broker => "7 Legacy · Broker",
+            Page::Ops => "8 Legacy · Ops",
+            Page::Telemetry => "9 Legacy · Telemetry",
+            Page::Agent => "Legacy · Agent",
+            Page::Themes => "Legacy · Themes",
+            Page::Validation => "Legacy · Validation",
+            Page::Costs => "Legacy · Costs",
+            Page::Features => "Legacy · Features",
+            Page::Journal => "Legacy · Journal",
             Page::Help => "? Help",
         }
+    }
+
+    pub fn is_deprecated(self) -> bool {
+        !matches!(self, Page::WorldEvents | Page::Help)
     }
 
     pub fn from_input(value: &str) -> Page {
