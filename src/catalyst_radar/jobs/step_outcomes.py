@@ -135,7 +135,8 @@ REASON_OPERATOR_ACTIONS = {
         "Exit degraded mode before running agent review against the latest candidates."
     ),
     "llm_disabled": (
-        "Enable the dashboard agent dry-run switch, or configure OPENAI_API_KEY for real review."
+        "Enable the dashboard agent dry-run switch, or set CATALYST_LLM_PROVIDER=grok "
+        "and XAI_API_KEY for real Grok review."
     ),
     "no_active_securities": "Load an active universe before scanning.",
     "no_alerts": "No action required unless you expected digest-routed alerts.",

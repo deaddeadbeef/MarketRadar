@@ -13256,12 +13256,15 @@ def agent_review_real_mode_gate_payload(config: AppConfig) -> dict[str, object]:
         "headline": (
             "Real agent review is configured."
             if ready
-            else "Real agent review is disabled until OpenAI review guardrails are set."
+            else "Real agent review is disabled until Grok review guardrails are set."
         ),
         "next_action": (
             "Run one real review only after dry-run evidence and call budget look right."
             if ready
-            else "Set OpenAI provider, model, pricing, budgets, and a skeptic_review task cap."
+            else (
+                "Set CATALYST_LLM_PROVIDER=grok, XAI_API_KEY, model, pricing, budgets, "
+                "and a skeptic_review task cap."
+            )
         ),
         "missing_env": missing,
         "call_budget": (
@@ -13269,10 +13272,14 @@ def agent_review_real_mode_gate_payload(config: AppConfig) -> dict[str, object]:
             f"monthly_budget={config.llm_monthly_budget_usd}; "
             f"skeptic_review_cap={config.llm_task_daily_caps.get('skeptic_review')}"
             if ready
-            else "0 OpenAI calls while blocked"
+            else "0 LLM calls while blocked"
         ),
         "provider": _provider_name(config.llm_provider, default="none"),
-        "model_configured": bool(config.llm_skeptic_model),
+        "model_configured": bool(
+            config.llm_skeptic_model
+            or config.agent_sdk_model
+            or config.llm_evidence_model
+        ),
         "pricing_configured": _llm_pricing_configured(config),
         "budgets_configured": (
             config.llm_daily_budget_usd > 0 and config.llm_monthly_budget_usd > 0
@@ -13280,6 +13287,8 @@ def agent_review_real_mode_gate_payload(config: AppConfig) -> dict[str, object]:
         "task_cap_configured": (
             int(config.llm_task_daily_caps.get("skeptic_review", 0)) > 0
         ),
+        "xai_key_configured": bool(config.xai_api_key),
+        "openai_key_configured": bool(config.openai_api_key),
     }
 
 
@@ -13454,6 +13463,8 @@ def runtime_context_payload(
         "sec_live_enabled": bool(config.sec_enable_live),
         "sec_user_agent_configured": config.sec_user_agent_configured,
         "openai_key_configured": bool(config.openai_api_key),
+        "xai_key_configured": bool(config.xai_api_key),
+        "llm_key_configured": bool(config.xai_api_key or config.openai_api_key),
         "schwab_credentials_configured": bool(
             config.schwab_client_id
             and config.schwab_client_secret
@@ -20137,16 +20148,29 @@ def _sec_activation_next_action(config: AppConfig) -> str:
 
 
 def _llm_missing_env(config: AppConfig) -> list[str]:
-    provider = _provider_name(config.llm_provider, default="none")
+    from catalyst_radar.agents.llm_provider import (
+        is_premium_llm_provider,
+        llm_api_key,
+        normalize_llm_provider,
+    )
+
+    provider = normalize_llm_provider(config.llm_provider)
     if not config.enable_premium_llm or provider in {"none", "off", "disabled"}:
         return []
     items: list[str] = []
-    if provider != "openai":
-        items.append("CATALYST_LLM_PROVIDER=openai")
-    if not config.openai_api_key:
+    if not is_premium_llm_provider(provider):
+        items.append("CATALYST_LLM_PROVIDER=grok")
+    if provider == "grok" and not llm_api_key(config):
+        items.append("XAI_API_KEY")
+    if provider == "openai" and not config.openai_api_key:
         items.append("OPENAI_API_KEY")
-    if not config.llm_skeptic_model:
-        items.append("CATALYST_LLM_SKEPTIC_MODEL")
+    if not (
+        config.llm_skeptic_model
+        or config.agent_sdk_fast_model
+        or config.agent_sdk_model
+        or config.llm_evidence_model
+    ):
+        items.append("CATALYST_AGENT_SDK_MODEL / CATALYST_LLM_SKEPTIC_MODEL")
     if not _llm_pricing_configured(config):
         items.append(
             "CATALYST_LLM_INPUT_COST_PER_1M / "
@@ -20160,18 +20184,28 @@ def _llm_missing_env(config: AppConfig) -> list[str]:
 
 
 def _llm_activation_missing_env(config: AppConfig) -> list[str]:
-    provider = _provider_name(config.llm_provider, default="none")
+    from catalyst_radar.agents.llm_provider import (
+        is_premium_llm_provider,
+        llm_api_key,
+        normalize_llm_provider,
+    )
+
+    provider = normalize_llm_provider(config.llm_provider)
     items: list[str] = []
     if not config.enable_premium_llm:
         items.append("CATALYST_ENABLE_PREMIUM_LLM=1")
-    if provider != "openai":
-        items.append("CATALYST_LLM_PROVIDER=openai")
+    if not is_premium_llm_provider(provider):
+        items.append("CATALYST_LLM_PROVIDER=grok")
     items.extend(_llm_missing_env(config))
     if provider in {"none", "off", "disabled"}:
-        if not config.openai_api_key:
-            items.append("OPENAI_API_KEY")
-        if not config.llm_skeptic_model:
-            items.append("CATALYST_LLM_SKEPTIC_MODEL")
+        if not llm_api_key(config):
+            items.append("XAI_API_KEY")
+        if not (
+            config.llm_skeptic_model
+            or config.agent_sdk_model
+            or config.llm_evidence_model
+        ):
+            items.append("CATALYST_AGENT_SDK_MODEL=grok-4.5")
         if not _llm_pricing_configured(config):
             items.append(
                 "CATALYST_LLM_INPUT_COST_PER_1M / "
@@ -20291,19 +20325,41 @@ def _live_data_env_template(config: AppConfig) -> list[dict[str, object]]:
         ),
         _activation_env_row(
             "CATALYST_LLM_PROVIDER",
-            "openai",
-            configured=_provider_name(config.llm_provider, default="none") == "openai",
+            "grok",
+            configured=_provider_name(config.llm_provider, default="none")
+            in {"grok", "xai", "openai"},
             current=_provider_name(config.llm_provider, default="none"),
         ),
         _activation_env_row(
+            "CATALYST_AGENT_SDK_MODEL",
+            "grok-4.5",
+            configured=bool(config.agent_sdk_model or config.llm_decision_card_model),
+            current=config.agent_sdk_model
+            or config.llm_decision_card_model
+            or "missing",
+        ),
+        _activation_env_row(
             "CATALYST_LLM_SKEPTIC_MODEL",
-            "<OpenAI model for skeptic_review>",
-            configured=bool(config.llm_skeptic_model),
-            current=config.llm_skeptic_model or "missing",
+            "grok-4-1-fast-non-reasoning",
+            configured=bool(
+                config.llm_skeptic_model
+                or config.agent_sdk_fast_model
+                or config.agent_sdk_model
+            ),
+            current=config.llm_skeptic_model
+            or config.agent_sdk_fast_model
+            or config.agent_sdk_model
+            or "missing",
+        ),
+        _activation_env_row(
+            "XAI_API_KEY",
+            "<your xAI / Grok API key>",
+            configured=bool(config.xai_api_key or config.openai_api_key),
+            secret=True,
         ),
         _activation_env_row(
             "OPENAI_API_KEY",
-            "<your OpenAI API key>",
+            "<legacy OpenAI key; optional when using XAI_API_KEY>",
             configured=bool(config.openai_api_key),
             secret=True,
         ),
@@ -20551,7 +20607,9 @@ def _activation_env_purpose(name: str) -> str:
             "Cheaper fast model for bounded Agents SDK subagent checks."
         ),
         "CATALYST_LLM_SKEPTIC_MODEL": "Model name for skeptic_review tasks.",
-        "OPENAI_API_KEY": "OpenAI credential for optional real agent review.",
+        "XAI_API_KEY": "xAI Grok credential for premium LLM and Agents SDK (primary).",
+        "XAI_BASE_URL": "xAI OpenAI-compatible base URL (default https://api.x.ai/v1).",
+        "OPENAI_API_KEY": "Legacy OpenAI credential; optional when using XAI_API_KEY.",
         "CATALYST_LLM_INPUT_COST_PER_1M": "Pricing guardrail for LLM input tokens.",
         "CATALYST_LLM_CACHED_INPUT_COST_PER_1M": (
             "Pricing guardrail for cached LLM input tokens."
@@ -21170,11 +21228,12 @@ def _radar_step_root_cause_group(
             "why": "The run did not request the optional agent-review gate.",
             "current_config": (
                 f"CATALYST_LLM_PROVIDER={config.llm_provider or 'none'}; "
+                f"XAI_API_KEY={'set' if config.xai_api_key else 'unset'}; "
                 f"OPENAI_API_KEY={'set' if config.openai_api_key else 'unset'}"
             ),
             "next_action": (
-                "Use dry-run review for smoke tests, or configure OpenAI credentials, "
-                "pricing, budgets, and task caps for real review."
+                "Use dry-run review for smoke tests, or configure Grok (XAI_API_KEY, "
+                "CATALYST_LLM_PROVIDER=grok), pricing, budgets, and task caps for real review."
             ),
             "evidence": _step_config_evidence(step),
         }
@@ -22693,13 +22752,13 @@ def _llm_preflight_row(
         setup = ", ".join(_llm_activation_missing_env(config))
         call_budget = f"0 LLM calls; setup requires {setup}" if setup else "0 LLM calls"
         next_action = (
-            "Enable OpenAI review only after model, key, pricing, budget, and task-cap "
-            "setup."
+            "Enable Grok review only after model, XAI_API_KEY, pricing, budget, and "
+            "task-cap setup."
         )
     elif missing:
         status = "blocked"
         call_budget = f"0 LLM calls until {', '.join(missing)} are set"
-        next_action = "Complete OpenAI setup, then run one dry-run review before real review."
+        next_action = "Complete Grok setup, then run one dry-run review before real review."
     else:
         status = "ready"
         daily_cap = config.llm_task_daily_caps or {}
@@ -22784,10 +22843,16 @@ def _broker_mode(
 
 
 def _llm_mode(config: AppConfig) -> str:
-    provider = str(config.llm_provider or "").strip().lower()
+    from catalyst_radar.agents.llm_provider import (
+        is_premium_llm_provider,
+        llm_api_key,
+        normalize_llm_provider,
+    )
+
+    provider = normalize_llm_provider(config.llm_provider)
     if not config.enable_premium_llm or provider in {"", "none", "off", "disabled"}:
         return "disabled"
-    if provider == "openai" and not config.openai_api_key:
+    if is_premium_llm_provider(provider) and not llm_api_key(config):
         return "missing_credentials"
     return "enabled"
 

@@ -10358,11 +10358,23 @@ class _SafeDisabledLLMClient:
 
 
 def _llm_client_for_provider(*, config: AppConfig, fake: bool):
-    provider = config.llm_provider.strip().lower()
+    from catalyst_radar.agents.llm_provider import (
+        is_premium_llm_provider,
+        llm_api_key,
+        llm_base_url,
+        normalize_llm_provider,
+    )
+
+    provider = normalize_llm_provider(config.llm_provider)
     if fake or provider == "fake":
         return FakeLLMClient()
-    if provider == "openai":
-        return OpenAIResponsesClient(api_key=config.openai_api_key)
+    if is_premium_llm_provider(provider):
+        return OpenAIResponsesClient(
+            api_key=llm_api_key(config),
+            base_url=llm_base_url(config),
+            provider=provider,
+            api_key_env="XAI_API_KEY" if provider == "grok" else "OPENAI_API_KEY",
+        )
     return _SafeDisabledLLMClient()
 
 

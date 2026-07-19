@@ -31,6 +31,8 @@ def test_env_example_covers_live_activation_keys() -> None:
         "CATALYST_LLM_MONTHLY_BUDGET_USD",
         "CATALYST_LLM_TASK_DAILY_CAPS",
         "OPENAI_API_KEY",
+        "XAI_API_KEY",
+        "XAI_BASE_URL",
         "CATALYST_AGENT_SDK_MODEL",
         "CATALYST_AGENT_SDK_FAST_MODEL",
     }

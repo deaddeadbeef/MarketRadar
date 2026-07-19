@@ -984,7 +984,7 @@ def _openai_config() -> AppConfig:
             "CATALYST_LLM_INPUT_COST_PER_1M": "1",
             "CATALYST_LLM_CACHED_INPUT_COST_PER_1M": "0.1",
             "CATALYST_LLM_OUTPUT_COST_PER_1M": "3",
-            "CATALYST_LLM_PRICING_UPDATED_AT": "2026-05-25T00:00:00+00:00",
+            "CATALYST_LLM_PRICING_UPDATED_AT": "2026-07-01T00:00:00+00:00",
             "CATALYST_LLM_DAILY_BUDGET_USD": "1",
             "CATALYST_LLM_MONTHLY_BUDGET_USD": "5",
             "CATALYST_LLM_TASK_DAILY_CAPS": "agent_brief=1",

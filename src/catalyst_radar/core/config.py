@@ -139,6 +139,8 @@ class AppConfig:
     llm_monthly_soft_cap_pct: float = 0.80
     llm_task_daily_caps: Mapping[str, int] = field(default_factory=dict)
     openai_api_key: str | None = None
+    xai_api_key: str | None = None
+    xai_base_url: str = "https://api.x.ai/v1"
     enable_agent_sdk: bool = False
     agent_sdk_model: str | None = None
     agent_sdk_fast_model: str | None = None
@@ -270,6 +272,13 @@ class AppConfig:
             ),
             llm_task_daily_caps=_task_caps(source, "CATALYST_LLM_TASK_DAILY_CAPS"),
             openai_api_key=_optional_str(source, "OPENAI_API_KEY"),
+            xai_api_key=_optional_str(source, "XAI_API_KEY")
+            or _optional_str(source, "GROK_API_KEY"),
+            xai_base_url=(
+                _optional_str(source, "XAI_BASE_URL")
+                or _optional_str(source, "CATALYST_XAI_BASE_URL")
+                or "https://api.x.ai/v1"
+            ),
             enable_agent_sdk=_bool(source.get("CATALYST_ENABLE_AGENT_SDK"), False),
             agent_sdk_model=_optional_str(source, "CATALYST_AGENT_SDK_MODEL"),
             agent_sdk_fast_model=_optional_str(
