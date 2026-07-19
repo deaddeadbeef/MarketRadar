@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from catalyst_radar.discovery.brief import build_discovery_brief, load_world_events
+from catalyst_radar.discovery.ingest import (
+    import_world_events_local,
+    validate_world_events_file,
+)
 from catalyst_radar.discovery.mapper import map_event_tickers
 from catalyst_radar.discovery.models import WORLD_EVENTS_SCHEMA
 
@@ -27,7 +32,7 @@ def test_map_event_tickers_includes_theme_defaults() -> None:
 
 def test_build_discovery_brief_zero_calls_research_only() -> None:
     path = Path("data/sample/world_events.json")
-    brief = build_discovery_brief(events_path=path, limit=20)
+    brief = build_discovery_brief(events_path=path, limit=20, now=datetime(2026, 7, 19, tzinfo=UTC))
     assert brief["schema_version"] == "discovery-brief-v1"
     assert brief["investment_advice"] is False
     assert brief["can_make_investment_decision"] is False
@@ -35,13 +40,41 @@ def test_build_discovery_brief_zero_calls_research_only() -> None:
     assert brief["db_writes_made"] == 0
     assert brief["event_count"] >= 3
     assert brief["discovery_count"] >= 1
+    assert brief["freshness_status"] == "fresh"
+    assert brief["join_coverage"]["no_db"] == brief["discovery_count"]
     assert all(row["usefulness"] in {"research_only", "watch", "blocked"} for row in brief["discoveries"])
+    assert all(row["join_status"] == "no_db" for row in brief["discoveries"])
     # Social pilot sources should not produce investment-ready rows.
     assert all(row["usefulness"] != "decision_ready" for row in brief["discoveries"])
     top = brief["discoveries"][0]
     assert top["ticker"]
     assert top["event_id"]
     assert "why_now" in top
+
+
+def test_build_discovery_brief_marks_stale_events() -> None:
+    path = Path("data/sample/world_events.json")
+    future = datetime(2026, 7, 19, tzinfo=UTC) + timedelta(hours=48)
+    brief = build_discovery_brief(events_path=path, limit=5, now=future)
+    assert brief["freshness_status"] == "stale"
+    assert float(brief["events_age_hours"]) > 36
+    assert "stale" in str(brief["next_action"]).casefold() or "STALE" in str(brief["headline"])
+
+
+def test_validate_and_import_world_events(tmp_path: Path) -> None:
+    src = Path("data/sample/world_events.json")
+    validation = validate_world_events_file(src)
+    assert validation["valid"] is True
+    assert validation["event_count"] >= 3
+    dest = tmp_path / "world_events.json"
+    preview = import_world_events_local(events_path=src, destination=dest, execute=False)
+    assert preview["mode"] == "preview"
+    assert preview["db_writes_made"] == 0
+    assert not dest.exists()
+    executed = import_world_events_local(events_path=src, destination=dest, execute=True)
+    assert executed["mode"] == "execute"
+    assert executed["db_writes_made"] == 1
+    assert dest.is_file()
 
 
 def test_build_discovery_brief_rejects_bad_schema(tmp_path: Path) -> None:

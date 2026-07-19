@@ -1470,6 +1470,11 @@ function renderWorldEvents(snapshot) {
   const events = Array.isArray(discovery.events) ? discovery.events : [];
   const discoveries = Array.isArray(discovery.discoveries) ? discovery.discoveries : [];
   const counts = discovery.counts && typeof discovery.counts === 'object' ? discovery.counts : {};
+  const join = discovery.join_coverage && typeof discovery.join_coverage === 'object' ? discovery.join_coverage : {};
+  const freshness = compact(discovery.freshness_status, 'unknown');
+  const staleBanner = freshness === 'stale'
+    ? `<p class="badge-warning" data-testid="world-events-stale-banner">Events are stale (${escapeHtml(String(discovery.events_age_hours ?? '?'))}h old). Refresh data/local/world_events.json from the Grok daily task.</p>`
+    : '';
   const eventRows = events.map((event) => {
     const tickers = [
       ...(Array.isArray(event.tickers) ? event.tickers : []),
@@ -1489,21 +1494,26 @@ function renderWorldEvents(snapshot) {
       <td><strong>${escapeHtml(compact(row.ticker, '—'))}</strong></td>
       <td>${escapeHtml(String(row.discovery_score ?? '—'))}</td>
       <td>${escapeHtml(String(row.emotion_reaction_gap ?? '—'))}</td>
+      <td>${escapeHtml(compact(row.join_status, 'no_db'))}</td>
+      <td>${escapeHtml(row.quiet_tape ? 'yes' : 'no')}</td>
       <td>${escapeHtml(compact(row.usefulness, 'research_only'))}</td>
       <td>${escapeHtml(compact(row.event_title || row.event_id, '—'))}</td>
       <td>${escapeHtml(compact(row.why_now, ''))}</td>
-    </tr>`).join('') || '<tr><td colspan="6">No discovery rows yet.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="8">No discovery rows yet.</td></tr>';
 
   return `
     <section class="panel wide" data-testid="world-events-header">
       <h2>World Events → Discovery</h2>
       <p>${escapeHtml(compact(discovery.headline, 'Event-first radar for under-discovered narratives.'))}</p>
-      <p class="muted">${escapeHtml(compact(discovery.next_action, 'Research only. Not investment advice.'))}</p>
-      <p><code>${escapeHtml(compact(discovery.next_command, 'catalyst-radar discovery-brief --json'))}</code></p>
+      ${staleBanner}
+      <p class="muted">${escapeHtml(compact(discovery.next_action || discovery.canonical_next_action, 'Research only. Not investment advice.'))}</p>
+      <p><code>${escapeHtml(compact(discovery.next_command || discovery.canonical_next_command, 'catalyst-radar discovery-brief --json'))}</code></p>
     </section>
     <div class="metric-grid" data-testid="world-events-metrics" aria-label="World event discovery metrics">
-      ${metric('Events', String(discovery.event_count ?? events.length ?? 0), compact(discovery.status, 'local file'))}
+      ${metric('Events', String(discovery.event_count ?? events.length ?? 0), compact(freshness, 'local file'))}
       ${metric('Discoveries', String(discovery.discovery_count ?? discoveries.length ?? 0), 'ranked leads')}
+      ${metric('Joined', `${join.joined ?? counts.joined ?? 0}/${discovery.discovery_count ?? discoveries.length ?? 0}`, `${join.coverage_pct ?? 0}% reaction join`)}
+      ${metric('Quiet tape', String(counts.quiet_tape ?? 0), 'low reaction when joined')}
       ${metric('Research only', String(counts.research_only ?? '—'), 'social-safe default')}
       ${metric('Provider calls', String(discovery.external_calls_made ?? 0), 'browse stays zero-call')}
     </div>
@@ -1518,10 +1528,10 @@ function renderWorldEvents(snapshot) {
     </section>
     <section class="panel wide" data-testid="discovery-queue-table">
       <h2>Discovery Queue</h2>
-      <p class="muted">Emotion vs reaction gap when local scan rows exist; otherwise emotion from event materiality. Social-only rows stay research-only.</p>
+      <p class="muted">Emotion vs reaction gap when local scan rows exist; otherwise emotion from event materiality. Social-only rows stay research-only. Quiet-tape boosts under-reacted joined names.</p>
       <div class="table-wrap">
         <table aria-label="Discovery queue">
-          <thead><tr><th>Ticker</th><th>Score</th><th>Gap</th><th>Use</th><th>Event</th><th>Why now</th></tr></thead>
+          <thead><tr><th>Ticker</th><th>Score</th><th>Gap</th><th>Join</th><th>Quiet</th><th>Use</th><th>Event</th><th>Why now</th></tr></thead>
           <tbody>${discoveryRows}</tbody>
         </table>
       </div>

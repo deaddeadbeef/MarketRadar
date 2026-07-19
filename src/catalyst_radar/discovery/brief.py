@@ -22,6 +22,8 @@ from catalyst_radar.discovery.models import (
 )
 
 DEFAULT_EVENTS_PATH = Path("data/sample/world_events.json")
+LOCAL_EVENTS_PATH = Path("data/local/world_events.json")
+FRESHNESS_STALE_HOURS = 36.0
 
 
 def load_world_events(path: str | Path) -> WorldEventBundle:
@@ -53,13 +55,21 @@ def build_discovery_brief(
     theme_peers_path: str | Path | None = Path("config/theme_peers.yaml"),
     engine: Engine | None = None,
     limit: int = 25,
+    now: datetime | None = None,
 ) -> dict[str, object]:
     bundle = load_world_events(events_path)
     theme_map = load_theme_ticker_map(theme_peers_path)
-    priced_in_by_ticker = _load_priced_in_index(engine) if engine is not None else {}
+    db_enabled = engine is not None
+    priced_in_by_ticker = _load_priced_in_index(engine) if db_enabled else {}
+    clock = now if now is not None else datetime.now(tz=UTC)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=UTC)
+    else:
+        clock = clock.astimezone(UTC)
 
     event_rows: list[dict[str, object]] = []
     discoveries: list[dict[str, object]] = []
+    mapped_tickers: list[str] = []
 
     for event in bundle.events:
         mapped = map_event_tickers(event, theme_ticker_map=theme_map)
@@ -69,6 +79,9 @@ def build_discovery_brief(
 
         emotion = _event_emotion_score(event)
         all_tickers = list(mapped["all_tickers"])  # type: ignore[arg-type]
+        for ticker in all_tickers:
+            if ticker not in mapped_tickers:
+                mapped_tickers.append(ticker)
         for rank, ticker in enumerate(all_tickers):
             role = "primary" if rank < len(mapped["primary_tickers"]) else "secondary"  # type: ignore[arg-type]
             priced = priced_in_by_ticker.get(ticker)
@@ -78,6 +91,7 @@ def build_discovery_brief(
                 role=role,
                 emotion_score=emotion,
                 priced_in_row=priced,
+                db_enabled=db_enabled,
             )
             discoveries.append(discovery)
 
@@ -94,32 +108,71 @@ def build_discovery_brief(
     research_count = sum(1 for row in discoveries if row.get("usefulness") == "research_only")
     watch_count = sum(1 for row in discoveries if row.get("usefulness") == "watch")
     blocked_count = sum(1 for row in discoveries if row.get("usefulness") == "blocked")
+    joined_count = sum(1 for row in discoveries if row.get("join_status") == "joined")
+    missing_scan_count = sum(
+        1 for row in discoveries if row.get("join_status") == "missing_scan"
+    )
+    quiet_tape_count = sum(1 for row in discoveries if row.get("quiet_tape") is True)
+
+    age_hours = max(
+        0.0,
+        (clock - bundle.generated_at.astimezone(UTC)).total_seconds() / 3600.0,
+    )
+    freshness_status = (
+        "stale" if age_hours > FRESHNESS_STALE_HOURS else "fresh"
+    )
+    missing_sample = [
+        str(row.get("ticker"))
+        for row in discoveries
+        if row.get("join_status") == "missing_scan"
+    ][:12]
+    next_action, next_command = _next_operator_step(
+        events_path=Path(events_path),
+        freshness_status=freshness_status,
+        missing_scan_count=missing_scan_count,
+        missing_sample=missing_sample,
+        discovery_count=len(discoveries),
+    )
 
     return {
         "schema_version": DISCOVERY_BRIEF_SCHEMA,
-        "generated_at": datetime.now(tz=UTC).isoformat(),
+        "generated_at": clock.isoformat(),
         "events_path": str(Path(events_path)),
         "events_source": bundle.source,
         "events_generated_at": bundle.generated_at.isoformat(),
+        "events_age_hours": round(age_hours, 2),
+        "freshness_status": freshness_status,
         "event_count": len(event_rows),
         "discovery_count": len(discoveries),
+        "mapped_ticker_count": len(mapped_tickers),
         "counts": {
             "events": len(event_rows),
             "discoveries": len(discoveries),
             "research_only": research_count,
             "watch": watch_count,
             "blocked": blocked_count,
+            "joined": joined_count,
+            "missing_scan": missing_scan_count,
+            "quiet_tape": quiet_tape_count,
+            "mapped_tickers": len(mapped_tickers),
+        },
+        "join_coverage": {
+            "joined": joined_count,
+            "missing_scan": missing_scan_count,
+            "no_db": sum(1 for row in discoveries if row.get("join_status") == "no_db"),
+            "sample_missing_tickers": missing_sample,
+            "coverage_pct": round(
+                (100.0 * joined_count / len(discoveries)) if discoveries else 0.0,
+                1,
+            ),
         },
         "events": event_rows,
         "discoveries": discoveries,
-        "headline": _headline(event_rows, discoveries),
-        "next_action": (
-            "Review top discovery rows as research-only leads. "
-            "Confirm with primary sources before any capital decision."
-        ),
-        "next_command": (
-            f"catalyst-radar discovery-brief --events {Path(events_path)} --json"
-        ),
+        "headline": _headline(event_rows, discoveries, freshness_status=freshness_status),
+        "next_action": next_action,
+        "next_command": next_command,
+        "canonical_next_action": next_action,
+        "canonical_next_command": next_command,
         "investment_advice": False,
         "can_make_investment_decision": False,
         "decision_support_only": True,
@@ -131,13 +184,14 @@ def build_discovery_brief(
             "Social/X sources are research signals, not trade triggers.",
             "Discovery ranks attention, not expected return.",
             "Price reaction join is best-effort from local scan rows when available.",
+            f"Events older than {FRESHNESS_STALE_HOURS:.0f}h are marked stale.",
         ],
     }
 
 
 def default_events_path() -> Path:
     candidates = [
-        Path("data/local/world_events.json"),
+        LOCAL_EVENTS_PATH,
         Path("data/sample/world_events.json"),
         DEFAULT_EVENTS_PATH,
     ]
@@ -213,11 +267,15 @@ def _discovery_row(
     role: str,
     emotion_score: float,
     priced_in_row: Mapping[str, Any] | None,
+    db_enabled: bool,
 ) -> dict[str, object]:
     reaction = 0.0
     priced_status = "unknown"
     gap = emotion_score
+    ret_5d_pct: float | None = None
+    join_status = "no_db" if not db_enabled else "missing_scan"
     if priced_in_row:
+        join_status = "joined"
         reaction = _finite(priced_in_row.get("reaction_score"), default=0.0)
         priced_status = str(
             priced_in_row.get("priced_in_status")
@@ -228,11 +286,21 @@ def _discovery_row(
             gap = _finite(priced_in_row.get("emotion_reaction_gap"), default=gap)
         else:
             gap = emotion_score - reaction
+        if priced_in_row.get("ret_5d_pct") is not None:
+            ret_5d_pct = round(_finite(priced_in_row.get("ret_5d_pct")), 2)
+        elif priced_in_row.get("ret_5d") is not None:
+            ret_5d_pct = round(_finite(priced_in_row.get("ret_5d")) * 100.0, 2)
 
     usefulness = _usefulness(
         source_category=event.source_category,
         source_quality=event.source_quality,
         gap=gap,
+        priced_status=priced_status,
+    )
+    quiet_tape = _is_quiet_tape(
+        join_status=join_status,
+        reaction=reaction,
+        ret_5d_pct=ret_5d_pct,
         priced_status=priced_status,
     )
     discovery_score = round(
@@ -244,6 +312,11 @@ def _discovery_row(
     )
     if role == "secondary":
         discovery_score = round(discovery_score * 0.92, 2)
+    # Prefer under-reacted names when reaction data is present.
+    if quiet_tape:
+        discovery_score = round(discovery_score + 8.0, 2)
+    elif join_status == "joined" and reaction >= 55:
+        discovery_score = round(discovery_score * 0.75, 2)
 
     return {
         "ticker": ticker,
@@ -258,12 +331,16 @@ def _discovery_row(
         "emotion_score": emotion_score,
         "reaction_score": round(reaction, 2),
         "emotion_reaction_gap": round(gap, 2),
+        "ret_5d_pct": ret_5d_pct,
+        "join_status": join_status,
+        "quiet_tape": quiet_tape,
         "priced_in_status": priced_status,
         "discovery_score": discovery_score,
         "usefulness": usefulness,
         "why_now": (
             f"{event.direction.capitalize()} world event '{event.title}' maps to {ticker}; "
-            f"emotion {emotion_score:.0f} vs reaction {reaction:.0f} (gap {gap:.0f})."
+            f"emotion {emotion_score:.0f} vs reaction {reaction:.0f} (gap {gap:.0f})"
+            f"{'; join={join_status}'}."
         ),
         "next_step": (
             "Research only: verify with primary sources and local priced-in case file."
@@ -312,6 +389,7 @@ def _load_priced_in_index(engine: Engine) -> dict[str, dict[str, Any]]:
             continue
         metadata = row.get("metadata") if isinstance(row.get("metadata"), Mapping) else {}
         priced = row.get("priced_in") if isinstance(row.get("priced_in"), Mapping) else {}
+        features = row.get("features") if isinstance(row.get("features"), Mapping) else {}
         index[ticker] = {
             "status": row.get("action_state") or row.get("state"),
             "priced_in_status": priced.get("status") or metadata.get("priced_in_status"),
@@ -319,6 +397,12 @@ def _load_priced_in_index(engine: Engine) -> dict[str, dict[str, Any]]:
             "reaction_score": priced.get("reaction_score") or metadata.get("reaction_score"),
             "emotion_reaction_gap": priced.get("emotion_reaction_gap")
             or metadata.get("emotion_reaction_gap"),
+            "ret_5d_pct": (
+                priced.get("ret_5d_pct")
+                or metadata.get("ret_5d_pct")
+                or features.get("ret_5d_pct")
+            ),
+            "ret_5d": features.get("ret_5d") or metadata.get("ret_5d"),
         }
     return index
 
@@ -333,16 +417,75 @@ def _finite(value: object, default: float = 0.0) -> float:
     return number
 
 
+def _is_quiet_tape(
+    *,
+    join_status: str,
+    reaction: float,
+    ret_5d_pct: float | None,
+    priced_status: str,
+) -> bool:
+    if join_status != "joined":
+        return False
+    if priced_status in {"fully_priced", "overextended_hype", "blocked", "conflicted"}:
+        return False
+    if reaction > 35:
+        return False
+    if ret_5d_pct is not None and abs(ret_5d_pct) >= 8.0:
+        return False
+    return True
+
+
+def _next_operator_step(
+    *,
+    events_path: Path,
+    freshness_status: str,
+    missing_scan_count: int,
+    missing_sample: Sequence[str],
+    discovery_count: int,
+) -> tuple[str, str]:
+    if freshness_status == "stale":
+        return (
+            "World-events file is stale. Refresh data/local/world_events.json "
+            "from the Grok daily discovery task, then re-run discovery-brief.",
+            f"catalyst-radar discovery-ingest --events {events_path} --validate-only --json",
+        )
+    if missing_scan_count > 0:
+        sample = ",".join(missing_sample[:8]) if missing_sample else "TICKER"
+        return (
+            f"{missing_scan_count} discovery row(s) lack local scan/priced-in joins. "
+            "Import bars and run a mapped-ticker scan before trusting reaction gaps. "
+            f"Sample missing: {sample}.",
+            (
+                "catalyst-radar discovery-brief --events "
+                f"{events_path} --json"
+            ),
+        )
+    if discovery_count == 0:
+        return (
+            "No discoveries mapped. Expand themes/tickers in world-events JSON.",
+            f"catalyst-radar discovery-brief --events {events_path} --json",
+        )
+    return (
+        "Review top discovery rows as research-only leads. "
+        "Confirm with primary sources before any capital decision.",
+        f"catalyst-radar discovery-brief --events {events_path} --json",
+    )
+
+
 def _headline(
     events: Sequence[Mapping[str, object]],
     discoveries: Sequence[Mapping[str, object]],
+    *,
+    freshness_status: str = "fresh",
 ) -> str:
     if not events:
         return "No world events loaded."
+    prefix = "STALE events · " if freshness_status == "stale" else ""
     top = discoveries[0] if discoveries else None
     if top is None:
-        return f"{len(events)} world event(s) loaded; no mapped tickers yet."
+        return f"{prefix}{len(events)} world event(s) loaded; no mapped tickers yet."
+    join = top.get("join_status")
     return (
-        f"{len(events)} world event(s) → top discovery {top.get('ticker')} "
-        f"(gap {top.get('emotion_reaction_gap')}, {top.get('usefulness')})."
+        f"{prefix}{len(events)} world event(s) → top discovery {top.get('ticker')} "
+        f"(gap {top.get('emotion_reaction_gap')}, {top.get('usefulness')}, join={join})."
     )

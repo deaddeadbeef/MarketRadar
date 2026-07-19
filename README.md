@@ -12,11 +12,41 @@ profit guarantee.
 
 ### Product Goal
 
-The near-term goal is to reach a repeatable full-market shadow scan, record what
-MarketRadar surfaced, track what happened afterward, compare against simple
-baselines, and prove whether it creates at least `$40/month` of attributable
-decision-support value. That is the measured target for offsetting 20% of a
-`$200/month` ChatGPT Pro subscription.
+The primary product goal is **event-first discovery**: find public equities whose
+**price has not yet fully discovered a world event**, then force human
+confirmation before any capital decision. This is research decision support only
+— never investment advice and never autonomous trading.
+
+MarketRadar also keeps a secondary proof goal: repeatable shadow scans, value
+ledger outcomes, and evidence that the product creates at least `$40/month` of
+attributable decision-support value (20% of a `$200/month` ChatGPT Pro
+subscription).
+
+### Event-first quickstart (recommended daily path)
+
+1. Refresh world events (Grok daily task or manual JSON) into
+   `data/local/world_events.json`.
+2. Validate / install:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/import-world-events.ps1 -EventsPath data\sample\world_events.json -Execute
+catalyst-radar discovery-brief --events data\local\world_events.json --json
+```
+
+3. Open the desktop **World Events** page (`radar` then command `events` or
+   `discovery`).
+4. Review the Discovery Queue. Social/X-only rows stay `research_only`.
+5. Confirm interesting leads with primary sources before any capital decision.
+
+Optional: fan out mapped tickers into the local event store as low-quality
+SOCIAL rows (preview first):
+
+```powershell
+catalyst-radar discovery-ingest --events data\local\world_events.json --fanout-events --json
+catalyst-radar discovery-ingest --events data\local\world_events.json --fanout-events --execute --json
+```
+
+Full product plan: `docs/superpowers/plans/2026-07-19-marketradar-event-first-product.md`.
 
 ### Current Product Truth
 
