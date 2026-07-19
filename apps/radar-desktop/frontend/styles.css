@@ -1738,16 +1738,106 @@ dialog::backdrop {
 }
 
 .case-why {
-  margin: 0 0 12px;
-  line-height: 1.5;
-  max-width: 62ch;
+  margin: 0 0 10px;
+  line-height: 1.45;
+  max-width: 64ch;
+  font-size: 13px;
+}
+
+.case-analysis-headline {
+  margin: 0 0 8px;
+  line-height: 1.4;
+  font-size: 15px;
+  font-weight: 650;
+  max-width: 64ch;
 }
 
 .case-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-bottom: 8px;
+}
+
+.case-metrics {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.case-analysis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   margin-bottom: 12px;
+}
+
+.case-analysis-grid article {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(15, 23, 32, 0.65);
+}
+
+.case-analysis-grid h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.case-analysis-grid p {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.case-analysis-grid p:last-child {
+  margin-bottom: 0;
+  color: var(--ink);
+}
+
+.case-disposition {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 220, 160, 0.22);
+  background: rgba(80, 180, 120, 0.08);
+}
+
+.case-disposition h3,
+.case-checklist h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.case-disposition p {
+  margin: 0 0 6px;
+  line-height: 1.4;
+}
+
+.case-disposition .pill {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.case-checklist {
+  margin: 0 0 14px;
+}
+
+.case-checklist ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.case-checklist li {
+  margin-bottom: 6px;
+  line-height: 1.4;
+  font-size: 13px;
 }
 
 .case-next {
@@ -1774,6 +1864,17 @@ dialog::backdrop {
 .case-kills li {
   margin-bottom: 6px;
   line-height: 1.4;
+}
+
+.case-label-cmd {
+  margin: 12px 0 0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.case-label-cmd code {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .muted {

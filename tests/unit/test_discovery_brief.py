@@ -108,6 +108,21 @@ def test_discovery_case_file_research_only() -> None:
     }
     assert case["invalidation"]
     assert "price_reaction" in case
+    analysis = case["operator_analysis"]
+    assert analysis["schema_version"] == "discovery-operator-analysis-v1"
+    assert analysis["investment_advice"] is False
+    assert analysis["signal_quality"]["label"]
+    assert analysis["map_quality"]["summary"]
+    assert analysis["trust"]["summary"]
+    assert analysis["disposition"]["label"]
+    assert analysis["disposition_label"] == analysis["disposition"]["label"]
+    assert len(analysis["checklist"]) >= 3
+    assert analysis["queue_context"]["peer_count"] >= 1
+    assert analysis["chips"]
+    # Joined-missing path should not claim "Need price join" when join is no_db only.
+    chip_labels = " ".join(str(c.get("label")) for c in analysis["chips"])
+    if case["price_reaction"]["join_status"] == "joined":
+        assert "Need price join" not in chip_labels
 
 
 def test_discovery_row_allowed_in_value_ledger() -> None:

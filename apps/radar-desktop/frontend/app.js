@@ -1646,12 +1646,49 @@ function renderDiscoveryCaseFile(caseFile, focusTicker) {
   }
   const price = caseFile.price_reaction && typeof caseFile.price_reaction === 'object' ? caseFile.price_reaction : {};
   const confirm = caseFile.confirmation && typeof caseFile.confirmation === 'object' ? caseFile.confirmation : {};
+  const analysis = caseFile.operator_analysis && typeof caseFile.operator_analysis === 'object'
+    ? caseFile.operator_analysis
+    : null;
   const invalidation = Array.isArray(caseFile.invalidation) ? caseFile.invalidation : [];
   const kills = invalidation.slice(0, 4).map((row) => `
     <li><strong>${escapeHtml(humanizeId(row.id))}</strong> — ${escapeHtml(compact(row.check, ''))}</li>
   `).join('');
-  const lag = price.price_not_fully_discovered;
-  const lagLabel = lag === true ? 'Tape may lag' : lag === false ? 'Likely already priced' : 'Need price join';
+  const chips = Array.isArray(analysis?.chips) && analysis.chips.length
+    ? analysis.chips
+    : fallbackCaseChips(price, confirm);
+  const chipHtml = chips.map((chip) => {
+    const label = typeof chip === 'string' ? chip : compact(chip?.label, '');
+    return label ? `<span class="pill">${escapeHtml(label)}</span>` : '';
+  }).join('');
+  const signal = analysis?.signal_quality && typeof analysis.signal_quality === 'object'
+    ? analysis.signal_quality
+    : null;
+  const mapping = analysis?.map_quality && typeof analysis.map_quality === 'object'
+    ? analysis.map_quality
+    : null;
+  const trust = analysis?.trust && typeof analysis.trust === 'object' ? analysis.trust : null;
+  const disposition = analysis?.disposition && typeof analysis.disposition === 'object'
+    ? analysis.disposition
+    : null;
+  const queue = analysis?.queue_context && typeof analysis.queue_context === 'object'
+    ? analysis.queue_context
+    : null;
+  const checklist = Array.isArray(analysis?.checklist) ? analysis.checklist : [];
+  const checklistHtml = checklist.map((row, idx) => `
+    <li>
+      <strong>${escapeHtml(String(idx + 1))}.</strong>
+      ${escapeHtml(compact(row.step, ''))}
+      <span class="muted"> — ${escapeHtml(compact(row.done_when, ''))}</span>
+    </li>
+  `).join('');
+  const metrics = analysis?.metrics && typeof analysis.metrics === 'object' ? analysis.metrics : {};
+  const ret5 = metrics.ret_5d_pct;
+  const metricLine = [
+    `emotion ${formatCaseNum(metrics.emotion_score ?? price.emotion_score)}`,
+    `reaction ${formatCaseNum(metrics.reaction_score ?? price.reaction_score)}`,
+    `gap ${formatCaseNum(metrics.emotion_reaction_gap ?? price.emotion_reaction_gap)}`,
+    ret5 == null ? null : `5d ${Number(ret5) >= 0 ? '+' : ''}${formatCaseNum(ret5)}%`,
+  ].filter(Boolean).join(' · ');
 
   return `
     <section class="discover-section case" data-testid="discovery-case-file">
@@ -1659,19 +1696,76 @@ function renderDiscoveryCaseFile(caseFile, focusTicker) {
         <h2>3 · Look closer · ${escapeHtml(compact(caseFile.ticker, '—'))}</h2>
         <p class="muted">${escapeHtml(compact(caseFile.usefulness, 'research_only'))} · ${escapeHtml(compact(confirm.status, 'unconfirmed'))}</p>
       </div>
-      <p class="case-why">${escapeHtml(compact(caseFile.why_this_ticker, caseFile.headline || ''))}</p>
-      <div class="case-chips">
-        <span class="pill">${escapeHtml(lagLabel)}</span>
-        <span class="pill">Gap ${escapeHtml(String(price.emotion_reaction_gap ?? '—'))}</span>
-        <span class="pill">${escapeHtml(compact(price.join_status, 'no join'))}</span>
+      <p class="case-analysis-headline">${escapeHtml(compact(signal?.headline, caseFile.headline || ''))}</p>
+      <p class="case-why muted">${escapeHtml(compact(caseFile.why_this_ticker, ''))}</p>
+      <div class="case-chips">${chipHtml}</div>
+      <p class="case-metrics muted">${escapeHtml(metricLine)}</p>
+      <div class="case-analysis-grid" data-testid="case-operator-analysis">
+        <article>
+          <h3>Signal</h3>
+          <p><strong>${escapeHtml(compact(signal?.label, 'Mixed'))}</strong></p>
+          <p>${escapeHtml(compact(signal?.summary, 'Review gap and reaction before escalating.'))}</p>
+        </article>
+        <article>
+          <h3>Map</h3>
+          <p><strong>${escapeHtml(compact(mapping?.label, 'Mapped'))}</strong></p>
+          <p>${escapeHtml(compact(mapping?.summary, 'Confirm the causal chain to this ticker.'))}</p>
+        </article>
+        <article>
+          <h3>Trust</h3>
+          <p><strong>${escapeHtml(compact(trust?.label, compact(confirm.status, 'unconfirmed')))}</strong></p>
+          <p>${escapeHtml(compact(trust?.summary, 'Social-only stays research_only.'))}</p>
+        </article>
+        <article>
+          <h3>Queue</h3>
+          <p>${escapeHtml(compact(queue?.summary, 'Compare this lead to peers on the same event.'))}</p>
+        </article>
       </div>
-      <p class="case-next"><strong>Next:</strong> ${escapeHtml(compact(caseFile.next_action, 'Confirm with primary sources.'))}</p>
+      <div class="case-disposition">
+        <h3>Disposition</h3>
+        <p><strong>${escapeHtml(compact(disposition?.title, 'Research only'))}</strong>
+          <span class="pill">${escapeHtml(compact(disposition?.label || analysis?.disposition_label, 'good-research'))}</span>
+        </p>
+        <p class="muted">${escapeHtml(compact(disposition?.reason, 'Decision support only — not investment advice.'))}</p>
+      </div>
+      <p class="case-next"><strong>Next:</strong> ${escapeHtml(compact(caseFile.next_action || disposition?.next_action, 'Confirm with primary sources.'))}</p>
+      <div class="case-checklist">
+        <h3>10-minute checklist</h3>
+        <ol>${checklistHtml || '<li>Confirm event → map → price → label.</li>'}</ol>
+      </div>
       <div class="case-kills">
         <h3>Kill the thesis if…</h3>
         <ul>${kills || '<li>No invalidation checks.</li>'}</ul>
       </div>
+      ${caseFile.label_command_preview ? `<p class="case-label-cmd muted" title="CLI preview only"><code>${escapeHtml(String(caseFile.label_command_preview))}</code></p>` : ''}
     </section>
   `;
+}
+
+function fallbackCaseChips(price, confirm) {
+  const lag = price.price_not_fully_discovered;
+  const join = compact(price.join_status, '');
+  let lagLabel = 'Lag unclear';
+  if (join === 'joined') {
+    lagLabel = lag === true ? 'Tape may lag' : lag === false ? 'Likely already priced' : 'Joined · lag unclear';
+  } else if (join === 'missing_scan') {
+    lagLabel = 'Need price join';
+  } else if (join) {
+    lagLabel = join;
+  }
+  return [
+    { label: lagLabel },
+    { label: `Gap ${String(price.emotion_reaction_gap ?? '—')}` },
+    { label: compact(price.join_status, 'no join') },
+    { label: compact(confirm.status, 'unconfirmed') },
+  ];
+}
+
+function formatCaseNum(value) {
+  if (value == null || value === '') return '—';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return Math.abs(n) >= 10 ? n.toFixed(1) : n.toFixed(2);
 }
 
 function humanizeId(value) {
