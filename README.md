@@ -47,6 +47,44 @@ catalyst-radar discovery-label --ticker MU --label good-research --preview --jso
 
 Goal and phases: `docs/superpowers/plans/2026-07-19-goal-and-phases.md`.
 
+### AI backend: Grok (xAI)
+
+Premium LLM review and Agents SDK briefs use **Grok via the xAI API**
+(OpenAI-compatible). OpenAI remains optional for legacy configs only.
+
+```powershell
+# .env.local (do not commit)
+CATALYST_ENABLE_PREMIUM_LLM=true
+CATALYST_LLM_PROVIDER=grok
+XAI_API_KEY=<from console.x.ai>
+XAI_BASE_URL=https://api.x.ai/v1
+CATALYST_AGENT_SDK_MODEL=grok-4.5
+CATALYST_AGENT_SDK_FAST_MODEL=grok-4-1-fast-non-reasoning
+CATALYST_ENABLE_AGENT_SDK=true
+CATALYST_LLM_INPUT_COST_PER_1M=3
+CATALYST_LLM_CACHED_INPUT_COST_PER_1M=0.75
+CATALYST_LLM_OUTPUT_COST_PER_1M=15
+CATALYST_LLM_PRICING_UPDATED_AT=2026-07-19T00:00:00+00:00
+CATALYST_LLM_DAILY_BUDGET_USD=1
+CATALYST_LLM_MONTHLY_BUDGET_USD=5
+CATALYST_LLM_TASK_DAILY_CAPS=agent_brief=1
+```
+
+Preview still makes **zero** LLM calls:
+
+```powershell
+catalyst-radar agent-brief --real --json
+```
+
+Execute only after reviewing the credit gate:
+
+```powershell
+catalyst-radar agent-brief --real --execute --max-openai-calls 1 --json
+```
+
+Deterministic discovery (events → priced-in gap) does **not** require Grok.
+Grok is for sparse synthesis: agent briefs, skeptic review, decision cards.
+
 Optional: fan out mapped tickers into the local event store as low-quality
 SOCIAL rows (preview first):
 

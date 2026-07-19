@@ -555,8 +555,10 @@ def test_openai_client_requires_api_key_for_real_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("GROK_API_KEY", raising=False)
 
-    with pytest.raises(RuntimeError, match="^openai_api_key_missing$"):
+    with pytest.raises(RuntimeError, match="^llm_api_key_missing$"):
         OpenAIResponsesClient().complete(_openai_request())
 
 

@@ -14,13 +14,25 @@ from catalyst_radar.security.secrets import SecretValue, required_secret
 
 
 class OpenAIResponsesClient:
+    """OpenAI Responses API client.
+
+    Also used for xAI Grok by setting ``base_url=https://api.x.ai/v1`` and an
+    xAI API key (OpenAI-compatible).
+    """
+
     def __init__(
         self,
         *,
         api_key: str | None = None,
+        base_url: str | None = None,
+        provider: str = "openai",
         sdk_client: Any | None = None,
+        api_key_env: str = "OPENAI_API_KEY",
     ) -> None:
         self._api_key = SecretValue(api_key) if api_key and api_key.strip() else None
+        self._base_url = (base_url or "").strip() or None
+        self._provider = (provider or "openai").strip().lower() or "openai"
+        self._api_key_env = api_key_env
         self._sdk_client = sdk_client
 
     def complete(self, request: LLMClientRequest) -> LLMClientResult:
@@ -41,13 +53,13 @@ class OpenAIResponsesClient:
         )
         payload = json.loads(_response_output_text(response))
         if not isinstance(payload, Mapping):
-            msg = "openai_response_payload_not_object"
+            msg = "llm_response_payload_not_object"
             raise RuntimeError(msg)
         return LLMClientResult(
             payload=payload,
             token_usage=_token_usage_from_response(response),
             model=str(_field(response, "model", request.model)),
-            provider="openai",
+            provider=self._provider,
         )
 
     def _client(self) -> Any:
@@ -55,13 +67,28 @@ class OpenAIResponsesClient:
             return self._sdk_client
 
         try:
-            api_key = self._api_key or required_secret(os.environ, "OPENAI_API_KEY")
+            api_key = self._api_key or required_secret(os.environ, self._api_key_env)
         except ValueError as exc:
-            raise RuntimeError("openai_api_key_missing") from exc
+            # Fall back to common env names for Grok/xAI.
+            fallback_envs = ("XAI_API_KEY", "GROK_API_KEY", "OPENAI_API_KEY")
+            api_key = None
+            for env_name in fallback_envs:
+                if env_name == self._api_key_env:
+                    continue
+                try:
+                    api_key = required_secret(os.environ, env_name)
+                    break
+                except ValueError:
+                    continue
+            if api_key is None:
+                raise RuntimeError("llm_api_key_missing") from exc
 
         from openai import OpenAI
 
-        self._sdk_client = OpenAI(api_key=api_key.reveal())
+        kwargs: dict[str, Any] = {"api_key": api_key.reveal()}
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
+        self._sdk_client = OpenAI(**kwargs)
         return self._sdk_client
 
 

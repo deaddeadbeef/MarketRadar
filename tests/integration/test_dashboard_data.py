@@ -11832,7 +11832,7 @@ def test_provider_preflight_payload_reports_fixture_no_live_calls() -> None:
     assert "CATALYST_ENABLE_PREMIUM_LLM=1" in str(
         by_layer["LLM review"]["call_budget"]
     )
-    assert "OPENAI_API_KEY" in str(by_layer["LLM review"]["call_budget"])
+    assert "XAI_API_KEY" in str(by_layer["LLM review"]["call_budget"])
     assert "portfolio sync min 900s" in str(by_layer["Schwab portfolio"]["call_budget"])
 
 
@@ -11951,12 +11951,17 @@ def test_live_activation_plan_payload_separates_optional_gates_from_blockers() -
     assert "CATALYST_ENABLE_PREMIUM_LLM=1" in str(
         by_area["Agentic LLM review"]["missing_env"]
     )
-    assert "CATALYST_LLM_PROVIDER=openai" in str(
+    assert "CATALYST_LLM_PROVIDER=grok" in str(
         by_area["Agentic LLM review"]["missing_env"]
     )
-    assert "OPENAI_API_KEY" in str(by_area["Agentic LLM review"]["missing_env"])
-    assert "CATALYST_LLM_SKEPTIC_MODEL" in str(
-        by_area["Agentic LLM review"]["missing_env"]
+    assert "XAI_API_KEY" in str(by_area["Agentic LLM review"]["missing_env"])
+    assert (
+        "CATALYST_AGENT_SDK_MODEL=grok-4.5" in str(
+            by_area["Agentic LLM review"]["missing_env"]
+        )
+        or "CATALYST_LLM_SKEPTIC_MODEL" in str(
+            by_area["Agentic LLM review"]["missing_env"]
+        )
     )
     assert "CATALYST_LLM_INPUT_COST_PER_1M" in str(
         by_area["Agentic LLM review"]["missing_env"]
@@ -12308,10 +12313,12 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
         env_template["CATALYST_DAILY_PROVIDER"]["purpose"]
     )
     assert env_template["CATALYST_ENABLE_PREMIUM_LLM"]["value_template"] == "1"
-    assert env_template["CATALYST_LLM_PROVIDER"]["value_template"] == "openai"
+    assert env_template["CATALYST_LLM_PROVIDER"]["value_template"] == "grok"
     assert "skeptic_review" in str(
         env_template["CATALYST_LLM_TASK_DAILY_CAPS"]["value_template"]
     )
+    assert env_template["XAI_API_KEY"]["secret"] is True
+    assert env_template["XAI_API_KEY"]["current"] == "missing"
     assert env_template["OPENAI_API_KEY"]["secret"] is True
     assert env_template["OPENAI_API_KEY"]["current"] == "missing"
 
@@ -12345,6 +12352,7 @@ def test_live_data_activation_contract_never_leaks_configured_secrets() -> None:
     }
     assert secret_rows["CATALYST_POLYGON_API_KEY"]["current"] == "set"
     assert secret_rows["CATALYST_SEC_USER_AGENT"]["current"] == "set"
+    assert secret_rows["XAI_API_KEY"]["current"] == "missing"
     assert secret_rows["OPENAI_API_KEY"]["current"] == "missing"
     assert contract["call_budget_if_activated"][1]["max_external_calls"] == 2
     assert contract["call_budget_if_activated"][2]["max_external_calls"] == 4
@@ -12564,8 +12572,8 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
         "step=llm_review; outcome=Expected gate; category=expected_gate; "
         "audit_state=raw record retained; reason=llm_disabled; "
         "trigger=Request LLM dry-run review after candidate packets exist.; "
-        "action=Enable the dashboard agent dry-run switch, or configure OPENAI_API_KEY "
-        "for real review."
+        "action=Enable the dashboard agent dry-run switch, or set CATALYST_LLM_PROVIDER=grok "
+        "and XAI_API_KEY for real Grok review."
     )
 
 
@@ -13491,7 +13499,9 @@ def test_provider_preflight_blocks_openai_when_key_missing() -> None:
     llm_readiness = next(row for row in readiness if row["area"] == "LLM review")
     assert llm_coverage["mode"] == "missing_credentials"
     assert llm_preflight["status"] == "blocked"
-    assert "OPENAI_API_KEY" in str(llm_preflight["call_budget"])
+    assert "OPENAI_API_KEY" in str(llm_preflight["call_budget"]) or "XAI_API_KEY" in str(
+        llm_preflight["call_budget"]
+    )
     assert llm_readiness["status"] == "blocked"
 
 
@@ -14299,11 +14309,11 @@ def test_agent_review_real_mode_gate_blocks_until_guardrails_are_set() -> None:
     gate = agent_review_real_mode_gate_payload(AppConfig())
 
     assert gate["status"] == "blocked"
-    assert gate["call_budget"] == "0 OpenAI calls while blocked"
+    assert gate["call_budget"] == "0 LLM calls while blocked"
     missing = str(gate["missing_env"])
     assert "CATALYST_ENABLE_PREMIUM_LLM=1" in missing
-    assert "CATALYST_LLM_PROVIDER=openai" in missing
-    assert "OPENAI_API_KEY" in missing
+    assert "CATALYST_LLM_PROVIDER=grok" in missing
+    assert "XAI_API_KEY" in missing
     assert "CATALYST_LLM_TASK_DAILY_CAPS=skeptic_review=<low cap>" in missing
 
 

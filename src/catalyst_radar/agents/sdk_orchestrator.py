@@ -81,27 +81,51 @@ class MarketRadarAgentBrief(BaseModel):
 
 def agent_sdk_gate_payload(config: AppConfig) -> dict[str, object]:
     """Return the explicit gate that must pass before any Agents SDK call."""
+    from catalyst_radar.agents.llm_provider import (
+        DEFAULT_GROK_FAST_MODEL,
+        DEFAULT_GROK_PRIMARY_MODEL,
+        is_grok_provider,
+        llm_api_key,
+        llm_fast_model,
+        llm_primary_model,
+        normalize_llm_provider,
+        provider_display_name,
+    )
+
     missing: list[str] = []
     if not config.enable_agent_sdk:
         missing.append("CATALYST_ENABLE_AGENT_SDK=true")
     if not config.enable_premium_llm:
         missing.append("CATALYST_ENABLE_PREMIUM_LLM=true")
-    if str(config.llm_provider or "").strip().lower() != "openai":
-        missing.append("CATALYST_LLM_PROVIDER=openai")
-    if not config.agent_sdk_model:
-        missing.append("CATALYST_AGENT_SDK_MODEL")
-    if not config.openai_api_key:
-        missing.append("OPENAI_API_KEY")
+    provider = normalize_llm_provider(config.llm_provider)
+    if provider not in {"grok", "openai"}:
+        missing.append("CATALYST_LLM_PROVIDER=grok")
+    primary = llm_primary_model(config)
+    if not primary:
+        missing.append(
+            f"CATALYST_AGENT_SDK_MODEL={DEFAULT_GROK_PRIMARY_MODEL}"
+            if is_grok_provider(provider)
+            else "CATALYST_AGENT_SDK_MODEL"
+        )
+    if not llm_api_key(config):
+        missing.append("XAI_API_KEY" if is_grok_provider(provider) else "OPENAI_API_KEY")
 
     missing = list(dict.fromkeys(missing))
     ready = not missing
+    display = provider_display_name(config)
+    resolved_primary = primary or (
+        DEFAULT_GROK_PRIMARY_MODEL if is_grok_provider(provider) else None
+    )
+    resolved_fast = llm_fast_model(config) or (
+        DEFAULT_GROK_FAST_MODEL if is_grok_provider(provider) else resolved_primary
+    )
     return {
         "schema_version": "agent-sdk-real-mode-gate-v1",
         "status": "ready" if ready else "blocked",
         "headline": (
-            "OpenAI Agents SDK real mode is configured."
+            f"{display} Agents SDK real mode is configured."
             if ready
-            else "OpenAI Agents SDK real mode is blocked until explicit gates are set."
+            else f"{display} Agents SDK real mode is blocked until explicit gates are set."
         ),
         "next_action": (
             "Run a real agent brief only after reviewing the redacted snapshot."
@@ -109,14 +133,17 @@ def agent_sdk_gate_payload(config: AppConfig) -> dict[str, object]:
             else "Set the listed gates, then rerun agent-brief --real."
         ),
         "missing_env": missing,
-        "provider": str(config.llm_provider or "none"),
+        "provider": display,
+        "llm_provider": provider,
         "agent_sdk_enabled": config.enable_agent_sdk,
         "premium_llm_enabled": config.enable_premium_llm,
-        "model_configured": bool(config.agent_sdk_model),
-        "fast_model_configured": bool(config.agent_sdk_fast_model),
-        "agent_sdk_model": config.agent_sdk_model,
-        "agent_sdk_fast_model": config.agent_sdk_fast_model or config.agent_sdk_model,
+        "model_configured": bool(resolved_primary),
+        "fast_model_configured": bool(resolved_fast),
+        "agent_sdk_model": resolved_primary,
+        "agent_sdk_fast_model": resolved_fast,
         "openai_key_configured": bool(config.openai_api_key),
+        "xai_key_configured": bool(config.xai_api_key),
+        "llm_key_configured": bool(llm_api_key(config)),
         "max_turns": AGENT_SDK_MAX_TURNS,
         "tool_surface": "read_only_snapshot_tools",
     }
@@ -627,8 +654,29 @@ def _run_agent_sdk_real(
     except ModuleNotFoundError as exc:  # pragma: no cover - depends on local env.
         raise RuntimeError("openai-agents package is not installed") from exc
 
-    model = config.agent_sdk_model
-    fast_model = config.agent_sdk_fast_model or model
+    from catalyst_radar.agents.llm_provider import (
+        DEFAULT_GROK_FAST_MODEL,
+        DEFAULT_GROK_PRIMARY_MODEL,
+        configure_agents_sdk_for_config,
+        is_grok_provider,
+        llm_fast_model,
+        llm_primary_model,
+    )
+
+    # Point Agents SDK OpenAI client at Grok (xAI) when configured.
+    configure_agents_sdk_for_config(config)
+
+    model = (
+        config.agent_sdk_model
+        or llm_primary_model(config)
+        or (DEFAULT_GROK_PRIMARY_MODEL if is_grok_provider(config.llm_provider) else None)
+    )
+    fast_model = (
+        config.agent_sdk_fast_model
+        or llm_fast_model(config)
+        or (DEFAULT_GROK_FAST_MODEL if is_grok_provider(config.llm_provider) else model)
+        or model
+    )
     tools_enabled = max_openai_calls > 1
     read_only_tools = build_market_radar_agent_tools(snapshot) if tools_enabled else []
     specialist_tools = (
