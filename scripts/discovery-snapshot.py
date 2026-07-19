@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from catalyst_radar.discovery.brief import build_discovery_brief, default_events_path
 from catalyst_radar.discovery.case_file import build_discovery_case_file
+from catalyst_radar.security.secrets import load_app_dotenv
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -50,6 +51,8 @@ def _local_engine(database_url: str | None = None):
         from catalyst_radar.core.config import AppConfig
         from catalyst_radar.storage.db import create_schema, engine_from_url
 
+        # Prefer .env.local (same as CLI) so desktop joins the live local DB.
+        load_app_dotenv()
         config = AppConfig.from_env()
         url = (database_url or config.database_url or "").strip()
         if not url:
@@ -62,6 +65,8 @@ def _local_engine(database_url: str | None = None):
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Load operator env before resolving default events/database paths.
+    load_app_dotenv()
     args = parse_args(argv)
     events_path = args.events or default_events_path()
     if not Path(events_path).is_file():
