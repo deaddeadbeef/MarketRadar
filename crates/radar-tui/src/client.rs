@@ -244,6 +244,25 @@ fn command_line_for_dashboard_command(
     command_text: &str,
     request: &SnapshotRequest,
 ) -> Result<String> {
+    // Lightweight discovery snapshot script supports local label commands via --command.
+    if command.contains("discovery-snapshot") {
+        let mut command_line = command.to_string();
+        if command_line.contains("{command}") {
+            command_line = command_line.replace("{command}", &shell_quote(command_text));
+        } else {
+            command_line.push_str(" --command ");
+            command_line.push_str(&shell_quote(command_text));
+        }
+        let page = request_page(request);
+        if command_line.contains("{page}") {
+            command_line = command_line.replace("{page}", page);
+        } else {
+            command_line.push_str(" --page ");
+            command_line.push_str(&shell_quote(page));
+        }
+        append_command_filters(&mut command_line, &request.filters);
+        return Ok(command_line);
+    }
     if !command.contains("dashboard-snapshot") {
         bail!("snapshot command cannot be adapted to dashboard-command");
     }
@@ -638,6 +657,30 @@ mod tests {
         assert!(command.contains("--ticker 'MSFT'"));
         assert!(command.contains("--scan-mode 'actionable'"));
         assert!(command.contains("--scan-limit '25'"));
+    }
+
+    #[test]
+    fn discovery_snapshot_command_supports_label_commands() {
+        let request = SnapshotRequest {
+            page: Page::WorldEvents,
+            requested_page: None,
+            filters: SnapshotFilters {
+                ticker: Some("FRO".to_string()),
+                ..SnapshotFilters::default()
+            },
+        };
+
+        let command = command_line_for_dashboard_command(
+            r#"& 'C:\repo\.venv\Scripts\python.exe' 'C:\repo\scripts\discovery-snapshot.py'"#,
+            "label FRO good-research --execute",
+            &request,
+        )
+        .unwrap();
+
+        assert!(command.contains("discovery-snapshot.py"));
+        assert!(command.contains("--command "));
+        assert!(command.contains("label FRO good-research --execute"));
+        assert!(command.contains("--ticker 'FRO'"));
     }
 
     #[test]

@@ -3,11 +3,15 @@
 The desktop client appends CLI-style flags to whatever snapshot command is
 configured (e.g. --page world-events --ticker MU --scan-limit 50). Accept and
 honor the useful ones; ignore the rest so the process never dies on unknown args.
+
+Also supports local discovery commands (labels) via --command for the proof loop:
+  discovery-snapshot.py --command "label FRO good-research --execute"
 """
 from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +22,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from catalyst_radar.discovery.brief import build_discovery_brief, default_events_path
 from catalyst_radar.discovery.case_file import build_discovery_case_file
+from catalyst_radar.discovery.proof import build_discovery_proof
 from catalyst_radar.security.secrets import load_app_dotenv
 
 
@@ -40,13 +45,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--database-url")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--fast", action="store_true")
+    parser.add_argument(
+        "--command",
+        help="Optional discovery local command, e.g. 'label MU good-research --execute'.",
+    )
     # Desktop may pass extra unknown flags as the client evolves.
     args, _unknown = parser.parse_known_args(argv)
     return args
 
 
 def _local_engine(database_url: str | None = None):
-    """Best-effort read-only local DB for priced-in reaction join (no external calls)."""
+    """Best-effort local DB for priced-in join and value-ledger labels."""
     try:
         from catalyst_radar.core.config import AppConfig
         from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -64,6 +73,191 @@ def _local_engine(database_url: str | None = None):
         return None
 
 
+def _emit(payload: dict[str, object]) -> int:
+    sys.stdout.write(json.dumps(payload, sort_keys=True, default=str))
+    sys.stdout.write("\n")
+    return 0
+
+
+def _handle_command(
+    *,
+    command_text: str,
+    events_path: Path | str,
+    engine,
+    ticker_hint: str | None,
+) -> int:
+    """Run a local discovery command and emit dashboard-command-result shaped JSON."""
+    raw = str(command_text or "").strip()
+    if not raw:
+        return _emit(
+            {
+                "schema_version": "dashboard-command-result-v1",
+                "status": "error",
+                "message": "Empty discovery command.",
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "investment_advice": False,
+            }
+        )
+
+    try:
+        tokens = shlex.split(raw, posix=False)
+    except ValueError as exc:
+        return _emit(
+            {
+                "schema_version": "dashboard-command-result-v1",
+                "status": "error",
+                "message": f"Could not parse command: {exc}",
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "investment_advice": False,
+            }
+        )
+
+    if not tokens:
+        return _emit(
+            {
+                "schema_version": "dashboard-command-result-v1",
+                "status": "error",
+                "message": "Empty discovery command tokens.",
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "investment_advice": False,
+            }
+        )
+
+    head = tokens[0].strip().lower()
+    # Accept: label TICKER LABEL [--execute]
+    #     or: discovery-label --ticker X --label Y [--execute]
+    label = None
+    ticker = (ticker_hint or "").strip().upper() or None
+    event_id = None
+    execute = False
+
+    if head in {"label", "discovery-label", "discovery_label"}:
+        rest = tokens[1:]
+        i = 0
+        positional: list[str] = []
+        while i < len(rest):
+            tok = rest[i]
+            low = tok.lower()
+            if low in {"--execute", "-x"}:
+                execute = True
+                i += 1
+                continue
+            if low in {"--preview"}:
+                execute = False
+                i += 1
+                continue
+            if low in {"--ticker", "-t"} and i + 1 < len(rest):
+                ticker = rest[i + 1].strip().upper()
+                i += 2
+                continue
+            if low in {"--label", "-l"} and i + 1 < len(rest):
+                label = rest[i + 1].strip()
+                i += 2
+                continue
+            if low in {"--event-id", "--event"} and i + 1 < len(rest):
+                event_id = rest[i + 1].strip()
+                i += 2
+                continue
+            if low.startswith("--"):
+                i += 1
+                continue
+            positional.append(tok)
+            i += 1
+        if label is None and len(positional) >= 2:
+            ticker = positional[0].strip().upper()
+            label = positional[1].strip()
+        elif label is None and len(positional) == 1 and ticker:
+            label = positional[0].strip()
+        elif label is None and len(positional) == 1:
+            # label good-research with ticker from filter
+            label = positional[0].strip()
+    else:
+        return _emit(
+            {
+                "schema_version": "dashboard-command-result-v1",
+                "status": "error",
+                "message": (
+                    "Unknown discovery command. Use: label TICKER "
+                    "good-research|noisy|too-late|false-positive|useful [--execute]"
+                ),
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "investment_advice": False,
+            }
+        )
+
+    if not ticker or not label:
+        return _emit(
+            {
+                "schema_version": "dashboard-command-result-v1",
+                "status": "error",
+                "message": "label requires ticker and label name.",
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "investment_advice": False,
+            }
+        )
+    if engine is None:
+        return _emit(
+            {
+                "schema_version": "dashboard-command-result-v1",
+                "status": "error",
+                "message": "Local database unavailable; cannot write labels.",
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "investment_advice": False,
+            }
+        )
+
+    from catalyst_radar.discovery.label import build_discovery_label_payload
+
+    try:
+        result = build_discovery_label_payload(
+            engine=engine,
+            ticker=ticker,
+            label=label,
+            event_id=event_id,
+            events_path=events_path,
+            execute=execute,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _emit(
+            {
+                "schema_version": "dashboard-command-result-v1",
+                "status": "error",
+                "message": f"Label failed: {exc}",
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "investment_advice": False,
+            }
+        )
+
+    status = str(result.get("label_status") or "preview")
+    message = (
+        f"Labeled {ticker} as {label} ({status})."
+        if status in {"written", "preview"}
+        else str(result.get("next_action") or result.get("headline") or status)
+    )
+    return _emit(
+        {
+            "schema_version": "dashboard-command-result-v1",
+            "status": "ok" if status in {"written", "preview"} else status,
+            "message": message,
+            "page": "world-events",
+            "filters": {"ticker": ticker},
+            "result": result,
+            "external_calls_made": int(result.get("external_calls_made") or 0),
+            "db_writes_made": int(result.get("db_writes_made") or 0),
+            "investment_advice": False,
+            "can_make_investment_decision": False,
+            "decision_support_only": True,
+        }
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     # Load operator env before resolving default events/database paths.
     load_app_dotenv()
@@ -73,9 +267,18 @@ def main(argv: list[str] | None = None) -> int:
         sample = ROOT / "data" / "sample" / "world_events.json"
         events_path = sample if sample.is_file() else events_path
 
-    limit = max(1, min(int(args.scan_limit or 25), 50))
-    focus = (args.ticker or "").strip().upper()
     engine = _local_engine(args.database_url)
+    focus = (args.ticker or "").strip().upper()
+
+    if args.command:
+        return _handle_command(
+            command_text=args.command,
+            events_path=events_path,
+            engine=engine,
+            ticker_hint=focus or None,
+        )
+
+    limit = max(1, min(int(args.scan_limit or 25), 50))
 
     try:
         brief = build_discovery_brief(
@@ -93,6 +296,8 @@ def main(argv: list[str] | None = None) -> int:
                 events_path=events_path,
                 engine=engine,
             )
+        proof = build_discovery_proof(engine=engine, limit=40)
+        brief["proof"] = proof
     except Exception as exc:
         brief = {
             "schema_version": "discovery-brief-v1",
@@ -105,6 +310,7 @@ def main(argv: list[str] | None = None) -> int:
             "db_writes_made": 0,
             "investment_advice": False,
         }
+        proof = build_discovery_proof(engine=None, limit=40)
 
     now = datetime.now(tz=UTC).isoformat()
     payload = {
@@ -122,6 +328,7 @@ def main(argv: list[str] | None = None) -> int:
         or brief.get("next_command"),
         "external_calls_made": 0,
         "event_discovery": brief,
+        "discovery_proof": proof if "proof" not in brief else brief.get("proof"),
         "candidates": {"count": 0, "rows": []},
         "alerts": {"count": 0, "rows": []},
         "themes": {"count": 0, "rows": []},
@@ -131,9 +338,7 @@ def main(argv: list[str] | None = None) -> int:
         "selected_page": args.page or "world-events",
     }
     # Print JSON only — no logging on stdout (desktop parses the whole stream).
-    sys.stdout.write(json.dumps(payload, sort_keys=True, default=str))
-    sys.stdout.write("\n")
-    return 0
+    return _emit(payload)
 
 
 if __name__ == "__main__":
