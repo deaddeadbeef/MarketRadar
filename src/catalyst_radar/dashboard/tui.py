@@ -831,7 +831,10 @@ def dashboard_snapshot_payload(
         "ops_health": ops_health,
         "telemetry": telemetry,
         "telemetry_coverage": telemetry_coverage,
-        "event_discovery": _event_discovery_snapshot_payload(engine),
+        "event_discovery": _event_discovery_snapshot_payload(
+            engine,
+            ticker=filters.ticker,
+        ),
         "external_calls_made": 0,
     }
     payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
@@ -2150,13 +2153,18 @@ def _trading_workbench_snapshot_payload(
     }
 
 
-def _event_discovery_snapshot_payload(engine: Engine) -> dict[str, object]:
+def _event_discovery_snapshot_payload(
+    engine: Engine,
+    *,
+    ticker: str | None = None,
+) -> dict[str, object]:
     """Zero-call event-first discovery brief for World Events desktop page."""
     try:
         from catalyst_radar.discovery.brief import (
             build_discovery_brief,
             default_events_path,
         )
+        from catalyst_radar.discovery.case_file import build_discovery_case_file
     except Exception as exc:  # pragma: no cover - defensive import boundary
         return {
             "schema_version": "discovery-brief-v1",
@@ -2209,6 +2217,28 @@ def _event_discovery_snapshot_payload(engine: Engine) -> dict[str, object]:
             "can_make_investment_decision": False,
         }
     brief["status"] = "ready"
+    focus = (ticker or "").strip().upper()
+    if not focus:
+        discoveries = brief.get("discoveries")
+        if isinstance(discoveries, list) and discoveries:
+            first = discoveries[0]
+            if isinstance(first, Mapping):
+                focus = str(first.get("ticker") or "").strip().upper()
+    if focus:
+        try:
+            brief["case_file"] = build_discovery_case_file(
+                ticker=focus,
+                events_path=events_path,
+                engine=engine,
+            )
+        except Exception as exc:
+            brief["case_file"] = {
+                "status": "error",
+                "ticker": focus,
+                "error": str(exc),
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+            }
     return brief
 
 

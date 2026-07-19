@@ -1528,11 +1528,58 @@ function renderWorldEvents(snapshot) {
     </section>
     <section class="panel wide" data-testid="discovery-queue-table">
       <h2>Discovery Queue</h2>
-      <p class="muted">Emotion vs reaction gap when local scan rows exist; otherwise emotion from event materiality. Social-only rows stay research-only. Quiet-tape boosts under-reacted joined names.</p>
+      <p class="muted">Emotion vs reaction gap when local scan rows exist; otherwise emotion from event materiality. Social-only rows stay research-only. Quiet-tape boosts under-reacted joined names. Filter ticker to focus the case file.</p>
       <div class="table-wrap">
         <table aria-label="Discovery queue">
           <thead><tr><th>Ticker</th><th>Score</th><th>Gap</th><th>Join</th><th>Quiet</th><th>Use</th><th>Event</th><th>Why now</th></tr></thead>
           <tbody>${discoveryRows}</tbody>
+        </table>
+      </div>
+    </section>
+    ${renderDiscoveryCaseFile(discovery.case_file)}
+  `;
+}
+
+function renderDiscoveryCaseFile(caseFile) {
+  if (!caseFile || typeof caseFile !== 'object') {
+    return `
+      <section class="panel wide" data-testid="discovery-case-file">
+        <h2>Case File</h2>
+        <p class="muted">No case file yet. Load world events and discovery rows first.</p>
+      </section>
+    `;
+  }
+  const price = caseFile.price_reaction && typeof caseFile.price_reaction === 'object' ? caseFile.price_reaction : {};
+  const confirm = caseFile.confirmation && typeof caseFile.confirmation === 'object' ? caseFile.confirmation : {};
+  const invalidation = Array.isArray(caseFile.invalidation) ? caseFile.invalidation : [];
+  const invalidateRows = invalidation.map((row) => `
+    <tr>
+      <td><code>${escapeHtml(compact(row.id, '—'))}</code></td>
+      <td>${escapeHtml(compact(row.check, ''))}</td>
+      <td>${escapeHtml(compact(row.action, ''))}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="3">No invalidation checks.</td></tr>';
+  const notDiscovered = price.price_not_fully_discovered;
+  const notDiscoveredLabel = notDiscovered === true ? 'yes — tape may lag event' : notDiscovered === false ? 'no — already reacted or fully priced' : 'unknown — need join';
+
+  return `
+    <section class="panel wide" data-testid="discovery-case-file">
+      <h2>Case File · ${escapeHtml(compact(caseFile.ticker, '—'))}</h2>
+      <p>${escapeHtml(compact(caseFile.headline, 'Research case file'))}</p>
+      <p class="muted">${escapeHtml(compact(caseFile.why_this_ticker, ''))}</p>
+      <div class="metric-grid" aria-label="Case file metrics">
+        ${metric('Price lag?', notDiscoveredLabel, compact(price.join_status, 'join'))}
+        ${metric('Gap', String(price.emotion_reaction_gap ?? '—'), `emotion ${price.emotion_score ?? '—'} / reaction ${price.reaction_score ?? '—'}`)}
+        ${metric('Confirm', compact(confirm.status, 'unconfirmed'), compact(confirm.detail, 'social-only until primary'))}
+        ${metric('Usefulness', compact(caseFile.usefulness, 'research_only'), 'not investment advice')}
+      </div>
+      <p><strong>Next:</strong> ${escapeHtml(compact(caseFile.next_action, 'Review invalidation checklist.'))}</p>
+      <p><code>${escapeHtml(compact(caseFile.label_command_preview || caseFile.next_command, 'discovery-label --preview'))}</code></p>
+      <h3>Invalidation checklist</h3>
+      <div class="table-wrap">
+        <table aria-label="Invalidation checklist">
+          <thead><tr><th>ID</th><th>Check</th><th>Action</th></tr></thead>
+          <tbody>${invalidateRows}</tbody>
         </table>
       </div>
     </section>

@@ -339,8 +339,8 @@ def _discovery_row(
         "usefulness": usefulness,
         "why_now": (
             f"{event.direction.capitalize()} world event '{event.title}' maps to {ticker}; "
-            f"emotion {emotion_score:.0f} vs reaction {reaction:.0f} (gap {gap:.0f})"
-            f"{'; join={join_status}'}."
+            f"emotion {emotion_score:.0f} vs reaction {reaction:.0f} "
+            f"(gap {gap:.0f}); join={join_status}."
         ),
         "next_step": (
             "Research only: verify with primary sources and local priced-in case file."
