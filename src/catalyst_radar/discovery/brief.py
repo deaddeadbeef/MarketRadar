@@ -60,7 +60,6 @@ def build_discovery_brief(
     bundle = load_world_events(events_path)
     theme_map = load_theme_ticker_map(theme_peers_path)
     db_enabled = engine is not None
-    priced_in_by_ticker = _load_priced_in_index(engine) if db_enabled else {}
     clock = now if now is not None else datetime.now(tz=UTC)
     if clock.tzinfo is None:
         clock = clock.replace(tzinfo=UTC)
@@ -70,6 +69,7 @@ def build_discovery_brief(
     event_rows: list[dict[str, object]] = []
     discoveries: list[dict[str, object]] = []
     mapped_tickers: list[str] = []
+    mapped_by_event: list[tuple[object, Mapping[str, object], float]] = []
 
     for event in bundle.events:
         mapped = map_event_tickers(event, theme_ticker_map=theme_map)
@@ -82,6 +82,15 @@ def build_discovery_brief(
         for ticker in all_tickers:
             if ticker not in mapped_tickers:
                 mapped_tickers.append(ticker)
+        mapped_by_event.append((event, mapped, emotion))
+
+    # Only index priced-in rows for mapped discovery tickers (fast path on large DBs).
+    priced_in_by_ticker = (
+        _load_priced_in_index(engine, tickers=mapped_tickers) if db_enabled else {}
+    )
+
+    for event, mapped, emotion in mapped_by_event:
+        all_tickers = list(mapped["all_tickers"])  # type: ignore[arg-type]
         for rank, ticker in enumerate(all_tickers):
             role = "primary" if rank < len(mapped["primary_tickers"]) else "secondary"  # type: ignore[arg-type]
             priced = priced_in_by_ticker.get(ticker)
@@ -369,14 +378,31 @@ def _usefulness(
     return "research_only"
 
 
-def _load_priced_in_index(engine: Engine) -> dict[str, dict[str, Any]]:
+def _load_priced_in_index(
+    engine: Engine,
+    *,
+    tickers: Sequence[str] | None = None,
+) -> dict[str, dict[str, Any]]:
     try:
         from catalyst_radar.dashboard.data import load_candidate_rows
     except Exception:
         return {}
 
+    ticker_filter = sorted(
+        {
+            str(ticker or "").strip().upper()
+            for ticker in (tickers or ())
+            if str(ticker or "").strip()
+        }
+    )
     try:
-        rows = load_candidate_rows(engine, limit=None, include_briefs=False)
+        rows = load_candidate_rows(
+            engine,
+            limit=None,
+            include_briefs=False,
+            include_artifacts=False,
+            tickers=ticker_filter or None,
+        )
     except Exception:
         return {}
 
@@ -390,19 +416,44 @@ def _load_priced_in_index(engine: Engine) -> dict[str, dict[str, Any]]:
         metadata = row.get("metadata") if isinstance(row.get("metadata"), Mapping) else {}
         priced = row.get("priced_in") if isinstance(row.get("priced_in"), Mapping) else {}
         features = row.get("features") if isinstance(row.get("features"), Mapping) else {}
+        evidence = (
+            priced.get("evidence") if isinstance(priced.get("evidence"), Mapping) else {}
+        )
+        ret_5d_pct = (
+            priced.get("ret_5d_pct")
+            or evidence.get("ret_5d_pct")
+            or metadata.get("ret_5d_pct")
+            or features.get("ret_5d_pct")
+            or row.get("ret_5d_pct")
+        )
+        ret_5d = features.get("ret_5d") or metadata.get("ret_5d") or row.get("ret_5d")
+        if ret_5d_pct is None and ret_5d is not None:
+            try:
+                ret_5d_pct = round(float(ret_5d) * 100.0, 2)
+            except (TypeError, ValueError):
+                ret_5d_pct = None
         index[ticker] = {
             "status": row.get("action_state") or row.get("state"),
-            "priced_in_status": priced.get("status") or metadata.get("priced_in_status"),
-            "emotion_score": priced.get("emotion_score") or metadata.get("emotion_score"),
-            "reaction_score": priced.get("reaction_score") or metadata.get("reaction_score"),
+            "priced_in_status": priced.get("status")
+            or metadata.get("priced_in_status")
+            or row.get("priced_in_status"),
+            "emotion_score": priced.get("emotion_score")
+            if priced.get("emotion_score") is not None
+            else metadata.get("emotion_score")
+            if metadata.get("emotion_score") is not None
+            else row.get("emotion_score"),
+            "reaction_score": priced.get("reaction_score")
+            if priced.get("reaction_score") is not None
+            else metadata.get("reaction_score")
+            if metadata.get("reaction_score") is not None
+            else row.get("reaction_score"),
             "emotion_reaction_gap": priced.get("emotion_reaction_gap")
-            or metadata.get("emotion_reaction_gap"),
-            "ret_5d_pct": (
-                priced.get("ret_5d_pct")
-                or metadata.get("ret_5d_pct")
-                or features.get("ret_5d_pct")
-            ),
-            "ret_5d": features.get("ret_5d") or metadata.get("ret_5d"),
+            if priced.get("emotion_reaction_gap") is not None
+            else metadata.get("emotion_reaction_gap")
+            if metadata.get("emotion_reaction_gap") is not None
+            else row.get("emotion_reaction_gap"),
+            "ret_5d_pct": ret_5d_pct,
+            "ret_5d": ret_5d,
         }
     return index
 
