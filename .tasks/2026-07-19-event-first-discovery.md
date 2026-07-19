@@ -28,4 +28,10 @@ $env:PYTHONPATH='src'
 - Sample tickers may not join live priced-in rows without matching universe
 
 ## Status
-in_progress
+done — PR https://github.com/deaddeadbeef/MarketRadar/pull/1114
+
+## Validation evidence
+- pytest tests/unit/test_discovery_brief.py: 4 passed
+- discovery-brief smoke: 3 events, top MU research_only, external_calls_made=0
+- cargo test -p radar-tui model: pass
+- Grok task market-radar-daily-discovery id 4a5822e9-1f19-417d-83a4-6d3e034312ae
