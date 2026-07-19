@@ -1,0 +1,101 @@
+{
+  "schema_version": "world-events-v1",
+  "generated_at": "2026-07-19T04:30:00+00:00",
+  "source": "grok_x_pilot_2026-07-19",
+  "events": [
+    {
+      "id": "evt_hormuz_energy_2026_07",
+      "title": "Strait of Hormuz shipping risk keeps energy and logistics premia elevated",
+      "summary": "Public X market discussion continues to price Hormuz / Middle East shipping friction as a structural energy and inflation risk. Energy names and defense/onshoring themes reappear as second-order beneficiaries while long-duration tech absorbs risk-off pressure.",
+      "themes": ["energy_security", "shipping", "defense", "tariffs"],
+      "tickers": ["XOM", "CVX", "COP"],
+      "secondary_tickers": ["LMT", "RTX", "FRO"],
+      "direction": "bullish",
+      "materiality": 0.74,
+      "source_quality": 0.38,
+      "source_category": "social",
+      "sources": [
+        {
+          "provider": "x",
+          "url": "https://x.com/i/web/status/2077408092988600509",
+          "author": "@CrypCoinMaster",
+          "published_at": "2026-07-15T15:01:00+00:00",
+          "engagement": {"likes": 2, "views": 56}
+        },
+        {
+          "provider": "x",
+          "url": "https://x.com/i/web/status/2073522052146082291",
+          "author": "@MarioNawfal",
+          "published_at": "2026-07-04T21:39:16+00:00",
+          "engagement": {"likes": 354, "views": 306219}
+        }
+      ],
+      "available_at": "2026-07-19T04:30:00+00:00"
+    },
+    {
+      "id": "evt_semi_vol_bear_2026_07",
+      "title": "Semiconductor complex in high-vol / bear-market drawdown while memory ASP narrative heats",
+      "summary": "Broad semiconductor indices are discussed as ~20%+ off highs with volatility multiples of the S&P. Parallel channel checks claim strong DRAM ASP increases and HBM scarcity. Edge AI interconnect names are pitched as lagging the same demand signal.",
+      "themes": ["semiconductor", "memory", "ai_infrastructure", "ai_interconnect"],
+      "tickers": ["MU", "NVDA", "TSM"],
+      "secondary_tickers": ["COHR", "CRDO", "LITE", "ASML"],
+      "direction": "mixed",
+      "materiality": 0.8,
+      "source_quality": 0.42,
+      "source_category": "social",
+      "sources": [
+        {
+          "provider": "x",
+          "url": "https://x.com/i/web/status/2078639763691589667",
+          "author": "@Barchart",
+          "published_at": "2026-07-19T00:35:13+00:00",
+          "engagement": {"likes": 439, "views": 40830}
+        },
+        {
+          "provider": "x",
+          "url": "https://x.com/i/web/status/2078666873143722074",
+          "author": "@SemiconductorsX",
+          "published_at": "2026-07-19T02:22:56+00:00",
+          "engagement": {"likes": 30, "views": 1298}
+        },
+        {
+          "provider": "x",
+          "url": "https://x.com/i/web/status/2078662860310564971",
+          "author": "@RosannaInvests",
+          "published_at": "2026-07-19T02:07:00+00:00",
+          "engagement": {"likes": 16, "views": 2104}
+        }
+      ],
+      "available_at": "2026-07-19T04:30:00+00:00"
+    },
+    {
+      "id": "evt_china_export_europe_2026_07",
+      "title": "China industrial export pressure into weak Europe raises trade-friction and onshoring themes",
+      "summary": "Macro posts frame Chinese overcapacity (EVs, batteries, solar, steel) colliding with weak European demand, reinforcing friend-shoring / domestic supply chain winners and commodity hedges.",
+      "themes": ["china_export", "onshoring", "gold"],
+      "tickers": ["CAT", "DE", "ETN"],
+      "secondary_tickers": ["GLD", "NEM", "PWR"],
+      "direction": "bullish",
+      "materiality": 0.68,
+      "source_quality": 0.4,
+      "source_category": "social",
+      "sources": [
+        {
+          "provider": "x",
+          "url": "https://x.com/i/web/status/2073105343769629152",
+          "author": "@JeffSnider_EDU",
+          "published_at": "2026-07-03T18:03:25+00:00",
+          "engagement": {"likes": 227, "views": 24639}
+        },
+        {
+          "provider": "x",
+          "url": "https://x.com/i/web/status/2076229251502604788",
+          "author": "@Blockstradamus_",
+          "published_at": "2026-07-12T08:56:42+00:00",
+          "engagement": {"likes": 2, "views": 223}
+        }
+      ],
+      "available_at": "2026-07-19T04:30:00+00:00"
+    }
+  ]
+}

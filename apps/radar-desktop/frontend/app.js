@@ -40,6 +40,13 @@ const keyAliases = new Map([
   ['radar', 'market-radar'],
   ['scout', 'market-radar'],
   ['scanner', 'market-radar'],
+  ['world', 'world-events'],
+  ['world-events', 'world-events'],
+  ['world_events', 'world-events'],
+  ['events', 'world-events'],
+  ['discovery', 'world-events'],
+  ['x-events', 'world-events'],
+  ['event-radar', 'world-events'],
   ['trade', 'trade-planner'],
   ['trade-plan', 'trade-planner'],
   ['trade_plan', 'trade-planner'],
@@ -128,6 +135,7 @@ const keyAliases = new Map([
 const pagePaths = {
   portfolio: [['broker'], ['broker', 'exposure'], ['portfolio'], ['runtime_context']],
   'market-radar': [['priced_in_queue'], ['candidates'], ['alerts'], ['ipo_s1'], ['themes']],
+  'world-events': [['event_discovery'], ['event_discovery', 'events'], ['event_discovery', 'discoveries'], ['themes']],
   'trade-planner': [['validation'], ['decision_cards'], ['candidate_packets'], ['value_report']],
   'risk-desk': [['broker'], ['policy'], ['portfolio_impacts'], ['validation']],
   'paper-trading': [['validation'], ['paper_trading'], ['paper_trades'], ['value_outcomes']],
@@ -1371,6 +1379,7 @@ function renderContent(snapshot) {
     overview: renderOverview,
     portfolio: () => renderPlatformModulePage('portfolio', snapshot),
     'market-radar': () => renderPlatformModulePage('market-radar', snapshot),
+    'world-events': renderWorldEvents,
     'trade-planner': () => renderPlatformModulePage('trade-planner', snapshot),
     'risk-desk': () => renderPlatformModulePage('risk-desk', snapshot),
     'paper-trading': () => renderPlatformModulePage('paper-trading', snapshot),
@@ -1453,6 +1462,70 @@ function renderOverview(snapshot) {
       <code>${escapeHtml(compact(snapshot.next_command || snapshot.canonical_next_command, 'No command reported.'))}</code>
     </section>
     ${queuePanel('Attention Queue', rowsFromSnapshot(snapshot))}
+  `;
+}
+
+function renderWorldEvents(snapshot) {
+  const discovery = at(snapshot, ['event_discovery'], {}) || {};
+  const events = Array.isArray(discovery.events) ? discovery.events : [];
+  const discoveries = Array.isArray(discovery.discoveries) ? discovery.discoveries : [];
+  const counts = discovery.counts && typeof discovery.counts === 'object' ? discovery.counts : {};
+  const eventRows = events.map((event) => {
+    const tickers = [
+      ...(Array.isArray(event.tickers) ? event.tickers : []),
+      ...(Array.isArray(event.secondary_tickers) ? event.secondary_tickers : []),
+    ].slice(0, 8).join(', ');
+    const themes = Array.isArray(event.themes) ? event.themes.join(', ') : '';
+    return `<tr data-testid="world-event-row">
+      <td>${escapeHtml(compact(event.title, 'Untitled event'))}</td>
+      <td>${escapeHtml(compact(event.direction, 'mixed'))}</td>
+      <td>${escapeHtml(themes || '—')}</td>
+      <td><code>${escapeHtml(tickers || '—')}</code></td>
+      <td>${escapeHtml(String(event.materiality ?? '—'))}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5">No world events loaded. Write data/local/world_events.json or use the sample fixture.</td></tr>';
+
+  const discoveryRows = discoveries.map((row) => `<tr data-testid="discovery-row" data-ticker="${escapeHtml(compact(row.ticker, ''))}">
+      <td><strong>${escapeHtml(compact(row.ticker, '—'))}</strong></td>
+      <td>${escapeHtml(String(row.discovery_score ?? '—'))}</td>
+      <td>${escapeHtml(String(row.emotion_reaction_gap ?? '—'))}</td>
+      <td>${escapeHtml(compact(row.usefulness, 'research_only'))}</td>
+      <td>${escapeHtml(compact(row.event_title || row.event_id, '—'))}</td>
+      <td>${escapeHtml(compact(row.why_now, ''))}</td>
+    </tr>`).join('') || '<tr><td colspan="6">No discovery rows yet.</td></tr>';
+
+  return `
+    <section class="panel wide" data-testid="world-events-header">
+      <h2>World Events → Discovery</h2>
+      <p>${escapeHtml(compact(discovery.headline, 'Event-first radar for under-discovered narratives.'))}</p>
+      <p class="muted">${escapeHtml(compact(discovery.next_action, 'Research only. Not investment advice.'))}</p>
+      <p><code>${escapeHtml(compact(discovery.next_command, 'catalyst-radar discovery-brief --json'))}</code></p>
+    </section>
+    <div class="metric-grid" data-testid="world-events-metrics" aria-label="World event discovery metrics">
+      ${metric('Events', String(discovery.event_count ?? events.length ?? 0), compact(discovery.status, 'local file'))}
+      ${metric('Discoveries', String(discovery.discovery_count ?? discoveries.length ?? 0), 'ranked leads')}
+      ${metric('Research only', String(counts.research_only ?? '—'), 'social-safe default')}
+      ${metric('Provider calls', String(discovery.external_calls_made ?? 0), 'browse stays zero-call')}
+    </div>
+    <section class="panel wide" data-testid="world-events-table">
+      <h2>World Events</h2>
+      <div class="table-wrap">
+        <table aria-label="World events inbox">
+          <thead><tr><th>Event</th><th>Direction</th><th>Themes</th><th>Tickers</th><th>Materiality</th></tr></thead>
+          <tbody>${eventRows}</tbody>
+        </table>
+      </div>
+    </section>
+    <section class="panel wide" data-testid="discovery-queue-table">
+      <h2>Discovery Queue</h2>
+      <p class="muted">Emotion vs reaction gap when local scan rows exist; otherwise emotion from event materiality. Social-only rows stay research-only.</p>
+      <div class="table-wrap">
+        <table aria-label="Discovery queue">
+          <thead><tr><th>Ticker</th><th>Score</th><th>Gap</th><th>Use</th><th>Event</th><th>Why now</th></tr></thead>
+          <tbody>${discoveryRows}</tbody>
+        </table>
+      </div>
+    </section>
   `;
 }
 

@@ -206,6 +206,9 @@ fn render_page(frame: &mut Frame<'_>, area: Rect, app: &DashboardApp) {
         Page::Tutorial => render_tutorial(frame, area),
         Page::Portfolio => render_object_summary(frame, area, snapshot, &["broker"], " PORTFOLIO "),
         Page::MarketRadar => render_rows(frame, area, snapshot, " MARKET RADAR "),
+        Page::WorldEvents => {
+            render_object_summary(frame, area, snapshot, &["event_discovery"], " WORLD EVENTS ")
+        }
         Page::TradePlanner => {
             render_object_summary(frame, area, snapshot, &["validation"], " TRADE PLANNER ")
         }

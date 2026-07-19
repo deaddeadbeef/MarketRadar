@@ -768,6 +768,7 @@ fn page_shortcut(page: Page) -> &'static str {
         Page::Overview => "1",
         Page::Portfolio => "portfolio",
         Page::MarketRadar => "radar",
+        Page::WorldEvents => "events",
         Page::TradePlanner => "planner",
         Page::RiskDesk => "risk",
         Page::PaperTrading => "paper",
@@ -797,6 +798,9 @@ fn page_description(page: Page) -> &'static str {
         Page::Overview => "Trading workbench command center, account state, and next safe action.",
         Page::Portfolio => "Positions, exposure, cash, and portfolio context.",
         Page::MarketRadar => "MarketRadar catalyst scout, mispricing queue, and evidence gaps.",
+        Page::WorldEvents => {
+            "World-event inbox and discovery queue for under-priced narratives (research only)."
+        }
         Page::TradePlanner => "Trade thesis, sizing, reward/risk, and decision-card planning.",
         Page::RiskDesk => "Policy gates, portfolio impact, concentration, and hard blocks.",
         Page::PaperTrading => "Paper-only tickets, fills, and shadow validation.",

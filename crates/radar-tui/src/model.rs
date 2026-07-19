@@ -6,6 +6,7 @@ pub enum Page {
     Overview,
     Portfolio,
     MarketRadar,
+    WorldEvents,
     TradePlanner,
     RiskDesk,
     PaperTrading,
@@ -29,11 +30,12 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 24] = [
+    pub const ALL: [Page; 25] = [
         Page::Tutorial,
         Page::Overview,
         Page::Portfolio,
         Page::MarketRadar,
+        Page::WorldEvents,
         Page::TradePlanner,
         Page::RiskDesk,
         Page::PaperTrading,
@@ -62,6 +64,7 @@ impl Page {
             Page::Overview => "overview",
             Page::Portfolio => "portfolio",
             Page::MarketRadar => "market-radar",
+            Page::WorldEvents => "world-events",
             Page::TradePlanner => "trade-planner",
             Page::RiskDesk => "risk-desk",
             Page::PaperTrading => "paper-trading",
@@ -91,6 +94,7 @@ impl Page {
             Page::Overview => "1 Command Center",
             Page::Portfolio => "Portfolio",
             Page::MarketRadar => "Market Radar",
+            Page::WorldEvents => "World Events",
             Page::TradePlanner => "Trade Planner",
             Page::RiskDesk => "Risk Desk",
             Page::PaperTrading => "Paper Trading",
@@ -126,6 +130,9 @@ impl Page {
             | "command_center" | "workbench" | "o" => Page::Overview,
             "portfolio" | "portfolio_monitor" | "portfolio_monitoring" => Page::Portfolio,
             "market" | "market_radar" | "radar" | "scout" | "scanner" => Page::MarketRadar,
+            "world" | "world_events" | "events" | "discovery" | "x_events" | "event_radar" => {
+                Page::WorldEvents
+            }
             "trade" | "trade_plan" | "trade_planner" | "planner" => Page::TradePlanner,
             "risk" | "risk_desk" | "risk_controls" => Page::RiskDesk,
             "paper" | "paper_trade" | "paper_trading" | "paper_trader" => Page::PaperTrading,
@@ -350,6 +357,8 @@ mod tests {
         assert_eq!(Page::from_input("candidate-review"), Page::Candidates);
         assert_eq!(Page::from_input("portfolio"), Page::Portfolio);
         assert_eq!(Page::from_input("market-radar"), Page::MarketRadar);
+        assert_eq!(Page::from_input("world-events"), Page::WorldEvents);
+        assert_eq!(Page::from_input("discovery"), Page::WorldEvents);
         assert_eq!(Page::from_input("trade-planner"), Page::TradePlanner);
         assert_eq!(Page::from_input("risk-desk"), Page::RiskDesk);
         assert_eq!(Page::from_input("paper-trading"), Page::PaperTrading);

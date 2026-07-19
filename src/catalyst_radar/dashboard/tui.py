@@ -831,6 +831,7 @@ def dashboard_snapshot_payload(
         "ops_health": ops_health,
         "telemetry": telemetry,
         "telemetry_coverage": telemetry_coverage,
+        "event_discovery": _event_discovery_snapshot_payload(engine),
         "external_calls_made": 0,
     }
     payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
@@ -2147,6 +2148,68 @@ def _trading_workbench_snapshot_payload(
             },
         },
     }
+
+
+def _event_discovery_snapshot_payload(engine: Engine) -> dict[str, object]:
+    """Zero-call event-first discovery brief for World Events desktop page."""
+    try:
+        from catalyst_radar.discovery.brief import (
+            build_discovery_brief,
+            default_events_path,
+        )
+    except Exception as exc:  # pragma: no cover - defensive import boundary
+        return {
+            "schema_version": "discovery-brief-v1",
+            "status": "unavailable",
+            "error": str(exc),
+            "events": [],
+            "discoveries": [],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "investment_advice": False,
+            "can_make_investment_decision": False,
+        }
+
+    events_path = default_events_path()
+    if not Path(events_path).is_file():
+        return {
+            "schema_version": "discovery-brief-v1",
+            "status": "missing_events",
+            "events_path": str(events_path),
+            "events": [],
+            "discoveries": [],
+            "headline": "No world-events JSON found yet.",
+            "next_action": (
+                "Write data/local/world_events.json from the Grok daily pilot, "
+                "or load data/sample/world_events.json."
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "investment_advice": False,
+            "can_make_investment_decision": False,
+        }
+    try:
+        brief = build_discovery_brief(
+            events_path=events_path,
+            theme_peers_path=Path("config/theme_peers.yaml"),
+            engine=engine,
+            limit=25,
+        )
+    except Exception as exc:
+        return {
+            "schema_version": "discovery-brief-v1",
+            "status": "error",
+            "events_path": str(events_path),
+            "error": str(exc),
+            "events": [],
+            "discoveries": [],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "investment_advice": False,
+            "can_make_investment_decision": False,
+        }
+    brief["status"] = "ready"
+    return brief
 
 
 def _attach_agent_brief_to_workbench(payload: dict[str, object]) -> None:

@@ -1242,6 +1242,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     priced_in_answer.add_argument("--json", action="store_true")
 
+    discovery_brief = subparsers.add_parser(
+        "discovery-brief",
+        help=(
+            "Event-first discovery brief from local world-events JSON "
+            "(X/Grok pilot file). Optional local priced-in join. Zero provider calls."
+        ),
+    )
+    discovery_brief.add_argument("--database-url")
+    discovery_brief.add_argument(
+        "--events",
+        type=Path,
+        help="Path to world-events-v1 JSON (default: data/local then data/sample).",
+    )
+    discovery_brief.add_argument(
+        "--theme-peers",
+        type=Path,
+        default=Path("config/theme_peers.yaml"),
+        help="Optional theme peer map for second-order ticker expansion.",
+    )
+    discovery_brief.add_argument("--limit", type=int, default=25)
+    discovery_brief.add_argument(
+        "--no-db",
+        action="store_true",
+        help="Skip local DB priced-in join (events-only research brief).",
+    )
+    discovery_brief.add_argument("--json", action="store_true")
+
     priced_in_audit = subparsers.add_parser("priced-in-audit")
     priced_in_audit.add_argument("--database-url")
     priced_in_audit.add_argument("--available-at", type=_parse_aware_datetime)
@@ -2343,6 +2370,52 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_priced_in_answer(payload)
+        return 0
+
+    if args.command == "discovery-brief":
+        from catalyst_radar.discovery.brief import (
+            build_discovery_brief,
+            default_events_path,
+        )
+
+        events_path = args.events or default_events_path()
+        if not Path(events_path).is_file():
+            print(
+                json.dumps(
+                    {
+                        "schema_version": "discovery-brief-v1",
+                        "status": "missing_events",
+                        "events_path": str(events_path),
+                        "next_action": (
+                            "Write world-events-v1 JSON from the Grok pilot/task, "
+                            "or use data/sample/world_events.json."
+                        ),
+                        "external_calls_made": 0,
+                        "db_writes_made": 0,
+                        "investment_advice": False,
+                    },
+                    sort_keys=True,
+                )
+                if args.json
+                else (
+                    f"discovery_brief missing_events path={events_path} "
+                    "next=write world-events-v1 JSON"
+                )
+            )
+            return 1
+        join_engine = None if args.no_db else engine
+        if join_engine is not None:
+            create_schema(join_engine)
+        payload = build_discovery_brief(
+            events_path=events_path,
+            theme_peers_path=args.theme_peers,
+            engine=join_engine,
+            limit=args.limit,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_discovery_brief(payload)
         return 0
 
     if args.command == "priced-in-audit":
@@ -8723,6 +8796,33 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         print("commands:")
         for name, command in commands.items():
             print(f"- {name}={_compact_cli_text(command)}")
+
+
+def _print_discovery_brief(payload: Mapping[str, object]) -> None:
+    counts = payload.get("counts") if isinstance(payload.get("counts"), Mapping) else {}
+    print(
+        "discovery_brief "
+        f"events={payload.get('event_count')} "
+        f"discoveries={payload.get('discovery_count')} "
+        f"research_only={counts.get('research_only')} "
+        f"watch={counts.get('watch')} "
+        f"calls={payload.get('external_calls_made')} "
+        f"writes={payload.get('db_writes_made')}"
+    )
+    print(f"headline={payload.get('headline')}")
+    print(f"next={payload.get('next_action')}")
+    discoveries = payload.get("discoveries")
+    if isinstance(discoveries, Sequence):
+        for row in discoveries[:10]:
+            if not isinstance(row, Mapping):
+                continue
+            print(
+                f"  {row.get('ticker')} "
+                f"score={row.get('discovery_score')} "
+                f"gap={row.get('emotion_reaction_gap')} "
+                f"use={row.get('usefulness')} "
+                f"event={row.get('event_id')}"
+            )
 
 
 def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
