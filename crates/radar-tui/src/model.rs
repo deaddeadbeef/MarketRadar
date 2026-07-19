@@ -32,10 +32,10 @@ pub enum Page {
 impl Page {
     pub const ALL: [Page; 25] = [
         Page::Tutorial,
+        Page::WorldEvents,
         Page::Overview,
         Page::Portfolio,
         Page::MarketRadar,
-        Page::WorldEvents,
         Page::TradePlanner,
         Page::RiskDesk,
         Page::PaperTrading,
@@ -91,10 +91,10 @@ impl Page {
     pub fn label(self) -> &'static str {
         match self {
             Page::Tutorial => "0 Start",
-            Page::Overview => "1 Command Center",
+            Page::WorldEvents => "1 World Events",
+            Page::Overview => "Workbench",
             Page::Portfolio => "Portfolio",
             Page::MarketRadar => "Market Radar",
-            Page::WorldEvents => "World Events",
             Page::TradePlanner => "Trade Planner",
             Page::RiskDesk => "Risk Desk",
             Page::PaperTrading => "Paper Trading",
@@ -126,13 +126,12 @@ impl Page {
             .as_str()
         {
             "0" | "learn" | "start" | "tut" | "tutorial" => Page::Tutorial,
-            "1" | "home" | "inbox" | "insight" | "insights" | "mail" | "messages" | "overview"
-            | "command_center" | "workbench" | "o" => Page::Overview,
+            "1" | "world" | "world_events" | "events" | "discovery" | "x_events" | "event_radar"
+            | "home" | "inbox" => Page::WorldEvents,
+            "insight" | "insights" | "mail" | "messages" | "overview" | "command_center"
+            | "workbench" | "o" => Page::Overview,
             "portfolio" | "portfolio_monitor" | "portfolio_monitoring" => Page::Portfolio,
             "market" | "market_radar" | "radar" | "scout" | "scanner" => Page::MarketRadar,
-            "world" | "world_events" | "events" | "discovery" | "x_events" | "event_radar" => {
-                Page::WorldEvents
-            }
             "trade" | "trade_plan" | "trade_planner" | "planner" => Page::TradePlanner,
             "risk" | "risk_desk" | "risk_controls" => Page::RiskDesk,
             "paper" | "paper_trade" | "paper_trading" | "paper_trader" => Page::PaperTrading,
@@ -348,7 +347,6 @@ mod tests {
     #[test]
     fn page_aliases_match_existing_dashboard_words() {
         assert_eq!(Page::from_input("learn"), Page::Tutorial);
-        assert_eq!(Page::from_input("home"), Page::Overview);
         assert_eq!(Page::from_input("mail"), Page::Overview);
         assert_eq!(Page::from_input("2"), Page::Readiness);
         assert_eq!(Page::from_input("evidence-gaps"), Page::Readiness);
@@ -359,6 +357,10 @@ mod tests {
         assert_eq!(Page::from_input("market-radar"), Page::MarketRadar);
         assert_eq!(Page::from_input("world-events"), Page::WorldEvents);
         assert_eq!(Page::from_input("discovery"), Page::WorldEvents);
+        assert_eq!(Page::from_input("1"), Page::WorldEvents);
+        assert_eq!(Page::from_input("home"), Page::WorldEvents);
+        assert_eq!(Page::from_input("workbench"), Page::Overview);
+        assert_eq!(Page::from_input("overview"), Page::Overview);
         assert_eq!(Page::from_input("trade-planner"), Page::TradePlanner);
         assert_eq!(Page::from_input("risk-desk"), Page::RiskDesk);
         assert_eq!(Page::from_input("paper-trading"), Page::PaperTrading);

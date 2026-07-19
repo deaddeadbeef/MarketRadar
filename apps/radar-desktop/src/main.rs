@@ -347,7 +347,8 @@ fn ensure_selected_page(value: &mut Value, page: &str) {
 }
 
 fn initial_page_key(raw_page: Option<&str>) -> String {
-    page_request(raw_page.unwrap_or("overview")).selected_page
+    // Phase 4: event-first product defaults to World Events discovery, not ops workbench.
+    page_request(raw_page.unwrap_or("world-events")).selected_page
 }
 
 fn page_request(raw_page: &str) -> PageRequest {
@@ -765,10 +766,10 @@ fn page_infos() -> Vec<PageInfo> {
 fn page_shortcut(page: Page) -> &'static str {
     match page {
         Page::Tutorial => "0",
-        Page::Overview => "1",
+        Page::Overview => "workbench",
         Page::Portfolio => "portfolio",
         Page::MarketRadar => "radar",
-        Page::WorldEvents => "events",
+        Page::WorldEvents => "1",
         Page::TradePlanner => "planner",
         Page::RiskDesk => "risk",
         Page::PaperTrading => "paper",
@@ -795,11 +796,11 @@ fn page_shortcut(page: Page) -> &'static str {
 fn page_description(page: Page) -> &'static str {
     match page {
         Page::Tutorial => "First-run path and safe operating boundary.",
-        Page::Overview => "Trading workbench command center, account state, and next safe action.",
+        Page::Overview => "Secondary trading workbench: portfolio, tickets, and ops tools.",
         Page::Portfolio => "Positions, exposure, cash, and portfolio context.",
         Page::MarketRadar => "MarketRadar catalyst scout, mispricing queue, and evidence gaps.",
         Page::WorldEvents => {
-            "World-event inbox and discovery queue for under-priced narratives (research only)."
+            "Primary product surface: world events, discovery queue, and research case files."
         }
         Page::TradePlanner => "Trade thesis, sizing, reward/risk, and decision-card planning.",
         Page::RiskDesk => "Policy gates, portfolio impact, concentration, and hard blocks.",
@@ -1682,7 +1683,7 @@ mod tests {
         assert_eq!(payload["schema_version"], "dashboard-ui-manifest-v1");
         assert_eq!(payload["external_calls_made"], 0);
         assert_eq!(payload["app_name"], TRADING_WORKBENCH_TITLE);
-        assert_eq!(payload["initial_page"], "overview");
+        assert_eq!(payload["initial_page"], "world-events");
         assert_eq!(
             payload["source_label"],
             "command catalyst-radar dashboard-snapshot --json --fast"
@@ -1776,7 +1777,8 @@ mod tests {
     #[test]
     fn initial_page_key_canonicalizes_normal_page_aliases() {
         assert_eq!(initial_page_key(Some("safe-run")), "run");
-        assert_eq!(initial_page_key(None), "overview");
+        assert_eq!(initial_page_key(None), "world-events");
+        assert_eq!(initial_page_key(Some("events")), "world-events");
     }
 
     #[test]

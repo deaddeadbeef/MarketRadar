@@ -58,7 +58,7 @@ World events (X/Grok)
 | 1 | Daily loop | G1, G2, G3, G7 | **Done** — freshness, ingest, join status, quiet-tape, fan-out |
 | 2 | Case file | G4, G5 | **Done** — `discovery-case`, case panel in World Events |
 | 3 | Proof / labels | G6 | **Done** — `discovery_row` ledger type + `discovery-label` |
-| 4 | Product default UX | G8 | Partial — Events UI complete; default landing still Overview |
+| 4 | Product default UX | G8 | **Done** — default landing World Events; ops demoted |
 | 5 | Enrichment | Better confirmation sources | Optional |
 
 ## Dependency rules
