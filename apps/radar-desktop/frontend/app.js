@@ -916,16 +916,21 @@ function applyChromeMode() {
 function renderNav() {
   const host = qs('#workflow-tabs');
   const activePage = navigationPageKey(state.page);
+  // Product scope: discovery home is World Events (+ Help). Workbench lists
+  // legacy pages but labels them deprecated (docs/PRODUCT_SCOPE.md).
   const pages = isDiscoveryHome()
     ? state.config.pages.filter((page) => (
       page.key === 'world-events'
-      || page.key === 'overview'
       || page.key === 'help'
     ))
     : state.config.pages;
   host.innerHTML = pages.map((page) => {
-    const label = page.key === 'overview' ? 'Workbench' : page.label.replace(/^\d+\s*/, '');
+    const rawLabel = page.label || page.key;
+    const label = page.key === 'overview'
+      ? (rawLabel.includes('Legacy') ? rawLabel : 'Legacy · Workbench')
+      : rawLabel.replace(/^\d+\s*/, '');
     const shortcut = page.key === 'world-events' ? '1' : page.key === 'overview' ? 'W' : page.shortcut;
+    const deprecated = page.key !== 'world-events' && page.key !== 'help';
     return `
     <button
       class="workflow-tab"
@@ -938,9 +943,10 @@ function renderNav() {
       id="tab-${escapeHtml(page.key)}"
       data-testid="${escapeHtml(page.test_id)}"
       data-page="${escapeHtml(page.key)}"
+      data-deprecated="${deprecated ? 'true' : 'false'}"
       tabindex="${page.key === activePage ? '0' : '-1'}"
       aria-label="Open ${escapeHtml(label)} dashboard page"
-      title="${escapeHtml(page.description)}"
+      title="${escapeHtml(page.description || (deprecated ? 'DEPRECATED legacy surface' : ''))}"
     >
       <span class="shortcut">${escapeHtml(shortcut)}</span>
       <span class="tab-label">${escapeHtml(label)}</span>

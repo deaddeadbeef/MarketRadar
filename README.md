@@ -1,8 +1,12 @@
-# Catalyst Radar
+# Catalyst Radar (MarketRadar)
 
-Catalyst Radar is a deterministic-first market radar for public-equity
-opportunity review. It scans the broad stock market and highlights stocks where
-market emotion or expectations may not be fully matched by price reaction.
+**Product scope (authoritative):** event-first discovery only.  
+See `docs/PRODUCT_SCOPE.md`. Everything else is **deprecated** and scheduled for
+phased removal (`docs/DEPRECATION.md`). Inspect live: `catalyst-radar product-scope --json`.
+
+MarketRadar turns **world events** into a ranked list of equities whose **price
+may not have fully discovered** the event yet, with research case files, human
+confirmation, and proof labels.
 
 The product is decision support only. It does not make autonomous trades, does
 not submit broker orders, and must not be treated as investment advice or a
@@ -12,15 +16,14 @@ profit guarantee.
 
 ### Product Goal
 
-The primary product goal is **event-first discovery**: find public equities whose
-**price has not yet fully discovered a world event**, then force human
-confirmation before any capital decision. This is research decision support only
-— never investment advice and never autonomous trading.
+**Event-first discovery:** find public equities whose price has not yet fully
+discovered a world event, then force human confirmation before any capital
+decision. Research decision support only — never investment advice and never
+autonomous trading.
 
-MarketRadar also keeps a secondary proof goal: repeatable shadow scans, value
-ledger outcomes, and evidence that the product creates at least `$40/month` of
-attributable decision-support value (20% of a `$200/month` ChatGPT Pro
-subscription).
+**In-scope operator path:** World Events → Discovery queue → Case → Proof labels.  
+**Out of scope:** trading workbench, broker orders, IPO desk, full residual-repair
+hero loop, agent cockpit as primary UX (see deprecation plan).
 
 ### Event-first quickstart (recommended daily path)
 
@@ -33,10 +36,10 @@ powershell -ExecutionPolicy Bypass -File scripts/import-world-events.ps1 -Events
 catalyst-radar discovery-brief --events data\local\world_events.json --json
 ```
 
-3. Open the desktop app (`radar`). It defaults to **World Events** (event-first
-   discovery). Workbench / ops pages remain secondary (`workbench`, `ops`).
+3. Open the desktop app (**World Events** is the product). Prefer
+   `Open-MarketRadar.bat` / discovery snapshot. Workbench pages are **Legacy**.
 4. Review the Discovery Queue. Social/X-only rows stay `research_only`.
-5. Open a case file and optionally label the lead:
+5. Open a case file, read operator analysis, and label from the UI (or CLI):
 
 ```powershell
 catalyst-radar discovery-case MU --events data\local\world_events.json --json
@@ -44,8 +47,13 @@ catalyst-radar discovery-label --ticker MU --label good-research --preview --jso
 ```
 
 6. Confirm interesting leads with primary sources before any capital decision.
+7. Use **4 · Proof** on the desktop to see discovery_row labels over time.
 
-Goal and phases: `docs/superpowers/plans/2026-07-19-goal-and-phases.md`.
+Scope and removal plan:
+
+- `docs/PRODUCT_SCOPE.md`
+- `docs/DEPRECATION.md`
+- `docs/superpowers/plans/2026-07-19-goal-and-phases.md`
 
 ### AI backend: Grok (xAI)
 
