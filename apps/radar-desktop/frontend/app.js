@@ -137,7 +137,7 @@ const keyAliases = new Map([
 const pagePaths = {
   portfolio: [['broker'], ['broker', 'exposure'], ['portfolio'], ['runtime_context']],
   'market-radar': [['priced_in_queue'], ['candidates'], ['alerts'], ['ipo_s1'], ['themes']],
-  'world-events': [['event_discovery'], ['event_discovery', 'events'], ['event_discovery', 'discoveries'], ['themes']],
+  'world-events': [['event_discovery'], ['event_discovery', 'events'], ['event_discovery', 'discoveries'], ['event_discovery', 'proof'], ['discovery_proof'], ['themes']],
   'trade-planner': [['validation'], ['decision_cards'], ['candidate_packets'], ['value_report']],
   'risk-desk': [['broker'], ['policy'], ['portfolio_impacts'], ['validation']],
   'paper-trading': [['validation'], ['paper_trading'], ['paper_trades'], ['value_outcomes']],
@@ -1629,6 +1629,69 @@ function renderWorldEvents(snapshot) {
       </section>
       ${renderDiscoveryCaseFile(caseFile, focusTicker)}
     </section>
+    ${renderDiscoveryProof(snapshot, discovery)}
+  `;
+}
+
+function discoveryProofFromSnapshot(snapshot, discovery) {
+  if (discovery?.proof && typeof discovery.proof === 'object') return discovery.proof;
+  if (snapshot?.discovery_proof && typeof snapshot.discovery_proof === 'object') {
+    return snapshot.discovery_proof;
+  }
+  return null;
+}
+
+function renderDiscoveryProof(snapshot, discovery) {
+  const proof = discoveryProofFromSnapshot(snapshot, discovery);
+  if (!proof) {
+    return `
+      <section class="discover-section proof" data-testid="discovery-proof">
+        <div class="discover-section-head">
+          <h2>4 · Proof</h2>
+          <p class="muted">Label leads to learn if this radar is worth your time</p>
+        </div>
+        <p class="muted">No proof payload yet. Refresh after labeling a lead.</p>
+      </section>
+    `;
+  }
+  const summary = proof.summary && typeof proof.summary === 'object' ? proof.summary : {};
+  const entries = Array.isArray(proof.entries) ? proof.entries : [];
+  const byLabel = summary.by_label && typeof summary.by_label === 'object' ? summary.by_label : {};
+  const labelBits = Object.entries(byLabel)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(' · ');
+  const rows = entries.slice(0, 12).map((row) => {
+    const ticker = compact(row.ticker, '—');
+    const label = compact(row.label, '—');
+    const gap = row.emotion_reaction_gap;
+    const when = compact(row.available_at || row.created_at, '');
+    const eventTitle = compact(row.payload?.event_title || row.notes, '');
+    return `
+      <button type="button" class="proof-row" data-ticker="${escapeHtml(ticker)}" data-testid="proof-row-${escapeHtml(ticker)}">
+        <span class="proof-ticker">${escapeHtml(ticker)}</span>
+        <span class="proof-label">${escapeHtml(label)}</span>
+        <span class="proof-gap">${escapeHtml(gap == null ? '—' : String(gap))}</span>
+        <span class="proof-meta muted">${escapeHtml(eventTitle || when || 'discovery_row')}</span>
+      </button>
+    `;
+  }).join('') || '<p class="muted">No discovery labels yet. Use the disposition buttons on a case.</p>';
+
+  return `
+    <section class="discover-section proof" data-testid="discovery-proof">
+      <div class="discover-section-head">
+        <h2>4 · Proof</h2>
+        <p class="muted">${escapeHtml(compact(proof.headline, 'Did past discovery leads pay attention value?'))}</p>
+      </div>
+      <div class="proof-stats">
+        <div><b>${escapeHtml(String(summary.total ?? entries.length ?? 0))}</b><span>labels</span></div>
+        <div><b>${escapeHtml(String(summary.claimable_count ?? 0))}</b><span>claimable</span></div>
+        <div><b>$${escapeHtml(String(summary.claimable_value_usd ?? 0))}</b><span>est. value</span></div>
+        <div><b>${escapeHtml(String(summary.unique_tickers ?? 0))}</b><span>tickers</span></div>
+      </div>
+      ${labelBits ? `<p class="muted proof-label-mix">${escapeHtml(labelBits)}</p>` : ''}
+      <div class="proof-list">${rows}</div>
+      <p class="muted">${escapeHtml(compact(proof.next_action, 'Label a few leads to build proof.'))}</p>
+    </section>
   `;
 }
 
@@ -1727,6 +1790,9 @@ function renderDiscoveryCaseFile(caseFile, focusTicker) {
           <span class="pill">${escapeHtml(compact(disposition?.label || analysis?.disposition_label, 'good-research'))}</span>
         </p>
         <p class="muted">${escapeHtml(compact(disposition?.reason, 'Decision support only — not investment advice.'))}</p>
+        <div class="case-label-actions" data-testid="case-label-actions">
+          ${renderCaseLabelButtons(caseFile, disposition?.label || analysis?.disposition_label)}
+        </div>
       </div>
       <p class="case-next"><strong>Next:</strong> ${escapeHtml(compact(caseFile.next_action || disposition?.next_action, 'Confirm with primary sources.'))}</p>
       <div class="case-checklist">
@@ -1739,6 +1805,43 @@ function renderDiscoveryCaseFile(caseFile, focusTicker) {
       </div>
       ${caseFile.label_command_preview ? `<p class="case-label-cmd muted" title="CLI preview only"><code>${escapeHtml(String(caseFile.label_command_preview))}</code></p>` : ''}
     </section>
+  `;
+}
+
+function renderCaseLabelButtons(caseFile, suggestedLabel) {
+  const ticker = compact(caseFile?.ticker, '');
+  const eventId = compact(caseFile?.discovery?.event_id, '');
+  const suggested = compact(suggestedLabel, 'good-research');
+  const choices = [
+    ['good-research', 'Useful research'],
+    ['noisy', 'Noisy'],
+    ['too-late', 'Too late'],
+    ['false-positive', 'False positive'],
+    ['useful', 'Useful'],
+  ];
+  return choices.map(([value, title]) => {
+    const active = value === suggested ? ' is-suggested' : '';
+    return `
+      <button
+        type="button"
+        class="case-label-btn${active}"
+        data-label-action="execute"
+        data-ticker="${escapeHtml(ticker)}"
+        data-event-id="${escapeHtml(eventId)}"
+        data-label="${escapeHtml(value)}"
+        title="${escapeHtml(title)} — writes local value-ledger discovery_row"
+      >${escapeHtml(value)}</button>
+    `;
+  }).join('') + `
+    <button
+      type="button"
+      class="case-label-btn ghost"
+      data-label-action="preview"
+      data-ticker="${escapeHtml(ticker)}"
+      data-event-id="${escapeHtml(eventId)}"
+      data-label="${escapeHtml(suggested)}"
+      title="Preview only — no DB write"
+    >preview ${escapeHtml(suggested)}</button>
   `;
 }
 
@@ -1783,6 +1886,48 @@ function bindDiscoveryInteractions() {
       if (input) input.value = ticker;
       state.lastCommand = `ticker ${ticker}`;
       await refreshSnapshot();
+    });
+  });
+  qs('#content')?.querySelectorAll('.proof-row[data-ticker]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const ticker = button.getAttribute('data-ticker') || '';
+      const input = qs('#filter-ticker');
+      if (input) input.value = ticker;
+      state.lastCommand = `ticker ${ticker}`;
+      await refreshSnapshot();
+    });
+  });
+  qs('#content')?.querySelectorAll('.case-label-btn[data-label]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const ticker = button.getAttribute('data-ticker') || '';
+      const label = button.getAttribute('data-label') || '';
+      const eventId = button.getAttribute('data-event-id') || '';
+      const action = button.getAttribute('data-label-action') || 'execute';
+      if (!ticker || !label) {
+        setCommandStatus('Pick a discovery ticker before labeling.');
+        return;
+      }
+      const parts = ['label', ticker, label];
+      if (eventId) parts.push('--event-id', eventId);
+      if (action === 'execute') parts.push('--execute');
+      const command = parts.join(' ');
+      state.lastCommand = command;
+      setCommandStatus(
+        action === 'execute'
+          ? `Writing label ${label} for ${ticker}...`
+          : `Previewing label ${label} for ${ticker}...`,
+      );
+      try {
+        const result = await invoke('execute_dashboard_command', {
+          command,
+          input: filterInput(),
+        });
+        const message = result?.message || dashboardCommandResultMessage(result);
+        await refreshSnapshot();
+        setCommandStatus(message);
+      } catch (error) {
+        setCommandStatus(`Label failed: ${error?.message || error}`);
+      }
     });
   });
 }
