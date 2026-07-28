@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager, State};
 
-const TRADING_WORKBENCH_TITLE: &str = "MarketRadar Trading Workbench";
+const TRADING_WORKBENCH_TITLE: &str = "MarketRadar";
+const LEGACY_WORKBENCH_ENV: &str = "CATALYST_ENABLE_LEGACY_WORKBENCH";
 
 #[derive(Clone, Debug, Serialize)]
 struct PageInfo {
@@ -32,6 +33,7 @@ struct DesktopConfig {
     source_label: String,
     repo_root: String,
     pages: Vec<PageInfo>,
+    legacy_workbench_enabled: bool,
     platform: TradingPlatformManifest,
     automation: AutomationManifest,
     data_contract: DashboardDataContract,
@@ -297,8 +299,19 @@ fn main() {
         .expect("error while running MarketRadar Trading Workbench");
 }
 
+fn legacy_workbench_enabled() -> bool {
+    match env::var(LEGACY_WORKBENCH_ENV) {
+        Ok(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        }
+        Err(_) => false,
+    }
+}
+
 fn build_desktop_config(args: &DesktopArgs, repo_root: &Path) -> DesktopConfig {
     let source = snapshot_source(args, repo_root);
+    let legacy = legacy_workbench_enabled();
     DesktopConfig {
         schema_version: "dashboard-ui-manifest-v1",
         external_calls_made: 0,
@@ -308,6 +321,7 @@ fn build_desktop_config(args: &DesktopArgs, repo_root: &Path) -> DesktopConfig {
         source_label: source.label(),
         repo_root: repo_root.display().to_string(),
         pages: page_infos(),
+        legacy_workbench_enabled: legacy,
         platform: trading_platform_manifest(),
         automation: automation_manifest(),
         data_contract: dashboard_data_contract(),
@@ -347,13 +361,21 @@ fn ensure_selected_page(value: &mut Value, page: &str) {
 }
 
 fn initial_page_key(raw_page: Option<&str>) -> String {
-    // Phase 4: event-first product defaults to World Events discovery, not ops workbench.
+    // Event-first product defaults to World Events discovery, not ops workbench.
     page_request(raw_page.unwrap_or("world-events")).selected_page
 }
 
 fn page_request(raw_page: &str) -> PageRequest {
     let trimmed = raw_page.trim();
+    let legacy = legacy_workbench_enabled();
     if let Some(ticker) = detail_suffix(trimmed, "candidate:") {
+        if !legacy {
+            return PageRequest {
+                snapshot_page: Page::WorldEvents,
+                selected_page: Page::WorldEvents.key().to_string(),
+                detail_ticker: None,
+            };
+        }
         let ticker = ticker.to_ascii_uppercase();
         return PageRequest {
             snapshot_page: Page::Overview,
@@ -362,6 +384,13 @@ fn page_request(raw_page: &str) -> PageRequest {
         };
     }
     if let Some(alert_id) = detail_suffix(trimmed, "alert:") {
+        if !legacy {
+            return PageRequest {
+                snapshot_page: Page::WorldEvents,
+                selected_page: Page::WorldEvents.key().to_string(),
+                detail_ticker: None,
+            };
+        }
         return PageRequest {
             snapshot_page: Page::Alerts,
             selected_page: format!("alert:{alert_id}"),
@@ -369,6 +398,13 @@ fn page_request(raw_page: &str) -> PageRequest {
         };
     }
     let page = Page::from_input(trimmed);
+    if page.is_deprecated() && !legacy {
+        return PageRequest {
+            snapshot_page: Page::WorldEvents,
+            selected_page: Page::WorldEvents.key().to_string(),
+            detail_ticker: None,
+        };
+    }
     PageRequest {
         snapshot_page: page,
         selected_page: page.key().to_string(),
@@ -751,8 +787,10 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn page_infos() -> Vec<PageInfo> {
+    let legacy = legacy_workbench_enabled();
     Page::ALL
         .iter()
+        .filter(|page| legacy || !page.is_deprecated())
         .map(|page| PageInfo {
             key: page.key(),
             label: page.label(),
@@ -1534,6 +1572,28 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
 mod tests {
     use super::*;
 
+    /// Serialize process-env mutation across tests (set_var is process-global).
+    static LEGACY_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_legacy_workbench<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
+        let _guard = LEGACY_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // SAFETY: unit tests intentionally toggle process env under a mutex.
+        unsafe {
+            if enabled {
+                std::env::set_var(LEGACY_WORKBENCH_ENV, "1");
+            } else {
+                std::env::remove_var(LEGACY_WORKBENCH_ENV);
+            }
+        }
+        let result = f();
+        unsafe {
+            std::env::remove_var(LEGACY_WORKBENCH_ENV);
+        }
+        result
+    }
+
     #[test]
     fn default_command_uses_local_snapshot_contract() {
         let command = default_snapshot_command(Path::new("C:/repo/MarketRadar"));
@@ -1565,18 +1625,32 @@ mod tests {
     }
 
     #[test]
-    fn page_manifest_exposes_stable_automation_ids() {
-        let pages = page_infos();
+    fn page_manifest_default_is_discovery_only() {
+        // Default product nav: World Events + Help (legacy workbench env off).
+        with_legacy_workbench(false, || {
+            let pages = page_infos();
+            assert_eq!(pages.len(), 2);
+            assert!(pages.iter().any(|page| page.test_id == "nav-page-world-events"));
+            assert!(pages.iter().any(|page| page.test_id == "nav-page-help"));
+            assert!(!pages.iter().any(|page| page.test_id == "nav-page-overview"));
+        });
+    }
 
-        assert!(pages.iter().any(|page| page.test_id == "nav-page-overview"));
-        assert!(pages.iter().any(|page| page.shortcut == "Ctrl+A"));
-        assert!(pages.iter().any(|page| page.test_id == "nav-page-themes"));
-        assert!(
-            pages
-                .iter()
-                .any(|page| page.test_id == "nav-page-validation")
-        );
-        assert!(pages.iter().any(|page| page.test_id == "nav-page-costs"));
+    #[test]
+    fn page_manifest_exposes_legacy_pages_when_enabled() {
+        with_legacy_workbench(true, || {
+            let pages = page_infos();
+            assert!(pages.len() > 2);
+            assert!(pages.iter().any(|page| page.test_id == "nav-page-overview"));
+            assert!(pages.iter().any(|page| page.shortcut == "Ctrl+A"));
+            assert!(pages.iter().any(|page| page.test_id == "nav-page-themes"));
+            assert!(
+                pages
+                    .iter()
+                    .any(|page| page.test_id == "nav-page-validation")
+            );
+            assert!(pages.iter().any(|page| page.test_id == "nav-page-costs"));
+        });
     }
 
     #[test]
@@ -1727,7 +1801,9 @@ mod tests {
         assert_eq!(payload["schema_version"], "dashboard-ui-manifest-v1");
         assert_eq!(payload["external_calls_made"], 0);
         assert_eq!(payload["app_name"], TRADING_WORKBENCH_TITLE);
+        assert_eq!(payload["app_name"], "MarketRadar");
         assert_eq!(payload["initial_page"], "world-events");
+        assert_eq!(payload["legacy_workbench_enabled"], false);
         assert_eq!(
             payload["source_label"],
             "command catalyst-radar dashboard-snapshot --json --fast"
@@ -1774,55 +1850,83 @@ mod tests {
     }
 
     #[test]
-    fn page_request_preserves_candidate_detail_refresh() {
-        let request = page_request(" candidate:msft ");
+    fn page_request_redirects_deprecated_when_legacy_off() {
+        with_legacy_workbench(false, || {
+            let request = page_request("safe-run");
+            assert_eq!(request.snapshot_page, Page::WorldEvents);
+            assert_eq!(request.selected_page, "world-events");
 
-        assert_eq!(request.snapshot_page, Page::Overview);
-        assert_eq!(request.selected_page, "candidate:MSFT");
-        assert_eq!(request.detail_ticker.as_deref(), Some("MSFT"));
+            let candidate = page_request(" candidate:msft ");
+            assert_eq!(candidate.snapshot_page, Page::WorldEvents);
+            assert_eq!(candidate.selected_page, "world-events");
+            assert!(candidate.detail_ticker.is_none());
+
+            let alert = page_request(" Alert:demo-alert-1 ");
+            assert_eq!(alert.snapshot_page, Page::WorldEvents);
+            assert_eq!(alert.selected_page, "world-events");
+        });
     }
 
     #[test]
-    fn page_request_preserves_alert_detail_refresh() {
-        let request = page_request(" Alert:demo-alert-1 ");
-
-        assert_eq!(request.snapshot_page, Page::Alerts);
-        assert_eq!(request.selected_page, "alert:demo-alert-1");
-        assert_eq!(request.detail_ticker, None);
+    fn page_request_preserves_candidate_detail_refresh_when_legacy_on() {
+        with_legacy_workbench(true, || {
+            let request = page_request(" candidate:msft ");
+            assert_eq!(request.snapshot_page, Page::Overview);
+            assert_eq!(request.selected_page, "candidate:MSFT");
+            assert_eq!(request.detail_ticker.as_deref(), Some("MSFT"));
+        });
     }
 
     #[test]
-    fn page_request_canonicalizes_normal_page_aliases() {
-        let request = page_request("safe-run");
-
-        assert_eq!(request.snapshot_page, Page::Run);
-        assert_eq!(request.selected_page, "run");
-        assert_eq!(request.detail_ticker, None);
-
-        let platform_request = page_request("trade-planner");
-        assert_eq!(platform_request.snapshot_page, Page::TradePlanner);
-        assert_eq!(platform_request.selected_page, "trade-planner");
-        assert_eq!(platform_request.detail_ticker, None);
+    fn page_request_preserves_alert_detail_refresh_when_legacy_on() {
+        with_legacy_workbench(true, || {
+            let request = page_request(" Alert:demo-alert-1 ");
+            assert_eq!(request.snapshot_page, Page::Alerts);
+            assert_eq!(request.selected_page, "alert:demo-alert-1");
+            assert_eq!(request.detail_ticker, None);
+        });
     }
 
     #[test]
-    fn initial_page_key_preserves_candidate_detail_arg() {
-        assert_eq!(initial_page_key(Some(" candidate:msft ")), "candidate:MSFT");
+    fn page_request_canonicalizes_normal_page_aliases_when_legacy_on() {
+        with_legacy_workbench(true, || {
+            let request = page_request("safe-run");
+            assert_eq!(request.snapshot_page, Page::Run);
+            assert_eq!(request.selected_page, "run");
+            assert_eq!(request.detail_ticker, None);
+
+            let platform_request = page_request("trade-planner");
+            assert_eq!(platform_request.snapshot_page, Page::TradePlanner);
+            assert_eq!(platform_request.selected_page, "trade-planner");
+            assert_eq!(platform_request.detail_ticker, None);
+        });
     }
 
     #[test]
-    fn initial_page_key_preserves_alert_detail_arg() {
-        assert_eq!(
-            initial_page_key(Some(" Alert:demo-alert-1 ")),
-            "alert:demo-alert-1"
-        );
+    fn initial_page_key_preserves_candidate_detail_arg_when_legacy_on() {
+        with_legacy_workbench(true, || {
+            let key = initial_page_key(Some(" candidate:msft "));
+            assert_eq!(key, "candidate:MSFT");
+        });
+    }
+
+    #[test]
+    fn initial_page_key_preserves_alert_detail_arg_when_legacy_on() {
+        with_legacy_workbench(true, || {
+            let key = initial_page_key(Some(" Alert:demo-alert-1 "));
+            assert_eq!(key, "alert:demo-alert-1");
+        });
     }
 
     #[test]
     fn initial_page_key_canonicalizes_normal_page_aliases() {
-        assert_eq!(initial_page_key(Some("safe-run")), "run");
-        assert_eq!(initial_page_key(None), "world-events");
-        assert_eq!(initial_page_key(Some("events")), "world-events");
+        with_legacy_workbench(false, || {
+            // Deprecated pages redirect to world-events when legacy is off.
+            assert_eq!(initial_page_key(Some("safe-run")), "world-events");
+            assert_eq!(initial_page_key(None), "world-events");
+            assert_eq!(initial_page_key(Some("events")), "world-events");
+            assert_eq!(initial_page_key(Some("help")), "help");
+        });
     }
 
     #[test]
