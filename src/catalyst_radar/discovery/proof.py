@@ -137,7 +137,7 @@ def build_discovery_proof(
         )
         status = "ready"
 
-    return {
+    payload = {
         "schema_version": PROOF_SCHEMA,
         "status": status,
         "generated_at": datetime.now(tz=UTC).isoformat(),
@@ -153,3 +153,10 @@ def build_discovery_proof(
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
+    try:
+        from catalyst_radar.discovery.outcomes import attach_outcomes_to_proof
+
+        return attach_outcomes_to_proof(payload, engine=engine, limit=limit)
+    except Exception:
+        payload["outcomes"] = {"status": "unavailable", "count": 0, "rows": []}
+        return payload

@@ -48,6 +48,12 @@ catalyst-radar discovery-label --ticker MU --label good-research --preview --jso
 
 6. Confirm interesting leads with primary sources before any capital decision.
 7. Use **4 · Proof** on the desktop to see discovery_row labels over time.
+8. After bars advance, update forward outcomes:
+
+```powershell
+catalyst-radar discovery-outcomes --preview --json
+catalyst-radar discovery-outcomes --execute --json
+```
 
 Scope and removal plan:
 

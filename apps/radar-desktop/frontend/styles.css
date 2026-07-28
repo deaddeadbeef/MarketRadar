@@ -1971,6 +1971,13 @@ dialog::backdrop {
   margin-bottom: 10px;
 }
 
+.proof-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
 .proof-row {
   display: grid;
   grid-template-columns: 64px 110px 72px minmax(0, 1fr);

@@ -8,19 +8,43 @@ from catalyst_radar.textint.ontology import _parse_yaml_subset
 
 # Built-in second-order maps for common world-event themes when theme_peers is thin.
 DEFAULT_THEME_TICKERS: dict[str, tuple[str, ...]] = {
-    "energy_security": ("XOM", "CVX", "COP", "SLB", "HAL"),
-    "shipping": ("FRO", "STNG", "DAC", "ZIM"),
-    "defense": ("LMT", "RTX", "NOC", "GD", "HII"),
-    "semiconductor": ("NVDA", "TSM", "ASML", "AMAT", "LRCX", "KLAC", "MU"),
-    "memory": ("MU", "WDC", "STX"),
-    "ai_infrastructure": ("NVDA", "AVGO", "MRVL", "ANET", "SMCI"),
+    "energy_security": ("XOM", "CVX", "COP", "SLB", "HAL", "OXY", "BKR"),
+    "shipping": ("FRO", "STNG", "DAC", "ZIM", "SBLK", "GOGL"),
+    "diesel": ("XOM", "CVX", "VLO", "MPC", "PSX"),
+    "geopolitics": ("LMT", "RTX", "NOC", "XOM", "GLD"),
+    "defense": ("LMT", "RTX", "NOC", "GD", "HII", "LHX"),
+    "semiconductor": ("NVDA", "TSM", "ASML", "AMAT", "LRCX", "KLAC", "MU", "AVGO"),
+    "memory": ("MU", "WDC", "STX", "SNDK"),
+    "hbm": ("MU", "NVDA", "TSM", "ASML"),
+    "ai_infrastructure": ("NVDA", "AVGO", "MRVL", "ANET", "SMCI", "DELL"),
     "ai_interconnect": ("COHR", "LITE", "CRDO", "CIEN", "GLW"),
+    "consumer_electronics": ("AAPL", "HPQ", "DELL", "SONY"),
     "onshoring": ("CAT", "DE", "ETN", "EMR", "PWR"),
-    "datacenter_power": ("ETN", "VRT", "PWR", "HUBB"),
+    "policy": ("XOM", "CVX", "SLB", "CAT"),
+    "datacenter_power": ("ETN", "VRT", "PWR", "HUBB", "CEG"),
     "tariffs": ("CAT", "DE", "UPS", "FDX"),
     "china_export": ("TSLA", "F", "GM", "ALB"),
     "gold": ("GLD", "NEM", "AEM"),
 }
+
+# Mega-caps often already reflect world narratives; demote when ranking lag.
+MEGA_CAP_TICKERS: frozenset[str] = frozenset(
+    {
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "GOOGL",
+        "GOOG",
+        "META",
+        "TSLA",
+        "BRK.B",
+        "BRK.A",
+        "JPM",
+        "V",
+        "MA",
+    }
+)
 
 
 def load_theme_ticker_map(theme_peers_path: str | Path | None = None) -> dict[str, tuple[str, ...]]:

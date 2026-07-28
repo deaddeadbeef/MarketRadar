@@ -8,7 +8,11 @@ from typing import Any
 
 from sqlalchemy.engine import Engine
 
-from catalyst_radar.discovery.mapper import load_theme_ticker_map, map_event_tickers
+from catalyst_radar.discovery.mapper import (
+    MEGA_CAP_TICKERS,
+    load_theme_ticker_map,
+    map_event_tickers,
+)
 from catalyst_radar.discovery.models import (
     DISCOVERY_BRIEF_SCHEMA,
     WORLD_EVENTS_SCHEMA,
@@ -339,12 +343,20 @@ def _discovery_row(
         2,
     )
     if role == "secondary":
-        discovery_score = round(discovery_score * 0.92, 2)
+        discovery_score = round(discovery_score * 0.88, 2)
     # Prefer under-reacted names when reaction data is present.
-    if quiet_tape:
-        discovery_score = round(discovery_score + 8.0, 2)
+    if quiet_tape and join_status == "joined" and gap >= 10:
+        discovery_score = round(discovery_score + 12.0, 2)
+    elif quiet_tape:
+        discovery_score = round(discovery_score + 6.0, 2)
     elif join_status == "joined" and reaction >= 55:
-        discovery_score = round(discovery_score * 0.75, 2)
+        discovery_score = round(discovery_score * 0.70, 2)
+    # Mega-caps often already price world narratives; demote lag ranking.
+    if ticker in MEGA_CAP_TICKERS:
+        if join_status == "joined" and (reaction >= 35 or (ret_5d_pct is not None and abs(ret_5d_pct) >= 4)):
+            discovery_score = round(discovery_score * 0.62, 2)
+        else:
+            discovery_score = round(discovery_score * 0.85, 2)
 
     return {
         "ticker": ticker,

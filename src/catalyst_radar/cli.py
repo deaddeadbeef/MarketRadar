@@ -1332,6 +1332,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     product_scope.add_argument("--json", action="store_true")
 
+    discovery_outcomes = subparsers.add_parser(
+        "discovery-outcomes",
+        help="Preview/update forward outcomes for discovery_row value-ledger labels.",
+    )
+    discovery_outcomes.add_argument("--database-url")
+    discovery_outcomes.add_argument("--limit", type=int, default=50)
+    discovery_outcomes.add_argument(
+        "--outcome-available-at",
+        type=_parse_aware_datetime,
+        help="Outcome cutoff (default: now).",
+    )
+    discovery_outcomes_mode = discovery_outcomes.add_mutually_exclusive_group()
+    discovery_outcomes_mode.add_argument("--preview", dest="execute", action="store_false")
+    discovery_outcomes_mode.add_argument("--execute", action="store_true")
+    discovery_outcomes.set_defaults(execute=False)
+    discovery_outcomes.add_argument("--json", action="store_true")
+
     discovery_label = subparsers.add_parser(
         "discovery-label",
         help="Preview/write a value-ledger discovery_row label for a discovery lead.",
@@ -1673,6 +1690,31 @@ def main(argv: list[str] | None = None) -> int:
                     f"{row['id']}:{row['status']}" for row in payload["removal_phases"]
                 )
             )
+        return 0
+
+    if args.command == "discovery-outcomes":
+        from catalyst_radar.discovery.outcomes import build_discovery_outcomes_update
+
+        create_schema(engine)
+        payload = build_discovery_outcomes_update(
+            engine=engine,
+            execute=bool(args.execute),
+            limit=int(args.limit or 50),
+            outcome_available_at=args.outcome_available_at,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            counts = payload.get("counts") if isinstance(payload.get("counts"), Mapping) else {}
+            print(
+                "discovery_outcomes "
+                f"mode={payload.get('mode')} "
+                f"ledger={payload.get('discovery_ledger_count')} "
+                f"computed={counts.get('computed')} "
+                f"insufficient={counts.get('insufficient_data')} "
+                f"writes={payload.get('db_writes_made')}"
+            )
+            print(f"next={payload.get('next_action')}")
         return 0
 
     deprecated_warning = warn_if_deprecated_cli(str(args.command or ""))

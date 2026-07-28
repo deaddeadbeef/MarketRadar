@@ -1708,18 +1708,26 @@ function renderDiscoveryProof(snapshot, discovery) {
   const labelBits = Object.entries(byLabel)
     .map(([k, v]) => `${k}:${v}`)
     .join(' · ');
+  const outcomes = proof.outcomes && typeof proof.outcomes === 'object' ? proof.outcomes : {};
+  const outcomeRows = Array.isArray(outcomes.rows) ? outcomes.rows : [];
+  const outcomeByLedger = new Map(
+    outcomeRows.map((row) => [String(row.value_ledger_entry_id || ''), row]),
+  );
   const rows = entries.slice(0, 12).map((row) => {
     const ticker = compact(row.ticker, '—');
     const label = compact(row.label, '—');
     const gap = row.emotion_reaction_gap;
     const when = compact(row.available_at || row.created_at, '');
     const eventTitle = compact(row.payload?.event_title || row.notes, '');
+    const outcome = outcomeByLedger.get(String(row.id || '')) || null;
+    const ret5 = outcome?.return_5d;
+    const retText = ret5 == null ? '' : `5d ${(Number(ret5) * 100).toFixed(1)}%`;
     return `
       <button type="button" class="proof-row" data-ticker="${escapeHtml(ticker)}" data-testid="proof-row-${escapeHtml(ticker)}">
         <span class="proof-ticker">${escapeHtml(ticker)}</span>
         <span class="proof-label">${escapeHtml(label)}</span>
         <span class="proof-gap">${escapeHtml(gap == null ? '—' : String(gap))}</span>
-        <span class="proof-meta muted">${escapeHtml(eventTitle || when || 'discovery_row')}</span>
+        <span class="proof-meta muted">${escapeHtml(retText || eventTitle || when || 'discovery_row')}</span>
       </button>
     `;
   }).join('') || '<p class="muted">No discovery labels yet. Use the disposition buttons on a case.</p>';
@@ -1734,11 +1742,15 @@ function renderDiscoveryProof(snapshot, discovery) {
         <div><b>${escapeHtml(String(summary.total ?? entries.length ?? 0))}</b><span>labels</span></div>
         <div><b>${escapeHtml(String(summary.claimable_count ?? 0))}</b><span>claimable</span></div>
         <div><b>$${escapeHtml(String(summary.claimable_value_usd ?? 0))}</b><span>est. value</span></div>
-        <div><b>${escapeHtml(String(summary.unique_tickers ?? 0))}</b><span>tickers</span></div>
+        <div><b>${escapeHtml(String(summary.outcome_computed_count ?? outcomes.computed_count ?? 0))}</b><span>outcomes</span></div>
       </div>
       ${labelBits ? `<p class="muted proof-label-mix">${escapeHtml(labelBits)}</p>` : ''}
       <div class="proof-list">${rows}</div>
-      <p class="muted">${escapeHtml(compact(proof.next_action, 'Label a few leads to build proof.'))}</p>
+      <div class="proof-actions">
+        <button type="button" class="case-label-btn" data-outcomes-action="preview" title="Preview forward outcomes from local bars">preview outcomes</button>
+        <button type="button" class="case-label-btn is-suggested" data-outcomes-action="execute" title="Write forward outcomes for labeled discoveries">update outcomes</button>
+      </div>
+      <p class="muted">${escapeHtml(compact(outcomes.next_action || proof.next_action, 'Label a few leads to build proof.'))}</p>
     </section>
   `;
 }
@@ -1975,6 +1987,29 @@ function bindDiscoveryInteractions() {
         setCommandStatus(message);
       } catch (error) {
         setCommandStatus(`Label failed: ${error?.message || error}`);
+      }
+    });
+  });
+  qs('#content')?.querySelectorAll('[data-outcomes-action]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const action = button.getAttribute('data-outcomes-action') || 'preview';
+      const command = action === 'execute' ? 'outcomes --execute' : 'outcomes';
+      state.lastCommand = command;
+      setCommandStatus(
+        action === 'execute'
+          ? 'Updating discovery outcomes from local bars...'
+          : 'Previewing discovery outcomes...',
+      );
+      try {
+        const result = await invoke('execute_dashboard_command', {
+          command,
+          input: filterInput(),
+        });
+        const message = result?.message || dashboardCommandResultMessage(result);
+        await refreshSnapshot();
+        setCommandStatus(message);
+      } catch (error) {
+        setCommandStatus(`Outcomes failed: ${error?.message || error}`);
       }
     });
   });
