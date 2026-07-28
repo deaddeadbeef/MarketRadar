@@ -112,6 +112,7 @@ ACTIVE_CLI_COMMANDS: frozenset[str] = frozenset(
         "discovery-ingest",
         "discovery-case",
         "discovery-label",
+        "discovery-outcomes",
         "product-scope",
         "init-db",
     }
@@ -193,8 +194,8 @@ REMOVAL_PHASES: tuple[dict[str, Any], ...] = (
     {
         "id": "D3",
         "name": "CLI warnings",
-        "status": "planned",
-        "summary": "Warn on deprecated commands; CI import guard for discovery.",
+        "status": "done",
+        "summary": "Warn on deprecated commands; discovery import guard unit test.",
     },
     {
         "id": "D4",

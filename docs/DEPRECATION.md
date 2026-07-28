@@ -116,8 +116,9 @@ Runtime: `catalyst-radar product-scope --json`.
 
 ### Phase D3 — CLI warnings
 
-- Emit `DeprecationWarning` / stderr notice when deprecated commands run
-- CI check: no new imports into deprecated packages from `discovery/`
+- [x] Emit stderr notice when deprecated commands run
+- [x] Unit guard: `discovery/` does not import brokers/trading/ipo/alerts
+- [x] `discovery-outcomes` active CLI for forward proof
 
 ### Phase D4 — Code quarantine
 

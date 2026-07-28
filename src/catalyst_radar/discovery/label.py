@@ -48,6 +48,8 @@ def build_discovery_label_payload(
 
     discovery = case.get("discovery") if isinstance(case.get("discovery"), Mapping) else {}
     artifact_id = f"{discovery.get('event_id')}:{str(ticker).upper()}"
+    # Anchor outcomes to event/discovery date when present so forward returns work.
+    as_of = _date_from_discovery(discovery, case)
     entry = build_value_ledger_entry(
         artifact_type="discovery_row",
         artifact_id=artifact_id,
@@ -56,6 +58,7 @@ def build_discovery_label_payload(
         confidence=confidence,
         source="discovery-label",
         ticker=str(ticker).upper(),
+        as_of=as_of,
         priced_in_status=str(discovery.get("priced_in_status") or "") or None,
         emotion_score=_optional_float(discovery.get("emotion_score")),
         reaction_score=_optional_float(discovery.get("reaction_score")),
@@ -71,6 +74,7 @@ def build_discovery_label_payload(
             "usefulness": discovery.get("usefulness"),
             "confirmation": case.get("confirmation"),
             "case_schema": case.get("schema_version"),
+            "as_of": as_of.isoformat() if as_of else None,
         },
         available_at=datetime.now(tz=UTC),
     )
@@ -107,3 +111,28 @@ def _optional_float(value: object) -> float | None:
         return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
+
+
+def _date_from_discovery(
+    discovery: Mapping[str, Any],
+    case: Mapping[str, Any],
+):
+    from datetime import date
+
+    for key in ("as_of", "available_at", "events_generated_at"):
+        raw = discovery.get(key)
+        if raw is None and key == "events_generated_at":
+            raw = case.get("generated_at")
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if not text:
+            continue
+        try:
+            if "T" in text:
+                return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            continue
+    # Fall back to today so outcome machinery has an anchor.
+    return datetime.now(tz=UTC).date()

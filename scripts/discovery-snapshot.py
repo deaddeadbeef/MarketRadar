@@ -134,6 +134,41 @@ def _handle_command(
     event_id = None
     execute = False
 
+    if head in {"outcomes", "discovery-outcomes", "discovery_outcomes"}:
+        if engine is None:
+            return _emit(
+                {
+                    "schema_version": "dashboard-command-result-v1",
+                    "status": "error",
+                    "message": "Local database unavailable; cannot update outcomes.",
+                    "external_calls_made": 0,
+                    "db_writes_made": 0,
+                    "investment_advice": False,
+                }
+            )
+        execute = any(tok.lower() in {"--execute", "-x"} for tok in tokens[1:])
+        from catalyst_radar.discovery.outcomes import build_discovery_outcomes_update
+
+        result = build_discovery_outcomes_update(engine=engine, execute=execute, limit=50)
+        counts = result.get("counts") if isinstance(result.get("counts"), dict) else {}
+        return _emit(
+            {
+                "schema_version": "dashboard-command-result-v1",
+                "status": "ok",
+                "message": (
+                    f"Discovery outcomes {result.get('mode')}: "
+                    f"computed={counts.get('computed')} "
+                    f"insufficient={counts.get('insufficient_data')} "
+                    f"writes={result.get('db_writes_made')}"
+                ),
+                "page": "world-events",
+                "result": result,
+                "external_calls_made": 0,
+                "db_writes_made": int(result.get("db_writes_made") or 0),
+                "investment_advice": False,
+            }
+        )
+
     if head in {"label", "discovery-label", "discovery_label"}:
         rest = tokens[1:]
         i = 0
@@ -180,8 +215,9 @@ def _handle_command(
                 "schema_version": "dashboard-command-result-v1",
                 "status": "error",
                 "message": (
-                    "Unknown discovery command. Use: label TICKER "
-                    "good-research|noisy|too-late|false-positive|useful [--execute]"
+                    "Unknown discovery command. Use: "
+                    "label TICKER good-research|noisy|too-late|false-positive|useful [--execute] "
+                    "OR outcomes [--execute]"
                 ),
                 "external_calls_made": 0,
                 "db_writes_made": 0,

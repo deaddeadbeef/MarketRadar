@@ -1,25 +1,41 @@
+# Theme → ticker maps for event-first discovery.
+# Merged with built-in DEFAULT_THEME_TICKERS in discovery.mapper.
 themes:
-  ai_infrastructure_storage:
-    sectors:
-      - Technology
-    industries:
-      - Software
-      - Semiconductors
-    tickers:
-      - AAA
-      - CCC
-    peers:
-      - MSFT
-      - NVDA
-      - MU
+  energy_security:
+    tickers: [XOM, CVX, COP, SLB, HAL, OXY, BKR]
+    peers: [VLO, MPC, PSX]
+  shipping:
+    tickers: [FRO, STNG, DAC, ZIM]
+    peers: [SBLK, GOGL, EURN]
+  diesel:
+    tickers: [XOM, CVX, VLO, MPC, PSX]
+  defense:
+    tickers: [LMT, RTX, NOC, GD, HII, LHX]
+  semiconductor:
+    tickers: [NVDA, TSM, ASML, AMAT, LRCX, KLAC, MU, AVGO]
+    peers: [AMD, INTC, QCOM]
+  memory:
+    tickers: [MU, WDC, STX, SNDK]
+  hbm:
+    tickers: [MU, NVDA, TSM, ASML]
+  ai_infrastructure:
+    tickers: [NVDA, AVGO, MRVL, ANET, SMCI, DELL]
+    peers: [MSFT, GOOGL, AMZN]
+  ai_interconnect:
+    tickers: [COHR, LITE, CRDO, CIEN, GLW]
+  consumer_electronics:
+    tickers: [AAPL, HPQ, DELL]
+  onshoring:
+    tickers: [CAT, DE, ETN, EMR, PWR]
+  policy:
+    tickers: [XOM, CVX, SLB, CAT]
   datacenter_power:
-    sectors:
-      - Industrials
-    industries:
-      - Construction
-    tickers:
-      - BBB
-    peers:
-      - ETN
-      - PWR
-      - VRT
+    tickers: [ETN, VRT, PWR, HUBB, CEG]
+  tariffs:
+    tickers: [CAT, DE, UPS, FDX]
+  china_export:
+    tickers: [TSLA, F, GM, ALB]
+  gold:
+    tickers: [GLD, NEM, AEM]
+  geopolitics:
+    tickers: [LMT, RTX, NOC, XOM, GLD]

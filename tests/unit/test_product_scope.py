@@ -22,6 +22,8 @@ def test_product_scope_payload_lists_event_first_core() -> None:
     phases = {row["id"]: row["status"] for row in payload["removal_phases"]}
     assert phases["D1"] == "done"
     assert phases["D2"] == "done"
+    assert phases["D3"] == "done"
+    assert "discovery-outcomes" in payload["cli_commands"]["active"]
 
 
 def test_page_and_package_status() -> None:

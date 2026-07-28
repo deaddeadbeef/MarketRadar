@@ -78,9 +78,15 @@ def build_discovery_case_file(
     lag_flag = _price_not_fully_discovered(primary)
 
     usefulness = str(primary.get("usefulness") or "research_only")
-    if confirmation.get("status") == "primary_confirmed" and usefulness == "research_only":
+    confirm_status = str(confirmation.get("status") or "")
+    if (
+        confirm_status in {"primary_confirmed", "corroborated_reputable"}
+        and usefulness == "research_only"
+    ):
         # Still not investment advice; only raise attention band.
-        usefulness = "watch" if float(primary.get("emotion_reaction_gap") or 0) >= 15 else usefulness
+        usefulness = (
+            "watch" if float(primary.get("emotion_reaction_gap") or 0) >= 15 else usefulness
+        )
 
     price_reaction = {
         "join_status": primary.get("join_status"),
@@ -433,6 +439,15 @@ def _trust_readout(*, confirm_status: str, usefulness: str) -> dict[str, object]
                 "never auto-escalates to capital decisions."
             ),
         }
+    if confirm_status == "corroborated_reputable":
+        return {
+            "id": "corroborated_reputable",
+            "label": "Reputable wire on feed (still not primary filing)",
+            "summary": (
+                f"World-event sources include reputable-wire URLs. Trust band is "
+                f"{usefulness}; still confirm SEC/primary before capital review."
+            ),
+        }
     if confirm_status == "corroborated_social":
         return {
             "id": "corroborated_social",
@@ -696,6 +711,21 @@ def _events_for_discoveries(
     return events
 
 
+_REPUTABLE_HOST_MARKERS: tuple[str, ...] = (
+    "reuters.com",
+    "bloomberg.com",
+    "wsj.com",
+    "ft.com",
+    "apnews.com",
+    "nytimes.com",
+    "cnbc.com",
+    "sec.gov",
+    "edgar",
+    "businesswire.com",
+    "prnewswire.com",
+)
+
+
 def _confirmation_status(
     *,
     engine: Engine | None,
@@ -703,9 +733,32 @@ def _confirmation_status(
     world_events: Sequence[Mapping[str, object]],
 ) -> dict[str, object]:
     social_sources = 0
+    reputable_hits: list[dict[str, object]] = []
+    high_engagement = 0
     for event in world_events:
         for source in _rows(event.get("sources")):
             provider = str(source.get("provider") or "").casefold()
+            url = str(source.get("url") or "").casefold()
+            author = str(source.get("author") or "")
+            engagement = source.get("engagement") if isinstance(source.get("engagement"), Mapping) else {}
+            likes = 0
+            views = 0
+            try:
+                likes = int(engagement.get("likes") or 0)
+                views = int(engagement.get("views") or 0)
+            except (TypeError, ValueError):
+                pass
+            if likes >= 100 or views >= 50_000:
+                high_engagement += 1
+            if any(marker in url for marker in _REPUTABLE_HOST_MARKERS):
+                reputable_hits.append(
+                    {
+                        "url": source.get("url"),
+                        "author": author,
+                        "provider": source.get("provider"),
+                        "event_id": event.get("id"),
+                    }
+                )
             if provider in {"x", "twitter", "social"} or str(event.get("source_category")) == "social":
                 social_sources += 1
 
@@ -716,6 +769,18 @@ def _confirmation_status(
     if primary_events:
         status = "primary_confirmed"
         detail = f"{len(primary_events)} local primary/regulatory event(s) found for {ticker}."
+    elif reputable_hits:
+        status = "corroborated_reputable"
+        detail = (
+            f"{len(reputable_hits)} reputable-wire URL(s) on the world-event feed; "
+            "still confirm filing/primary before capital review."
+        )
+    elif social_sources >= 2 and high_engagement >= 1:
+        status = "corroborated_social"
+        detail = (
+            "Multiple social sources with elevated engagement; "
+            "still needs primary/regulatory confirmation."
+        )
     elif social_sources >= 2:
         status = "corroborated_social"
         detail = "Multiple social sources; still needs primary confirmation."
@@ -730,9 +795,13 @@ def _confirmation_status(
         "status": status,
         "detail": detail,
         "social_source_count": social_sources,
+        "high_engagement_source_count": high_engagement,
+        "reputable_source_count": len(reputable_hits),
+        "reputable_sources": reputable_hits[:5],
         "primary_event_count": len(primary_events),
         "primary_events": primary_events[:5],
-        "allows_above_research_only": status == "primary_confirmed",
+        "allows_above_research_only": status
+        in {"primary_confirmed", "corroborated_reputable"},
     }
 
 
