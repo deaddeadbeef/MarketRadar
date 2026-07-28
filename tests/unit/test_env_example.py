@@ -21,6 +21,7 @@ def test_env_example_covers_live_activation_keys() -> None:
         "CATALYST_WORKER_OWNER",
         "CATALYST_WORKER_LOCK_NAME",
         "CATALYST_ENABLE_PREMIUM_LLM",
+        "CATALYST_ENABLE_LEGACY_WORKBENCH",
         "CATALYST_LLM_PROVIDER",
         "CATALYST_LLM_SKEPTIC_MODEL",
         "CATALYST_LLM_INPUT_COST_PER_1M",
@@ -48,6 +49,7 @@ def test_env_example_defaults_are_safe_fixture_and_dry_run() -> None:
     assert values["CATALYST_DAILY_EVENT_PROVIDER"] == "news_fixture"
     assert values["CATALYST_SEC_ENABLE_LIVE"] == "false"
     assert values["CATALYST_ENABLE_PREMIUM_LLM"] == "false"
+    assert values["CATALYST_ENABLE_LEGACY_WORKBENCH"] == "false"
     assert values["CATALYST_LLM_PROVIDER"] == "none"
     assert values["CATALYST_RUN_LLM"] == "false"
     assert values["CATALYST_LLM_DRY_RUN"] == "true"

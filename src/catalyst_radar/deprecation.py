@@ -187,8 +187,8 @@ REMOVAL_PHASES: tuple[dict[str, Any], ...] = (
     {
         "id": "D2",
         "name": "Default UX lockdown",
-        "status": "planned",
-        "summary": "Legacy workbench behind flag; discovery-only default nav.",
+        "status": "done",
+        "summary": "Legacy workbench behind CATALYST_ENABLE_LEGACY_WORKBENCH; discovery-only default nav.",
     },
     {
         "id": "D3",

@@ -1908,6 +1908,27 @@ dialog::backdrop {
   opacity: 0.85;
 }
 
+.goal-banner {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 72ch;
+}
+
+.goal-banner.attention {
+  border: 1px solid rgba(240, 180, 80, 0.35);
+  background: rgba(240, 180, 80, 0.1);
+  color: var(--ink);
+}
+
+.goal-banner.ok {
+  border: 1px solid rgba(120, 220, 160, 0.3);
+  background: rgba(80, 180, 120, 0.1);
+  color: var(--ink);
+}
+
 .discover-section.proof {
   margin-top: 8px;
 }

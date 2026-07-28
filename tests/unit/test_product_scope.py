@@ -19,6 +19,9 @@ def test_product_scope_payload_lists_event_first_core() -> None:
     assert "discovery-brief" in payload["cli_commands"]["active"]
     assert "broker" in payload["desktop_pages"]["deprecated"]
     assert payload["investment_advice"] is False
+    phases = {row["id"]: row["status"] for row in payload["removal_phases"]}
+    assert phases["D1"] == "done"
+    assert phases["D2"] == "done"
 
 
 def test_page_and_package_status() -> None:

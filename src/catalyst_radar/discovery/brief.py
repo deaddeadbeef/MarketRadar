@@ -135,13 +135,32 @@ def build_discovery_brief(
         for row in discoveries
         if row.get("join_status") == "missing_scan"
     ][:12]
+    join_coverage_pct = round(
+        (100.0 * joined_count / len(discoveries)) if discoveries else 0.0,
+        1,
+    )
+    no_db_count = sum(1 for row in discoveries if row.get("join_status") == "no_db")
     next_action, next_command = _next_operator_step(
         events_path=Path(events_path),
         freshness_status=freshness_status,
         missing_scan_count=missing_scan_count,
         missing_sample=missing_sample,
         discovery_count=len(discoveries),
+        join_coverage_pct=join_coverage_pct,
+        no_db_count=no_db_count,
     )
+    join_target_pct = 50.0
+    goal_status = {
+        "schema_version": "discovery-goal-status-v1",
+        "freshness_ok": freshness_status == "fresh",
+        "freshness_status": freshness_status,
+        "join_coverage_pct": join_coverage_pct,
+        "join_target_pct": join_target_pct,
+        "join_target_met": bool(discoveries) and join_coverage_pct >= join_target_pct,
+        "discovery_count": len(discoveries),
+        "quiet_tape_count": quiet_tape_count,
+        "investment_advice": False,
+    }
 
     return {
         "schema_version": DISCOVERY_BRIEF_SCHEMA,
@@ -168,13 +187,13 @@ def build_discovery_brief(
         "join_coverage": {
             "joined": joined_count,
             "missing_scan": missing_scan_count,
-            "no_db": sum(1 for row in discoveries if row.get("join_status") == "no_db"),
+            "no_db": no_db_count,
             "sample_missing_tickers": missing_sample,
-            "coverage_pct": round(
-                (100.0 * joined_count / len(discoveries)) if discoveries else 0.0,
-                1,
-            ),
+            "coverage_pct": join_coverage_pct,
+            "target_pct": join_target_pct,
+            "target_met": goal_status["join_target_met"],
         },
+        "goal_status": goal_status,
         "events": event_rows,
         "discoveries": discoveries,
         "headline": _headline(event_rows, discoveries, freshness_status=freshness_status),
@@ -493,32 +512,49 @@ def _next_operator_step(
     missing_scan_count: int,
     missing_sample: Sequence[str],
     discovery_count: int,
+    join_coverage_pct: float = 0.0,
+    no_db_count: int = 0,
 ) -> tuple[str, str]:
+    fill_cmd = (
+        "powershell -ExecutionPolicy Bypass -File scripts/fill-discovery-gaps.ps1 "
+        "-Execute -ConfirmExternalCall -CaptureDays 5"
+    )
     if freshness_status == "stale":
         return (
             "World-events file is stale. Refresh data/local/world_events.json "
             "from the Grok daily discovery task, then re-run discovery-brief.",
             f"catalyst-radar discovery-ingest --events {events_path} --validate-only --json",
         )
+    if no_db_count > 0 and missing_scan_count == 0:
+        return (
+            "Discovery has no local DB join. Load .env.local database URL and rescan "
+            "mapped tickers before trusting reaction gaps.",
+            fill_cmd,
+        )
     if missing_scan_count > 0:
         sample = ",".join(missing_sample[:8]) if missing_sample else "TICKER"
         return (
-            f"{missing_scan_count} discovery row(s) lack local scan/priced-in joins. "
-            "Import bars and run a mapped-ticker scan before trusting reaction gaps. "
+            f"{missing_scan_count} discovery row(s) lack local scan/priced-in joins "
+            f"(join coverage {join_coverage_pct:.0f}%, target 50%). "
+            "Run mapped bar fill + scan, then reopen World Events. "
             f"Sample missing: {sample}.",
-            (
-                "catalyst-radar discovery-brief --events "
-                f"{events_path} --json"
-            ),
+            fill_cmd,
         )
     if discovery_count == 0:
         return (
-            "No discoveries mapped. Expand themes/tickers in world-events JSON.",
+            "No discoveries mapped. Expand themes/tickers in world-events JSON "
+            "or refresh the Grok daily events feed.",
             f"catalyst-radar discovery-brief --events {events_path} --json",
         )
+    if join_coverage_pct < 50.0:
+        return (
+            f"Join coverage {join_coverage_pct:.0f}% is below the 50% goal for top leads. "
+            "Fill bars for mapped tickers and rescan, then label useful/noisy leads.",
+            fill_cmd,
+        )
     return (
-        "Review top discovery rows as research-only leads. "
-        "Confirm with primary sources before any capital decision.",
+        "Review top discovery rows as research-only leads, open a case, and label "
+        "from the Proof loop. Confirm with primary sources before any capital decision.",
         f"catalyst-radar discovery-brief --events {events_path} --json",
     )
 
