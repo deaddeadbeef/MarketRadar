@@ -160,7 +160,8 @@ impl Page {
             "f" | "features" => Page::Features,
             "journal" | "journals" | "trade_journal" | "decision_journal" => Page::Journal,
             "?" | "h" | "help" => Page::Help,
-            _ => Page::Overview,
+            // Event-first product default: unknown input lands on World Events.
+            _ => Page::WorldEvents,
         }
     }
 

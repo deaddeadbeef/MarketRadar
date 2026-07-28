@@ -106,17 +106,22 @@ Runtime: `catalyst-radar product-scope --json`.
 - [x] CLI stderr warning on deprecated commands
 - [x] Discovery-home nav limited to World Events + Help
 
-### Phase D2 — Default UX lockdown
+### Phase D2 — Default UX lockdown — **done**
 
-- Hide deprecated pages from discovery-mode nav (already mostly true)
-- Workbench nav groups deprecated pages under “Legacy”
-- Stop documenting residual-repair as Start Here
-- Optional env `CATALYST_ENABLE_LEGACY_WORKBENCH=false` default
+- Default desktop nav is **World Events + Help only**
+- Deprecated pages and candidate:/alert: detail routes redirect to World Events
+  unless `CATALYST_ENABLE_LEGACY_WORKBENCH` is truthy (`1`/`true`/`yes`/`on`)
+- Frontend `renderNav` filters to active pages unless `legacy_workbench_enabled`
+- TUI unknown page input defaults to World Events
+- Residual-repair is not Start Here (README event-first path only)
 
-### Phase D3 — CLI warnings
+### Phase D3 — CLI removal from default product — **done**
 
-- Emit `DeprecationWarning` / stderr notice when deprecated commands run
-- CI check: no new imports into deprecated packages from `discovery/`
+- Deprecated CLI commands are **hard-blocked** (exit 2) unless
+  `CATALYST_ENABLE_LEGACY_WORKBENCH` is truthy
+- When legacy is enabled, stderr deprecation warning still prints
+- Active discovery surface includes `discovery-from-x` (offline X → world-events)
+- Packages remain importable until D4/D5; product reachability is removed first
 
 ### Phase D4 — Code quarantine
 

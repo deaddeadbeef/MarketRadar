@@ -8,11 +8,15 @@ pulling the full dashboard graph.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from typing import Any
 
 SCOPE_VERSION = "event-first-discovery-v1"
 SCOPE_DATE = "2026-07-19"
+
+# Opt-in flag for deprecated workbench CLI/UI. Default product path has this off.
+LEGACY_WORKBENCH_ENV = "CATALYST_ENABLE_LEGACY_WORKBENCH"
 
 # --- Python packages under catalyst_radar ---------------------------------
 
@@ -109,6 +113,7 @@ DEPRECATED_DESKTOP_PAGES: frozenset[str] = frozenset(
 ACTIVE_CLI_COMMANDS: frozenset[str] = frozenset(
     {
         "discovery-brief",
+        "discovery-from-x",
         "discovery-ingest",
         "discovery-case",
         "discovery-label",
@@ -187,14 +192,20 @@ REMOVAL_PHASES: tuple[dict[str, Any], ...] = (
     {
         "id": "D2",
         "name": "Default UX lockdown",
-        "status": "planned",
-        "summary": "Legacy workbench behind flag; discovery-only default nav.",
+        "status": "done",
+        "summary": (
+            "Legacy workbench behind CATALYST_ENABLE_LEGACY_WORKBENCH; "
+            "default desktop/TUI nav is World Events + Help only."
+        ),
     },
     {
         "id": "D3",
-        "name": "CLI warnings",
-        "status": "planned",
-        "summary": "Warn on deprecated commands; CI import guard for discovery.",
+        "name": "CLI removal from default product",
+        "status": "done",
+        "summary": (
+            "Deprecated CLI commands hard-blocked unless "
+            f"{LEGACY_WORKBENCH_ENV} is truthy; warning still emitted when enabled."
+        ),
     },
     {
         "id": "D4",
@@ -209,6 +220,12 @@ REMOVAL_PHASES: tuple[dict[str, Any], ...] = (
         "summary": "Remove deprecated packages, pages, routes, and tests.",
     },
 )
+
+
+def legacy_workbench_enabled() -> bool:
+    """Return True when operators opt into deprecated workbench surfaces."""
+    raw = os.environ.get(LEGACY_WORKBENCH_ENV, "")
+    return str(raw).strip().casefold() in {"1", "true", "yes", "on"}
 
 
 def package_status(package_name: str) -> str:
@@ -267,6 +284,7 @@ def deprecate_page_label(label: str, page_key: str) -> str:
 
 
 def product_scope_payload() -> dict[str, Any]:
+    legacy_enabled = legacy_workbench_enabled()
     return {
         "schema_version": "market-radar-product-scope-v1",
         "scope_version": SCOPE_VERSION,
@@ -288,12 +306,16 @@ def product_scope_payload() -> dict[str, Any]:
         "desktop_pages": {
             "active": sorted(ACTIVE_DESKTOP_PAGES),
             "deprecated": sorted(DEPRECATED_DESKTOP_PAGES),
+            "default_nav": sorted(ACTIVE_DESKTOP_PAGES),
         },
         "cli_commands": {
             "active": sorted(ACTIVE_CLI_COMMANDS),
             "supporting": sorted(SUPPORTING_CLI_COMMANDS),
             "deprecated": sorted(DEPRECATED_CLI_COMMANDS),
+            "deprecated_default_reachable": legacy_enabled,
         },
+        "legacy_workbench_enabled": legacy_enabled,
+        "legacy_env": LEGACY_WORKBENCH_ENV,
         "removal_phases": list(REMOVAL_PHASES),
         "investment_advice": False,
         "decision_support_only": True,
@@ -308,7 +330,24 @@ def warn_if_deprecated_cli(command: str) -> str | None:
     return (
         f"DEPRECATED: CLI command '{command}' is outside the event-first product "
         f"scope ({SCOPE_VERSION}). See docs/PRODUCT_SCOPE.md and docs/DEPRECATION.md. "
-        "Prefer discovery-brief / discovery-case / discovery-label / World Events UI."
+        "Prefer discovery-brief / discovery-from-x / discovery-case / discovery-label "
+        "/ World Events UI."
+    )
+
+
+def block_deprecated_cli(command: str) -> str | None:
+    """Return an error string if deprecated command is blocked (legacy env off)."""
+    status = cli_command_status(command)
+    if status != "deprecated":
+        return None
+    if legacy_workbench_enabled():
+        return None
+    return (
+        f"BLOCKED: CLI command '{command}' is deprecated and not part of the default "
+        f"event-first product ({SCOPE_VERSION}). Set {LEGACY_WORKBENCH_ENV}=1 to "
+        "re-enable legacy workbench commands, or use discovery-brief / "
+        "discovery-from-x / discovery-case / discovery-label. "
+        "See docs/PRODUCT_SCOPE.md and docs/DEPRECATION.md."
     )
 
 
@@ -320,15 +359,18 @@ __all__ = [
     "DEPRECATED_CLI_COMMANDS",
     "DEPRECATED_DESKTOP_PAGES",
     "DEPRECATED_PACKAGES",
+    "LEGACY_WORKBENCH_ENV",
     "REMOVAL_PHASES",
     "SCOPE_DATE",
     "SCOPE_VERSION",
     "SUPPORTING_CLI_COMMANDS",
     "SUPPORTING_PACKAGES",
+    "block_deprecated_cli",
     "cli_command_status",
     "deprecate_page_label",
     "desktop_page_status",
     "is_deprecated_desktop_page",
+    "legacy_workbench_enabled",
     "package_status",
     "product_scope_payload",
     "warn_if_deprecated_cli",

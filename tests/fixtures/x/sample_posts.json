@@ -1,0 +1,50 @@
+{
+  "schema_version": "x-posts-v1",
+  "generated_at": "2026-07-19T12:00:00+00:00",
+  "query": "semiconductors OR memory OR energy",
+  "source": "x_search_fixture",
+  "posts": [
+    {
+      "id": "2078639763691589667",
+      "author": "Barchart",
+      "text": "Semiconductor complex still in high-vol drawdown. $NVDA and peers off highs while chip equipment names watch for a bottom.",
+      "published_at": "2026-07-19T00:35:13+00:00",
+      "engagement": {"likes": 439, "views": 40830, "reposts": 52}
+    },
+    {
+      "id": "2078666873143722074",
+      "author": "SemiconductorsX",
+      "text": "DRAM ASP narrative heats up — memory cycle talk around $MU and HBM scarcity for AI training clusters.",
+      "published_at": "2026-07-19T02:22:56+00:00",
+      "engagement": {"likes": 30, "views": 1298, "reposts": 4}
+    },
+    {
+      "id": "2078662860310564971",
+      "author": "RosannaInvests",
+      "text": "Edge AI interconnect names lag the same semiconductor demand signal. Watching $NVDA supply chain chatter.",
+      "published_at": "2026-07-19T02:07:00+00:00",
+      "engagement": {"likes": 16, "views": 2104, "reposts": 1}
+    },
+    {
+      "id": "2078700000000000001",
+      "author": "EnergyDesk",
+      "text": "Strait of Hormuz shipping risk keeps energy premia elevated. $XOM and crude complex still pricing geopolitical friction.",
+      "published_at": "2026-07-18T16:10:00+00:00",
+      "engagement": {"likes": 120, "views": 22000, "reposts": 18}
+    },
+    {
+      "id": "2078700000000000002",
+      "author": "MacroTape",
+      "text": "Oil tankers and energy security themes reappear as LNG and Brent headlines hit the tape. Bullish energy narrative on X.",
+      "published_at": "2026-07-18T18:45:00+00:00",
+      "engagement": {"likes": 88, "views": 15000, "reposts": 11}
+    },
+    {
+      "id": "2078700000000000003",
+      "author": "ChipCycle",
+      "text": "Foundry utilization and wafer starts: semiconductor equipment ($ASML narrative) vs memory ($MU) divergence into AI infrastructure spend.",
+      "published_at": "2026-07-19T03:00:00+00:00",
+      "engagement": {"likes": 55, "views": 5400, "reposts": 7}
+    }
+  ]
+}

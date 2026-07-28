@@ -916,14 +916,15 @@ function applyChromeMode() {
 function renderNav() {
   const host = qs('#workflow-tabs');
   const activePage = navigationPageKey(state.page);
-  // Product scope: discovery home is World Events (+ Help). Workbench lists
-  // legacy pages but labels them deprecated (docs/PRODUCT_SCOPE.md).
-  const pages = isDiscoveryHome()
-    ? state.config.pages.filter((page) => (
+  // Product scope: default nav is World Events + Help only.
+  // Full workbench nav requires config.legacy_workbench_enabled (env flag).
+  const legacyEnabled = Boolean(state.config && state.config.legacy_workbench_enabled);
+  const pages = legacyEnabled
+    ? (state.config.pages || [])
+    : (state.config.pages || []).filter((page) => (
       page.key === 'world-events'
       || page.key === 'help'
-    ))
-    : state.config.pages;
+    ));
   host.innerHTML = pages.map((page) => {
     const rawLabel = page.label || page.key;
     const label = page.key === 'overview'

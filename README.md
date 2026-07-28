@@ -27,17 +27,28 @@ hero loop, agent cockpit as primary UX (see deprecation plan).
 
 ### Event-first quickstart (recommended daily path)
 
-1. Refresh world events (Grok daily task or manual JSON) into
-   `data/local/world_events.json`.
-2. Validate / install:
+1. Refresh world events into `data/local/world_events.json` (sample, Grok task,
+   or offline X post transform):
+
+```powershell
+# Offline sample path (zero network)
+catalyst-radar discovery-brief --events data\sample\world_events.json --no-db --json
+
+# Optional: transform local x-posts-v1 JSON → world-events-v1 (preview, then write)
+catalyst-radar discovery-from-x --posts tests\fixtures\x\sample_posts.json --json
+catalyst-radar discovery-from-x --posts tests\fixtures\x\sample_posts.json --execute --then-brief --json
+```
+
+2. Validate / install a world-events file when ready:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/import-world-events.ps1 -EventsPath data\sample\world_events.json -Execute
 catalyst-radar discovery-brief --events data\local\world_events.json --json
 ```
 
-3. Open the desktop app (**World Events** is the product). Prefer
-   `Open-MarketRadar.bat` / discovery snapshot. Workbench pages are **Legacy**.
+3. Open the desktop app (**World Events** is the product). Default nav is
+   World Events + Help only. Legacy workbench requires
+   `CATALYST_ENABLE_LEGACY_WORKBENCH=1`.
 4. Review the Discovery Queue. Social/X-only rows stay `research_only`.
 5. Open a case file, read operator analysis, and label from the UI (or CLI):
 
@@ -47,7 +58,8 @@ catalyst-radar discovery-label --ticker MU --label good-research --preview --jso
 ```
 
 6. Confirm interesting leads with primary sources before any capital decision.
-7. Use **4 · Proof** on the desktop to see discovery_row labels over time.
+7. Use proof labels (`discovery-label` / value-ledger) over time — not the
+   deprecated workbench desk.
 
 Scope and removal plan:
 

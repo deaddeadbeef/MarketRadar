@@ -1269,6 +1269,53 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discovery_brief.add_argument("--json", action="store_true")
 
+    discovery_from_x = subparsers.add_parser(
+        "discovery-from-x",
+        help=(
+            "Offline transform of x-posts-v1 JSON into world-events-v1. "
+            "Zero network calls; social sources stay research_only."
+        ),
+    )
+    discovery_from_x.add_argument(
+        "--posts",
+        type=Path,
+        required=True,
+        help="Path to x-posts-v1 JSON fixture.",
+    )
+    discovery_from_x.add_argument(
+        "--output",
+        type=Path,
+        default=Path("data/local/world_events.json"),
+        help="Write destination (default data/local/world_events.json).",
+    )
+    discovery_from_x.add_argument(
+        "--query",
+        help="Optional search query label stored on the world-events source.",
+    )
+    discovery_from_x.add_argument(
+        "--theme-peers",
+        type=Path,
+        default=Path("config/theme_peers.yaml"),
+        help="Optional theme peer map for ticker defaults.",
+    )
+    discovery_from_x.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write world-events JSON to --output (default is preview only).",
+    )
+    discovery_from_x.add_argument(
+        "--then-brief",
+        action="store_true",
+        help="Also run discovery-brief on the produced world-events payload.",
+    )
+    discovery_from_x.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional max posts to consume from the fixture.",
+    )
+    discovery_from_x.add_argument("--json", action="store_true")
+
     discovery_ingest = subparsers.add_parser(
         "discovery-ingest",
         help=(
@@ -1644,7 +1691,11 @@ def _print_ops_capabilities(payload: Mapping[str, object]) -> None:
 def main(argv: list[str] | None = None) -> int:
     dotenv_loaded = load_app_dotenv()
     args = build_parser().parse_args(argv)
-    from catalyst_radar.deprecation import product_scope_payload, warn_if_deprecated_cli
+    from catalyst_radar.deprecation import (
+        block_deprecated_cli,
+        product_scope_payload,
+        warn_if_deprecated_cli,
+    )
 
     if args.command == "product-scope":
         payload = product_scope_payload()
@@ -1668,6 +1719,9 @@ def main(argv: list[str] | None = None) -> int:
                 + str(len(payload["cli_commands"]["deprecated"]))
             )
             print(
+                f"legacy_workbench_enabled={payload.get('legacy_workbench_enabled')}"
+            )
+            print(
                 "phases="
                 + ",".join(
                     f"{row['id']}:{row['status']}" for row in payload["removal_phases"]
@@ -1675,8 +1729,14 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 0
 
+    blocked = block_deprecated_cli(str(args.command or ""))
+    if blocked:
+        print(blocked, file=sys.stderr)
+        return 2
+
     deprecated_warning = warn_if_deprecated_cli(str(args.command or ""))
     if deprecated_warning:
+        # Legacy workbench enabled: still warn operators on deprecated commands.
         print(deprecated_warning, file=sys.stderr)
 
     config = AppConfig.from_env()
@@ -2538,6 +2598,94 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_discovery_brief(payload)
+        return 0
+
+    if args.command == "discovery-from-x":
+        import tempfile
+
+        from catalyst_radar.discovery.brief import build_discovery_brief
+        from catalyst_radar.discovery.x_events import write_world_events_from_x_posts
+
+        posts_path = Path(args.posts)
+        if not posts_path.is_file():
+            msg = f"discovery-from-x: posts file not found: {posts_path}"
+            if args.json:
+                print(
+                    json.dumps(
+                        {
+                            "schema_version": "discovery-from-x-result-v1",
+                            "status": "missing_posts",
+                            "posts_path": str(posts_path),
+                            "external_calls_made": 0,
+                            "investment_advice": False,
+                            "error": msg,
+                        },
+                        sort_keys=True,
+                    )
+                )
+            else:
+                print(msg, file=sys.stderr)
+            return 1
+
+        result = write_world_events_from_x_posts(
+            posts_path,
+            args.output,
+            execute=bool(args.execute),
+            query=args.query,
+            theme_peers_path=args.theme_peers,
+            limit=args.limit,
+        )
+
+        if args.then_brief:
+            world_events = result.get("world_events")
+            if args.execute and Path(args.output).is_file():
+                brief_path = Path(args.output)
+                brief = build_discovery_brief(
+                    events_path=brief_path,
+                    theme_peers_path=args.theme_peers,
+                    engine=None,
+                    limit=25,
+                )
+            else:
+                with tempfile.TemporaryDirectory(prefix="discovery-from-x-") as tmp:
+                    tmp_path = Path(tmp) / "world_events.json"
+                    clean = {
+                        "schema_version": world_events.get("schema_version"),  # type: ignore[union-attr]
+                        "generated_at": world_events.get("generated_at"),  # type: ignore[union-attr]
+                        "source": world_events.get("source"),  # type: ignore[union-attr]
+                        "events": world_events.get("events"),  # type: ignore[union-attr]
+                    }
+                    tmp_path.write_text(
+                        json.dumps(clean, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+                    brief = build_discovery_brief(
+                        events_path=tmp_path,
+                        theme_peers_path=args.theme_peers,
+                        engine=None,
+                        limit=25,
+                    )
+            result["discovery_brief"] = brief
+
+        if args.json:
+            print(json.dumps(result, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(
+                "discovery_from_x "
+                f"mode={result.get('mode')} "
+                f"events={result.get('event_count')} "
+                f"written={result.get('written')} "
+                f"output={result.get('output_path')} "
+                f"external_calls={result.get('external_calls_made', 0)}"
+            )
+            if args.then_brief and isinstance(result.get("discovery_brief"), Mapping):
+                brief = result["discovery_brief"]
+                print(
+                    "discovery_brief "
+                    f"discoveries={brief.get('discovery_count')} "
+                    f"investment_advice={brief.get('investment_advice')} "
+                    f"external_calls={brief.get('external_calls_made')}"
+                )
         return 0
 
     if args.command == "discovery-ingest":
