@@ -160,9 +160,22 @@ def _next_child_is_list(lines: Sequence[tuple[int, str]], index: int, parent_ind
 
 
 def _parse_scalar(value: str) -> str | list[str]:
-    if "," in value:
-        return [part.strip() for part in value.split(",") if part.strip()]
-    return value.strip()
+    text = value.strip()
+    # YAML flow lists: [XOM, CVX, COP] — strip brackets before splitting.
+    if text.startswith("[") and text.endswith("]"):
+        inner = text[1:-1].strip()
+        if not inner:
+            return []
+        return [_strip_yaml_quotes(part.strip()) for part in inner.split(",") if part.strip()]
+    if "," in text:
+        return [_strip_yaml_quotes(part.strip()) for part in text.split(",") if part.strip()]
+    return _strip_yaml_quotes(text)
+
+
+def _strip_yaml_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
 
 
 def _string_list(value: object, field_name: str) -> tuple[str, ...]:

@@ -63,6 +63,10 @@ def test_build_discovery_brief_marks_stale_events() -> None:
     assert brief["freshness_status"] == "stale"
     assert float(brief["events_age_hours"]) > 36
     assert "stale" in str(brief["next_action"]).casefold() or "STALE" in str(brief["headline"])
+    # Stale must point at a real install/refresh path, never validate-only (no-op).
+    next_command = str(brief["next_command"])
+    assert "validate-only" not in next_command
+    assert "refresh-world-events" in next_command
 
 
 def test_validate_and_import_world_events(tmp_path: Path) -> None:

@@ -110,16 +110,24 @@ def normalize_tickers(values: object) -> tuple[str, ...]:
     if values is None:
         return ()
     if isinstance(values, str):
-        raw = [part.strip() for part in values.replace(";", ",").split(",")]
+        text = values.strip()
+        if text.startswith("[") and text.endswith("]"):
+            text = text[1:-1]
+        raw = [part.strip().strip("'\"") for part in text.replace(";", ",").split(",")]
     elif isinstance(values, Sequence):
-        raw = [str(item).strip() for item in values]
+        raw = [str(item).strip().strip("'\"[]") for item in values]
     else:
         return ()
     seen: set[str] = set()
     ordered: list[str] = []
     for item in raw:
-        ticker = item.upper()
+        ticker = item.upper().strip()
+        # Reject YAML-bracket debris and non-symbols (e.g. "[MU", "SNDK]").
         if not ticker or ticker in seen:
+            continue
+        if not all(ch.isalnum() or ch in {".", "-", "^"} for ch in ticker):
+            continue
+        if not any(ch.isalpha() for ch in ticker):
             continue
         seen.add(ticker)
         ordered.append(ticker)
