@@ -532,10 +532,13 @@ def _next_operator_step(
         "-Execute -ConfirmExternalCall -CaptureDays 5"
     )
     if freshness_status == "stale":
+        # validate-only never refreshes the feed; point operators at the install path.
         return (
-            "World-events file is stale. Refresh data/local/world_events.json "
-            "from the Grok daily discovery task, then re-run discovery-brief.",
-            f"catalyst-radar discovery-ingest --events {events_path} --validate-only --json",
+            "World-events file is stale. Install a fresh world-events-v1 JSON into "
+            "data/local/world_events.json (Grok daily task output or a new events file), "
+            "then reopen World Events so the main app reloads the discovery queue.",
+            "powershell -ExecutionPolicy Bypass -File scripts/refresh-world-events.ps1 "
+            "-EventsPath <fresh-world-events.json> -Execute",
         )
     if no_db_count > 0 and missing_scan_count == 0:
         return (

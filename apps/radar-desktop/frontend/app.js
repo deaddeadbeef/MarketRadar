@@ -1634,7 +1634,7 @@ function renderWorldEvents(snapshot) {
   const proofLabels = Number(goal.proof_label_count ?? 0);
   const goalBannerClass = joinMet && freshness !== 'stale' ? 'goal-banner ok' : 'goal-banner attention';
   const goalBannerText = freshness === 'stale'
-    ? `Events stale (${String(discovery.events_age_hours ?? '?')}h). Refresh world_events.json from Grok daily task.`
+    ? `Events stale (${String(discovery.events_age_hours ?? '?')}h). Install a fresh world-events file (scripts/refresh-world-events.ps1 -Execute), then press R to reload.`
     : joinMet
       ? `Goal track: join ${joinPct.toFixed(0)}% (≥${joinTarget.toFixed(0)}% target met) · ${proofLabels} proof label(s).`
       : `Goal track: join ${joinPct.toFixed(0)}% of leads (target ≥${joinTarget.toFixed(0)}%). ${joinMissing} missing scan · run mapped bar fill.`;
@@ -1646,7 +1646,7 @@ function renderWorldEvents(snapshot) {
         <h2 class="discover-title">${escapeHtml(compact(discovery.headline, 'Load world events to start'))}</h2>
         <p class="muted">${escapeHtml(
           freshness === 'stale'
-            ? `Events look stale (${String(discovery.events_age_hours ?? '?')}h). Refresh data/local/world_events.json.`
+            ? `Events look stale (${String(discovery.events_age_hours ?? '?')}h). Next Safe Action installs a fresh feed into data/local/world_events.json — not validate-only.`
             : 'Research only — confirm with primary sources before any capital decision.',
         )}</p>
         <p class="${goalBannerClass}" data-testid="discovery-goal-banner">${escapeHtml(goalBannerText)}</p>
