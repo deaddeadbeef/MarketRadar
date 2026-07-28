@@ -125,6 +125,8 @@ class AppConfig:
     portfolio_value: float = 0.0
     portfolio_cash: float = 0.0
     enable_premium_llm: bool = False
+    # When false (default), desktop/product UI stays on event-first discovery only.
+    enable_legacy_workbench: bool = False
     llm_provider: str = "none"
     llm_evidence_model: str | None = None
     llm_skeptic_model: str | None = None
@@ -240,6 +242,9 @@ class AppConfig:
             portfolio_value=_float(source, "CATALYST_PORTFOLIO_VALUE", 0.0),
             portfolio_cash=_float(source, "CATALYST_PORTFOLIO_CASH", 0.0),
             enable_premium_llm=_bool(source.get("CATALYST_ENABLE_PREMIUM_LLM"), False),
+            enable_legacy_workbench=_bool(
+                source.get("CATALYST_ENABLE_LEGACY_WORKBENCH"), False
+            ),
             llm_provider=source.get("CATALYST_LLM_PROVIDER", "none"),
             llm_evidence_model=_optional_str(source, "CATALYST_LLM_EVIDENCE_MODEL"),
             llm_skeptic_model=_optional_str(source, "CATALYST_LLM_SKEPTIC_MODEL"),

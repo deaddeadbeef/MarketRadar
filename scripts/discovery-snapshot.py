@@ -313,6 +313,34 @@ def main(argv: list[str] | None = None) -> int:
         proof = build_discovery_proof(engine=None, limit=40)
 
     now = datetime.now(tz=UTC).isoformat()
+    try:
+        from catalyst_radar.core.config import AppConfig
+        from catalyst_radar.deprecation import SCOPE_VERSION, product_scope_payload
+
+        app_config = AppConfig.from_env()
+        legacy_on = bool(app_config.enable_legacy_workbench)
+        scope_payload = product_scope_payload()
+    except Exception:
+        legacy_on = False
+        scope_payload = {}
+        SCOPE_VERSION = "event-first-discovery-v1"
+
+    proof_payload = proof if "proof" not in brief else brief.get("proof")
+    goal = brief.get("goal_status") if isinstance(brief.get("goal_status"), dict) else {}
+    proof_summary = (
+        proof_payload.get("summary")
+        if isinstance(proof_payload, dict) and isinstance(proof_payload.get("summary"), dict)
+        else {}
+    )
+    if isinstance(goal, dict):
+        goal = {
+            **goal,
+            "proof_label_count": int(proof_summary.get("total") or 0),
+            "proof_claimable_count": int(proof_summary.get("claimable_count") or 0),
+            "proof_ok": int(proof_summary.get("total") or 0) > 0,
+        }
+        brief["goal_status"] = goal
+
     payload = {
         "schema_version": "dashboard-cli-snapshot-v1",
         "snapshot_mode": "discovery_fast",
@@ -328,7 +356,24 @@ def main(argv: list[str] | None = None) -> int:
         or brief.get("next_command"),
         "external_calls_made": 0,
         "event_discovery": brief,
-        "discovery_proof": proof if "proof" not in brief else brief.get("proof"),
+        "discovery_proof": proof_payload,
+        "product_ui": {
+            "schema_version": "market-radar-product-ui-v1",
+            "scope_version": SCOPE_VERSION,
+            "enable_legacy_workbench": legacy_on,
+            "active_pages": ["world-events", "help"],
+            "docs": {
+                "scope": "docs/PRODUCT_SCOPE.md",
+                "deprecation": "docs/DEPRECATION.md",
+            },
+            "goal_status": goal,
+        },
+        "product_scope": {
+            "scope_version": scope_payload.get("scope_version") if scope_payload else SCOPE_VERSION,
+            "desktop_active": (scope_payload.get("desktop_pages") or {}).get("active")
+            if scope_payload
+            else ["help", "world-events"],
+        },
         "candidates": {"count": 0, "rows": []},
         "alerts": {"count": 0, "rows": []},
         "themes": {"count": 0, "rows": []},

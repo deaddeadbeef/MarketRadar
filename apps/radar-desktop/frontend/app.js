@@ -913,17 +913,39 @@ function applyChromeMode() {
   }
 }
 
+function productUiFromSnapshot(snapshot) {
+  const ui = snapshot?.product_ui;
+  return ui && typeof ui === 'object' ? ui : null;
+}
+
+function legacyWorkbenchEnabled(snapshot = state.snapshot) {
+  const ui = productUiFromSnapshot(snapshot);
+  if (ui && typeof ui.enable_legacy_workbench === 'boolean') {
+    return ui.enable_legacy_workbench;
+  }
+  // Default off: event-first discovery only (docs/PRODUCT_SCOPE.md).
+  return false;
+}
+
 function renderNav() {
   const host = qs('#workflow-tabs');
   const activePage = navigationPageKey(state.page);
-  // Product scope: discovery home is World Events (+ Help). Workbench lists
-  // legacy pages but labels them deprecated (docs/PRODUCT_SCOPE.md).
-  const pages = isDiscoveryHome()
-    ? state.config.pages.filter((page) => (
+  // Product scope: discovery home is World Events (+ Help). Legacy workbench
+  // pages only appear when CATALYST_ENABLE_LEGACY_WORKBENCH=true.
+  const legacyOn = legacyWorkbenchEnabled();
+  let pages;
+  if (isDiscoveryHome() || !legacyOn) {
+    pages = state.config.pages.filter((page) => (
       page.key === 'world-events'
       || page.key === 'help'
-    ))
-    : state.config.pages;
+    ));
+  } else {
+    pages = state.config.pages;
+  }
+  // If operator navigated to a legacy page while flag is off, snap back.
+  if (!legacyOn && activePage !== 'world-events' && activePage !== 'help') {
+    state.page = 'world-events';
+  }
   host.innerHTML = pages.map((page) => {
     const rawLabel = page.label || page.key;
     const label = page.key === 'overview'
@@ -1598,6 +1620,24 @@ function renderWorldEvents(snapshot) {
   const caseFile = discovery.case_file && typeof discovery.case_file === 'object'
     ? discovery.case_file
     : null;
+  const join = discovery.join_coverage && typeof discovery.join_coverage === 'object'
+    ? discovery.join_coverage
+    : {};
+  const goal = discovery.goal_status && typeof discovery.goal_status === 'object'
+    ? discovery.goal_status
+    : (productUiFromSnapshot(snapshot)?.goal_status || {});
+  const joinPct = Number(join.coverage_pct ?? goal.join_coverage_pct ?? 0);
+  const joinTarget = Number(join.target_pct ?? goal.join_target_pct ?? 50);
+  const joinMet = Boolean(join.target_met ?? goal.join_target_met);
+  const joinJoined = Number(join.joined ?? 0);
+  const joinMissing = Number(join.missing_scan ?? 0);
+  const proofLabels = Number(goal.proof_label_count ?? 0);
+  const goalBannerClass = joinMet && freshness !== 'stale' ? 'goal-banner ok' : 'goal-banner attention';
+  const goalBannerText = freshness === 'stale'
+    ? `Events stale (${String(discovery.events_age_hours ?? '?')}h). Refresh world_events.json from Grok daily task.`
+    : joinMet
+      ? `Goal track: join ${joinPct.toFixed(0)}% (≥${joinTarget.toFixed(0)}% target met) · ${proofLabels} proof label(s).`
+      : `Goal track: join ${joinPct.toFixed(0)}% of leads (target ≥${joinTarget.toFixed(0)}%). ${joinMissing} missing scan · run mapped bar fill.`;
 
   return `
     <section class="discover-hero" data-testid="world-events-header">
@@ -1609,11 +1649,13 @@ function renderWorldEvents(snapshot) {
             ? `Events look stale (${String(discovery.events_age_hours ?? '?')}h). Refresh data/local/world_events.json.`
             : 'Research only — confirm with primary sources before any capital decision.',
         )}</p>
+        <p class="${goalBannerClass}" data-testid="discovery-goal-banner">${escapeHtml(goalBannerText)}</p>
       </div>
       <div class="discover-stats" data-testid="world-events-metrics">
         <div><b>${escapeHtml(String(events.length))}</b><span>events</span></div>
         <div><b>${escapeHtml(String(discoveries.length))}</b><span>leads</span></div>
-        <div><b>0</b><span>calls</span></div>
+        <div><b>${escapeHtml(String(joinJoined))}/${escapeHtml(String(discoveries.length || 0))}</b><span>joined</span></div>
+        <div><b>${escapeHtml(String(joinPct.toFixed(0)))}%</b><span>join cov</span></div>
       </div>
     </section>
 

@@ -73,6 +73,7 @@ def test_llm_config_defaults_fail_closed() -> None:
     assert config.agent_sdk_model is None
     assert config.agent_sdk_fast_model is None
     assert config.llm_provider == "none"
+    assert config.enable_legacy_workbench is False
     assert config.llm_evidence_model is None
     assert config.llm_skeptic_model is None
     assert config.llm_decision_card_model is None

@@ -108,10 +108,11 @@ Runtime: `catalyst-radar product-scope --json`.
 
 ### Phase D2 — Default UX lockdown
 
-- Hide deprecated pages from discovery-mode nav (already mostly true)
-- Workbench nav groups deprecated pages under “Legacy”
-- Stop documenting residual-repair as Start Here
-- Optional env `CATALYST_ENABLE_LEGACY_WORKBENCH=false` default
+- [x] Hide deprecated pages unless `CATALYST_ENABLE_LEGACY_WORKBENCH=true`
+- [x] Discovery-home nav is World Events + Help only
+- [x] Workbench pages labeled Legacy when flag is on
+- [x] README / PRODUCT_SCOPE document residual-repair as non-primary
+- [x] Goal join-coverage banner on World Events (target ≥50%)
 
 ### Phase D3 — CLI warnings
 
