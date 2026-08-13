@@ -27,6 +27,8 @@ def test_product_scope_payload_lists_event_first_core() -> None:
     assert phases["D5"] == "in_progress"
     assert "discovery-outcomes" in payload["cli_commands"]["active"]
     assert "assert-discovery-ready" in payload["cli_commands"]["active"]
+    assert "discovery-from-posts" in payload["cli_commands"]["active"]
+    assert "discovery-bars" in payload["cli_commands"]["active"]
 
 
 def test_page_and_package_status() -> None:
