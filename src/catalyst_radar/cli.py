@@ -1315,17 +1315,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     discovery_bars = subparsers.add_parser(
         "discovery-bars",
-        help="Import mapped-ticker daily bars from CSV for event-time joins.",
+        help="Import mapped-ticker daily bars from CSV or fetch Polygon for mapped names.",
     )
     discovery_bars.add_argument("--database-url")
     discovery_bars.add_argument(
         "--csv",
         type=Path,
-        required=True,
         help="CSV with ticker,date,open,high,low,close,volume.",
     )
+    discovery_bars.add_argument(
+        "--polygon",
+        action="store_true",
+        help="Fetch daily bars for mapped tickers from Polygon (explicit confirm).",
+    )
+    discovery_bars.add_argument(
+        "--events",
+        type=Path,
+        help="world-events-v1 file used to choose mapped tickers for --polygon.",
+    )
+    discovery_bars.add_argument("--start", help="YYYY-MM-DD start for Polygon fetch.")
+    discovery_bars.add_argument("--end", help="YYYY-MM-DD end for Polygon fetch.")
+    discovery_bars.add_argument("--tickers", help="Comma-separated extra tickers.")
+    discovery_bars.add_argument("--confirm-external-call", action="store_true")
     discovery_bars.add_argument("--execute", action="store_true")
     discovery_bars.add_argument("--json", action="store_true")
+
+    discovery_insights = subparsers.add_parser(
+        "discovery-insights",
+        help="Human research digest from the current world-events brief (zero provider calls).",
+    )
+    discovery_insights.add_argument("--database-url")
+    discovery_insights.add_argument("--events", type=Path)
+    discovery_insights.add_argument("--theme-peers", type=Path, default=Path("config/theme_peers.yaml"))
+    discovery_insights.add_argument("--limit", type=int, default=8)
+    discovery_insights.add_argument("--no-db", action="store_true")
+    discovery_insights.add_argument("--persist", action="store_true")
+    discovery_insights.add_argument("--json", action="store_true")
 
     discovery_ingest = subparsers.add_parser(
         "discovery-ingest",
@@ -2713,13 +2738,52 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if payload.get("ready") else 1
 
     if args.command == "discovery-bars":
-        from catalyst_radar.discovery.bars import import_discovery_bars
+        from datetime import date as date_cls
 
-        payload = import_discovery_bars(
-            engine=engine,
-            csv_path=args.csv,
-            execute=bool(args.execute),
+        from catalyst_radar.discovery.bars import import_discovery_bars
+        from catalyst_radar.discovery.brief import default_events_path
+        from catalyst_radar.discovery.polygon_bars import (
+            default_bar_window,
+            mapped_tickers_from_events,
+            write_polygon_bars,
         )
+
+        if args.polygon:
+            events_path = args.events or default_events_path()
+            tickers = mapped_tickers_from_events(
+                str(events_path),
+                theme_peers_path=str(Path("config/theme_peers.yaml")),
+            )
+            if args.tickers:
+                for extra in str(args.tickers).split(","):
+                    symbol = extra.strip().upper()
+                    if symbol and symbol not in tickers:
+                        tickers.append(symbol)
+            start, end = default_bar_window()
+            if args.start:
+                start = date_cls.fromisoformat(args.start)
+            if args.end:
+                end = date_cls.fromisoformat(args.end)
+            payload = write_polygon_bars(
+                engine=engine,
+                api_key=str(config.polygon_api_key or ""),
+                tickers=tickers,
+                start=start,
+                end=end,
+                confirm_external_call=bool(args.confirm_external_call),
+                execute=bool(args.execute),
+            )
+        elif args.csv:
+            payload = import_discovery_bars(
+                engine=engine,
+                csv_path=args.csv,
+                execute=bool(args.execute),
+            )
+        else:
+            payload = {
+                "status": "error",
+                "error": "discovery-bars requires --csv or --polygon",
+            }
         if args.json:
             print(json.dumps(payload, default=str, sort_keys=True))
         else:
@@ -2731,6 +2795,28 @@ def main(argv: list[str] | None = None) -> int:
                 f"writes={payload.get('db_writes_made')}"
             )
             print(f"next={payload.get('next_action')}")
+        return 0 if payload.get("status") != "error" else 2
+
+    if args.command == "discovery-insights":
+        from catalyst_radar.discovery.brief import default_events_path
+        from catalyst_radar.discovery.insights import (
+            build_discovery_insights,
+            format_discovery_insights,
+        )
+
+        events_path = args.events or default_events_path()
+        join_engine = None if args.no_db else engine
+        payload = build_discovery_insights(
+            events_path=events_path,
+            engine=join_engine,
+            limit=int(args.limit or 8),
+            theme_peers_path=args.theme_peers,
+            persist=bool(args.persist),
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(format_discovery_insights(payload))
         return 0
 
     if args.command == "discovery-ingest":

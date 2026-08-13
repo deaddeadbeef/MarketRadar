@@ -26,7 +26,14 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-world-events.ps1 -Event
 catalyst-radar discovery-bars --csv path\to\mapped_bars.csv --execute
 
 catalyst-radar discovery-brief --json --persist
+catalyst-radar discovery-insights
 catalyst-radar assert-discovery-ready --json
+
+Real-data path (Polygon mapped tickers only, explicit confirm):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-real-discovery.ps1 -Execute -ConfirmExternalCall
+```
 ```
 
 3. Open the desktop app on **World Events** (`scripts/open-market-radar.ps1` or

@@ -107,8 +107,14 @@ def build_discovery_brief(
 
     for event, mapped, emotion in mapped_by_event:
         all_tickers = list(mapped["all_tickers"])  # type: ignore[arg-type]
-        for rank, ticker in enumerate(all_tickers):
-            role = "primary" if rank < len(mapped["primary_tickers"]) else "secondary"  # type: ignore[arg-type]
+        for ticker in all_tickers:
+            if ticker in event.tickers:
+                origin = "event"
+            elif ticker in event.secondary_tickers:
+                origin = "event_secondary"
+            else:
+                origin = "theme"
+            role = "primary" if origin == "event" else "secondary"
             if not db_enabled:
                 event_join = no_db_join(emotion_score=emotion)
             elif not bars_by_ticker:
@@ -129,6 +135,7 @@ def build_discovery_brief(
                 event=event,
                 ticker=ticker,
                 role=role,
+                origin=origin,
                 emotion_score=emotion,
                 event_join=event_join,
             )
@@ -350,6 +357,7 @@ def _discovery_row(
     role: str,
     emotion_score: float,
     event_join: Any,
+    origin: str = "event",
 ) -> dict[str, object]:
     reaction = float(event_join.reaction_score)
     priced_status = str(event_join.priced_in_status or "unknown")
@@ -377,7 +385,9 @@ def _discovery_row(
         + (event.source_quality * 100.0 * 0.08),
         2,
     )
-    if role == "secondary":
+    if origin == "theme":
+        discovery_score = round(discovery_score * 0.62, 2)
+    elif role == "secondary":
         discovery_score = round(discovery_score * 0.88, 2)
     # Prefer under-reacted names when reaction data is present.
     if quiet_tape and join_status == "joined" and gap >= 10:
@@ -398,6 +408,7 @@ def _discovery_row(
         "event_id": event.id,
         "event_title": event.title,
         "role": role,
+        "origin": origin,
         "direction": event.direction,
         "themes": list(event.themes),
         "materiality": event.materiality,
