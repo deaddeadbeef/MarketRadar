@@ -8,6 +8,12 @@ from typing import Any
 
 from sqlalchemy.engine import Engine
 
+from catalyst_radar.discovery.join import (
+    join_event_ticker,
+    load_bars_by_ticker,
+    missing_join,
+    no_db_join,
+)
 from catalyst_radar.discovery.mapper import (
     MEGA_CAP_TICKERS,
     load_theme_ticker_map,
@@ -27,7 +33,7 @@ from catalyst_radar.discovery.models import (
 
 DEFAULT_EVENTS_PATH = Path("data/sample/world_events.json")
 LOCAL_EVENTS_PATH = Path("data/local/world_events.json")
-FRESHNESS_STALE_HOURS = 36.0
+FRESHNESS_STALE_HOURS = 24.0
 
 
 def load_world_events(path: str | Path) -> WorldEventBundle:
@@ -88,28 +94,51 @@ def build_discovery_brief(
                 mapped_tickers.append(ticker)
         mapped_by_event.append((event, mapped, emotion))
 
-    # Only index priced-in rows for mapped discovery tickers (fast path on large DBs).
-    priced_in_by_ticker = (
-        _load_priced_in_index(engine, tickers=mapped_tickers) if db_enabled else {}
-    )
+    bars_by_ticker: dict[str, list] = {}
+    if db_enabled:
+        try:
+            bars_by_ticker = load_bars_by_ticker(
+                engine,
+                mapped_tickers,
+                end=clock.date(),
+            )
+        except Exception:
+            bars_by_ticker = {}
 
     for event, mapped, emotion in mapped_by_event:
         all_tickers = list(mapped["all_tickers"])  # type: ignore[arg-type]
         for rank, ticker in enumerate(all_tickers):
             role = "primary" if rank < len(mapped["primary_tickers"]) else "secondary"  # type: ignore[arg-type]
-            priced = priced_in_by_ticker.get(ticker)
+            if not db_enabled:
+                event_join = no_db_join(emotion_score=emotion)
+            elif not bars_by_ticker:
+                event_join = missing_join(
+                    reason="Local bar load failed or returned no mapped rows.",
+                    emotion_score=emotion,
+                )
+            else:
+                event_join = join_event_ticker(
+                    ticker=str(ticker),
+                    event_available_at=event.available_at,
+                    event_direction=event.direction,
+                    emotion_score=emotion,
+                    bars_by_ticker=bars_by_ticker,
+                    now=clock,
+                )
             discovery = _discovery_row(
                 event=event,
                 ticker=ticker,
                 role=role,
                 emotion_score=emotion,
-                priced_in_row=priced,
-                db_enabled=db_enabled,
+                event_join=event_join,
             )
             discoveries.append(discovery)
 
+    discoveries = _dedupe_best_per_ticker(discoveries)
     discoveries.sort(
         key=lambda row: (
+            1 if row.get("join_status") == "joined" else 0,
+            1 if row.get("quiet_tape") else 0,
             float(row.get("discovery_score") or 0.0),
             float(row.get("emotion_reaction_gap") or 0.0),
             float(row.get("materiality") or 0.0),
@@ -292,36 +321,41 @@ def _event_emotion_score(event: WorldEvent) -> float:
     return round(max(0.0, min(100.0, base)), 2)
 
 
+def _dedupe_best_per_ticker(
+    rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    best: dict[str, dict[str, object]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if not ticker:
+            continue
+        current = dict(row)
+        previous = best.get(ticker)
+        if previous is None:
+            best[ticker] = current
+            continue
+        if float(current.get("discovery_score") or 0.0) > float(
+            previous.get("discovery_score") or 0.0
+        ):
+            best[ticker] = current
+    return list(best.values())
+
+
 def _discovery_row(
     *,
     event: WorldEvent,
     ticker: str,
     role: str,
     emotion_score: float,
-    priced_in_row: Mapping[str, Any] | None,
-    db_enabled: bool,
+    event_join: Any,
 ) -> dict[str, object]:
-    reaction = 0.0
-    priced_status = "unknown"
-    gap = emotion_score
-    ret_5d_pct: float | None = None
-    join_status = "no_db" if not db_enabled else "missing_scan"
-    if priced_in_row:
-        join_status = "joined"
-        reaction = _finite(priced_in_row.get("reaction_score"), default=0.0)
-        priced_status = str(
-            priced_in_row.get("priced_in_status")
-            or priced_in_row.get("status")
-            or "unknown"
-        )
-        if priced_in_row.get("emotion_reaction_gap") is not None:
-            gap = _finite(priced_in_row.get("emotion_reaction_gap"), default=gap)
-        else:
-            gap = emotion_score - reaction
-        if priced_in_row.get("ret_5d_pct") is not None:
-            ret_5d_pct = round(_finite(priced_in_row.get("ret_5d_pct")), 2)
-        elif priced_in_row.get("ret_5d") is not None:
-            ret_5d_pct = round(_finite(priced_in_row.get("ret_5d")) * 100.0, 2)
+    reaction = float(event_join.reaction_score)
+    priced_status = str(event_join.priced_in_status or "unknown")
+    gap = float(event_join.emotion_reaction_gap)
+    ret_5d_pct = event_join.ret_5d_pct
+    join_status = str(event_join.join_status)
 
     usefulness = _usefulness(
         source_category=event.source_category,
@@ -334,6 +368,7 @@ def _discovery_row(
         reaction=reaction,
         ret_5d_pct=ret_5d_pct,
         priced_status=priced_status,
+        bar_count=int(event_join.bar_count or 0),
     )
     discovery_score = round(
         (gap * 0.55)
@@ -373,6 +408,9 @@ def _discovery_row(
         "emotion_reaction_gap": round(gap, 2),
         "ret_5d_pct": ret_5d_pct,
         "join_status": join_status,
+        "last_bar_date": event_join.last_bar_date,
+        "bar_count": event_join.bar_count,
+        "join_reason": event_join.reason,
         "quiet_tape": quiet_tape,
         "priced_in_status": priced_status,
         "discovery_score": discovery_score,
@@ -409,86 +447,6 @@ def _usefulness(
     return "research_only"
 
 
-def _load_priced_in_index(
-    engine: Engine,
-    *,
-    tickers: Sequence[str] | None = None,
-) -> dict[str, dict[str, Any]]:
-    try:
-        from catalyst_radar.dashboard.data import load_candidate_rows
-    except Exception:
-        return {}
-
-    ticker_filter = sorted(
-        {
-            str(ticker or "").strip().upper()
-            for ticker in (tickers or ())
-            if str(ticker or "").strip()
-        }
-    )
-    try:
-        rows = load_candidate_rows(
-            engine,
-            limit=None,
-            include_briefs=False,
-            include_artifacts=False,
-            tickers=ticker_filter or None,
-        )
-    except Exception:
-        return {}
-
-    index: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        ticker = str(row.get("ticker") or "").strip().upper()
-        if not ticker:
-            continue
-        metadata = row.get("metadata") if isinstance(row.get("metadata"), Mapping) else {}
-        priced = row.get("priced_in") if isinstance(row.get("priced_in"), Mapping) else {}
-        features = row.get("features") if isinstance(row.get("features"), Mapping) else {}
-        evidence = (
-            priced.get("evidence") if isinstance(priced.get("evidence"), Mapping) else {}
-        )
-        ret_5d_pct = (
-            priced.get("ret_5d_pct")
-            or evidence.get("ret_5d_pct")
-            or metadata.get("ret_5d_pct")
-            or features.get("ret_5d_pct")
-            or row.get("ret_5d_pct")
-        )
-        ret_5d = features.get("ret_5d") or metadata.get("ret_5d") or row.get("ret_5d")
-        if ret_5d_pct is None and ret_5d is not None:
-            try:
-                ret_5d_pct = round(float(ret_5d) * 100.0, 2)
-            except (TypeError, ValueError):
-                ret_5d_pct = None
-        index[ticker] = {
-            "status": row.get("action_state") or row.get("state"),
-            "priced_in_status": priced.get("status")
-            or metadata.get("priced_in_status")
-            or row.get("priced_in_status"),
-            "emotion_score": priced.get("emotion_score")
-            if priced.get("emotion_score") is not None
-            else metadata.get("emotion_score")
-            if metadata.get("emotion_score") is not None
-            else row.get("emotion_score"),
-            "reaction_score": priced.get("reaction_score")
-            if priced.get("reaction_score") is not None
-            else metadata.get("reaction_score")
-            if metadata.get("reaction_score") is not None
-            else row.get("reaction_score"),
-            "emotion_reaction_gap": priced.get("emotion_reaction_gap")
-            if priced.get("emotion_reaction_gap") is not None
-            else metadata.get("emotion_reaction_gap")
-            if metadata.get("emotion_reaction_gap") is not None
-            else row.get("emotion_reaction_gap"),
-            "ret_5d_pct": ret_5d_pct,
-            "ret_5d": ret_5d,
-        }
-    return index
-
-
 def _finite(value: object, default: float = 0.0) -> float:
     try:
         number = float(value)  # type: ignore[arg-type]
@@ -505,14 +463,17 @@ def _is_quiet_tape(
     reaction: float,
     ret_5d_pct: float | None,
     priced_status: str,
+    bar_count: int = 0,
 ) -> bool:
     if join_status != "joined":
         return False
-    if priced_status in {"fully_priced", "overextended_hype", "blocked", "conflicted"}:
+    if bar_count < 3 or ret_5d_pct is None:
+        return False
+    if priced_status in {"fully_priced", "overextended_hype", "blocked", "conflicted", "stale"}:
         return False
     if reaction > 35:
         return False
-    if ret_5d_pct is not None and abs(ret_5d_pct) >= 8.0:
+    if abs(ret_5d_pct) >= 8.0:
         return False
     return True
 

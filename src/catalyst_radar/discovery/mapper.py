@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from catalyst_radar.discovery.models import WorldEvent, normalize_tickers
-from catalyst_radar.textint.ontology import _parse_yaml_subset
+from catalyst_radar.discovery.yaml_util import parse_yaml_subset
 
 # Built-in second-order maps for common world-event themes when theme_peers is thin.
 DEFAULT_THEME_TICKERS: dict[str, tuple[str, ...]] = {
@@ -54,7 +54,7 @@ def load_theme_ticker_map(theme_peers_path: str | Path | None = None) -> dict[st
     path = Path(theme_peers_path)
     if not path.is_file():
         return mapping
-    payload = _parse_yaml_subset(path.read_text(encoding="utf-8")) or {}
+    payload = parse_yaml_subset(path.read_text(encoding="utf-8")) or {}
     themes = payload.get("themes") if isinstance(payload, Mapping) else None
     if not isinstance(themes, Mapping):
         return mapping

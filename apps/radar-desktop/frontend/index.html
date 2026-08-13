@@ -97,7 +97,7 @@
         <h2>Next Safe Action</h2>
         <p id="next-action">Loading local snapshot.</p>
         <button id="copy-command" data-testid="copy-next-command">Copy Command</button>
-        <code id="next-command">dashboard-snapshot --json --fast</code>
+        <code id="next-command">scripts/discovery-snapshot.py</code>
       </section>
       <section class="panel boundary" data-testid="boundary-panel">
         <h2>Boundary</h2>
@@ -156,7 +156,7 @@
       last_command=none page=world-events nav=world-events provider_calls=0 result="command=ready"
     </div>
     <div id="platform-state" class="sr-only" data-testid="platform-state" aria-live="polite">
-      app=MarketRadar Trading Workbench primary_tool=market-radar live_trading_enabled=false
+      app=MarketRadar primary_tool=market-radar live_trading_enabled=false
     </div>
     <pre id="automation-json" class="sr-only" data-testid="automation-json" aria-live="polite" role="status" aria-label="Automation JSON state">{"contract_version":"market-radar-desktop-automation-v1","page":"world-events","nav":"world-events","status":"loading","provider_calls":0,"last_command":"none","filters":{"ticker":"all","scan_mode":"all","stocks_only":false,"limit":50,"offset":0,"usefulness":"all","source_gap":[],"decision_gap":[],"available_at":"latest","alert_status":"all","alert_route":"all"}}</pre>
   </div>

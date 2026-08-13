@@ -604,7 +604,7 @@ def _queue_context(
         scored.append((ticker, _finite(row.get("emotion_reaction_gap"))))
     if not scored:
         return {
-            "summary": f"No peer queue context for this event yet.",
+            "summary": "No peer queue context for this event yet.",
             "peer_count": 0,
             "rank": None,
             "stronger_peers": [],
@@ -830,10 +830,12 @@ def _load_primary_local_events(engine: Engine, ticker: str) -> list[dict[str, ob
     }
     out: list[dict[str, object]] = []
     for row in rows:
-        if row.source_category not in primary_categories and row.provider not in {"sec", "edgar"}:
-            # Skip pure social fan-out rows for confirmation.
-            if row.provider == "world_events" or row.source_category == SourceCategory.SOCIAL:
-                continue
+        is_primary = (
+            row.source_category in primary_categories
+            or str(row.provider or "").casefold() in {"sec", "edgar"}
+        )
+        if not is_primary:
+            continue
         out.append(
             {
                 "id": row.id,

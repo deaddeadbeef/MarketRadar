@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from catalyst_radar.discovery.brief import build_discovery_brief, load_world_events
 from catalyst_radar.discovery.ingest import (
     import_world_events_local,
@@ -11,6 +13,8 @@ from catalyst_radar.discovery.ingest import (
 )
 from catalyst_radar.discovery.mapper import map_event_tickers
 from catalyst_radar.discovery.models import WORLD_EVENTS_SCHEMA
+
+pytestmark = pytest.mark.discovery
 
 
 def test_load_sample_world_events() -> None:

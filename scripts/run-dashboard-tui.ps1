@@ -501,7 +501,8 @@ try {
             $snapshotCommand = (
                 "& " +
                 (ConvertTo-PowerShellSingleQuotedLiteral -Value $venvPython) +
-                " -m catalyst_radar.cli dashboard-snapshot --json --fast"
+                " " +
+                (ConvertTo-PowerShellSingleQuotedLiteral -Value (Join-Path $repoRoot "scripts\discovery-snapshot.py"))
             )
             $rustArgs.Add("--snapshot-command")
             $rustArgs.Add($snapshotCommand)

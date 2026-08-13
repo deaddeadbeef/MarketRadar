@@ -122,14 +122,18 @@ Runtime: `catalyst-radar product-scope --json`.
 
 ### Phase D4 — Code quarantine
 
-- Move deprecated packages under `src/catalyst_radar/legacy/` **or** delete
-  with test migration
-- Drop unused API routes and Tauri pages
-- Shrink `dashboard/data.py` toward discovery snapshot only
+- [x] Deprecated CLI hard-blocked unless `CATALYST_ENABLE_LEGACY_WORKBENCH=true`
+- [x] Discovery join isolated from `dashboard.data` (`discovery/join.py`)
+- [x] Theme YAML parser local to discovery (no `textint` import)
+- [x] Fill-discovery-gaps no longer captures full-market grouped-daily
+- [ ] Physical move of packages under `src/catalyst_radar/legacy/` (optional follow-up)
 
 ### Phase D5 — Delete
 
-- Remove legacy packages, tests, scripts, and docs that only serve deprecated UX
+- [x] README cut to event-first; workbench docs under `docs/legacy/`
+- [x] Product CI and default discovery test path
+- [x] Daily brief persist under `data/local/discovery-briefs/`
+- [ ] Delete Streamlit / Python TUI / unused API routes in a later PR
 - Keep git history; do not force-push
 
 ---

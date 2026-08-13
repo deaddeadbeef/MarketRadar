@@ -1267,7 +1267,33 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip local DB priced-in join (events-only research brief).",
     )
+    discovery_brief.add_argument(
+        "--persist",
+        action="store_true",
+        help="Write today's brief JSON under data/local/discovery-briefs/.",
+    )
     discovery_brief.add_argument("--json", action="store_true")
+
+    discovery_ready = subparsers.add_parser(
+        "assert-discovery-ready",
+        help=(
+            "Event-first ship gate: fresh world events, event-time join coverage, "
+            "and investment_advice=false. Does not use trial/shadow/investable gates."
+        ),
+    )
+    discovery_ready.add_argument("--database-url")
+    discovery_ready.add_argument(
+        "--events",
+        type=Path,
+        help="Path to world-events-v1 JSON (default: data/local then data/sample).",
+    )
+    discovery_ready.add_argument(
+        "--theme-peers",
+        type=Path,
+        default=Path("config/theme_peers.yaml"),
+    )
+    discovery_ready.add_argument("--no-db", action="store_true")
+    discovery_ready.add_argument("--json", action="store_true")
 
     discovery_ingest = subparsers.add_parser(
         "discovery-ingest",
@@ -1661,7 +1687,11 @@ def _print_ops_capabilities(payload: Mapping[str, object]) -> None:
 def main(argv: list[str] | None = None) -> int:
     dotenv_loaded = load_app_dotenv()
     args = build_parser().parse_args(argv)
-    from catalyst_radar.deprecation import product_scope_payload, warn_if_deprecated_cli
+    from catalyst_radar.deprecation import (
+        block_if_deprecated_cli,
+        product_scope_payload,
+        warn_if_deprecated_cli,
+    )
 
     if args.command == "product-scope":
         payload = product_scope_payload()
@@ -1717,6 +1747,23 @@ def main(argv: list[str] | None = None) -> int:
             print(f"next={payload.get('next_action')}")
         return 0
 
+    blocked = block_if_deprecated_cli(str(args.command or ""))
+    if blocked:
+        if args.json if hasattr(args, "json") and args.json else False:
+            print(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "error": blocked,
+                        "command": args.command,
+                        "investment_advice": False,
+                    },
+                    sort_keys=True,
+                )
+            )
+        else:
+            print(blocked, file=sys.stderr)
+        return 2
     deprecated_warning = warn_if_deprecated_cli(str(args.command or ""))
     if deprecated_warning:
         print(deprecated_warning, file=sys.stderr)
@@ -2576,11 +2623,42 @@ def main(argv: list[str] | None = None) -> int:
             engine=join_engine,
             limit=args.limit,
         )
+        if args.persist:
+            from catalyst_radar.discovery.persist import persist_discovery_brief
+
+            persist_info = persist_discovery_brief(payload)
+            payload = {**payload, "persist": persist_info}
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_discovery_brief(payload)
         return 0
+
+    if args.command == "assert-discovery-ready":
+        from catalyst_radar.discovery.brief import default_events_path
+        from catalyst_radar.discovery.ready import build_discovery_readiness
+
+        events_path = args.events or default_events_path()
+        join_engine = None if args.no_db else engine
+        payload = build_discovery_readiness(
+            events_path=events_path,
+            engine=join_engine,
+            theme_peers_path=args.theme_peers,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(
+                "discovery_ready "
+                f"ready={payload.get('ready')} "
+                f"status={payload.get('status')} "
+                f"blocker={payload.get('first_blocker')} "
+                f"fresh={payload.get('freshness_status')} "
+                f"join={payload.get('join_coverage_pct')}%"
+            )
+            print(f"next={payload.get('canonical_next_action')}")
+            print(f"cmd={payload.get('canonical_next_command')}")
+        return 0 if payload.get("ready") else 1
 
     if args.command == "discovery-ingest":
         from catalyst_radar.discovery.ingest import (

@@ -76,10 +76,14 @@ Details and removal phases: `docs/DEPRECATION.md`.
 
 | Metric | Target |
 |--------|--------|
-| Fresh world events | Most weekdays `< 24h` age |
-| Top discovery join rate | ≥50% of top-20 joined |
+| Fresh world events | Most weekdays `< 24h` age (`assert-discovery-ready`) |
+| Top discovery join rate | ≥50% of top-20 **event-time** joins (bars in the event window, not old candidate rows) |
 | Labels on discovery_row | Ongoing; enough for value-report ≠ empty |
 | Safety | 0 accidental broker orders; social never buy-review |
+
+Ship gate: `catalyst-radar assert-discovery-ready --json`. Do not use
+`assert-trial-ready`, `assert-shadow-ready`, or `assert-investable-readiness`
+as the discovery success criterion.
 
 ---
 

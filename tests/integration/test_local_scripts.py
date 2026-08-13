@@ -28,45 +28,14 @@ def test_restart_local_script_restarts_only_market_radar_processes() -> None:
 def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 
-    assert "scripts/prepare-live-env.ps1" in readme
-    assert "scripts/open-live-env.ps1" in readme
-    assert "scripts/restart-local.ps1" in readme
-    assert "scripts/check-live-activation.ps1" in readme
-    assert "scripts/run-first-live-smoke.ps1" in readme
-    assert "scripts/run-worker-once.ps1" in readme
-    assert "scripts/market-radar-status.ps1" in readme
-    assert "scripts/market-radar-status.ps1 -Quick" in readme
-    assert "radar --repair-venv" in readme
-    assert "Windows Store Python" in readme
-    assert "does not change your global" in readme
-    assert "catalyst-radar dashboard-tui" in readme
-    assert "catalyst-radar dashboard-snapshot --json" in readme
-    assert "docs/dashboard-feature-inventory.md" in readme
-    assert "catalyst-radar market-bars template" in readme
-    assert "catalyst-radar market-bars import" in readme
-    assert "provider_saved_file_capture_request_body" in readme
-    assert "provider_saved_file_capture_confirm_request_body" in readme
-    assert "provider_saved_file_validate_request_body" in readme
-    assert "provider_saved_file_import_preview_request_body" in readme
-    assert "provider_saved_file_import_request_body" in readme
-    assert "--save-response data/local/polygon-grouped-daily-" in readme
-    assert "scripts/export-telemetry.ps1" in readme
-    assert "scripts/export-operator-evidence.ps1" in readme
-    assert "scripts/export-pr-ledger.ps1" in readme
-    assert "scripts/debug-dashboard-e2e.ps1" in readme
-    assert "docs\\changes\\pr-ledger.json" in readme
-    assert "data\\ops\\bundles\\pr-ledger-current.json" in readme
-    assert "scripts/assert-investable-readiness.ps1" in readme
-    assert "/api/ops/telemetry/raw" in readme
-    assert "-Execute" in readme
-    assert "CATALYST_DAILY_MARKET_PROVIDER=csv" in readme
-    assert "CATALYST_DAILY_PROVIDER=csv" in readme
-    assert "CATALYST_DAILY_MARKET_PROVIDER` controls scheduled daily bar ingest" in readme
-    assert "CATALYST_DAILY_PROVIDER` override keeps manual/default radar runs aligned" in readme
-    assert "CATALYST_DAILY_EVENT_PROVIDER=sec" in readme
-    assert "CATALYST_SEC_ENABLE_LIVE=1" in readme
-    assert "/api/radar/runs/call-plan" in readme
-    assert "CATALYST_MARKET_PROVIDER=polygon" not in readme
+    assert "docs/PRODUCT_SCOPE.md" in readme
+    assert "assert-discovery-ready" in readme
+    assert "scripts/refresh-world-events.ps1" in readme
+    assert "scripts/discovery-snapshot.py" in readme
+    assert "CATALYST_ENABLE_LEGACY_WORKBENCH" in readme
+    assert "docs/legacy/" in readme
+    assert "assert-investable-readiness" not in readme
+    assert "catalyst-radar dashboard-tui" not in readme
 
 
 def test_dashboard_docs_name_tauri_as_primary_operator_surface() -> None:
@@ -76,12 +45,13 @@ def test_dashboard_docs_name_tauri_as_primary_operator_surface() -> None:
         encoding="utf-8"
     )
 
-    assert "The primary operator dashboard is the Tauri desktop command center" in readme
+    assert "World Events" in readme
+    assert "scripts/discovery-snapshot.py" in readme
     assert '"default": "tauri_desktop"' in dashboard_api
     assert "Tauri desktop command center is the primary" in inventory
     assert "operator dashboard" in inventory
     assert "Tauri desktop command center as the primary operational surface" in inventory
-    assert "desktop, terminal, CLI, and API coverage" in readme
+    assert "event-first" in readme.casefold()
 
     stale_primary_claims = [
         "The TUI is the operational replacement surface",
@@ -128,7 +98,7 @@ def test_dashboard_launcher_manages_child_process_tree() -> None:
     assert "Get-RustInstallHint" in text
     assert '"radar-tui"' in text
     assert '"--snapshot-command"' in text
-    assert "dashboard-snapshot --json --fast" in text
+    assert "discovery-snapshot.py" in text
     assert 'cargo @("build", "-p", "radar-tui", "--release", "--quiet")' in text
     assert "dashboard-tui" in text
 

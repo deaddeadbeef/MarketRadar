@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager, State};
 
-const TRADING_WORKBENCH_TITLE: &str = "MarketRadar Trading Workbench";
+const TRADING_WORKBENCH_TITLE: &str = "MarketRadar";
 
 #[derive(Clone, Debug, Serialize)]
 struct PageInfo {
@@ -294,7 +294,7 @@ fn main() {
             close_dashboard_window
         ])
         .run(tauri::generate_context!())
-        .expect("error while running MarketRadar Trading Workbench");
+        .expect("error while running MarketRadar");
 }
 
 fn build_desktop_config(args: &DesktopArgs, repo_root: &Path) -> DesktopConfig {
@@ -419,17 +419,20 @@ fn default_snapshot_command(repo_root: &Path) -> String {
     let python = local_python(repo_root)
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "python".to_string());
+    let script = repo_root.join("scripts").join("discovery-snapshot.py");
     if cfg!(windows) {
         format!(
-            "$env:PYTHONPATH={}; & {} -m catalyst_radar.cli dashboard-snapshot --json --fast",
+            "$env:PYTHONPATH={}; & {} {}",
             powershell_quote(&src_path.display().to_string()),
-            powershell_quote(&python)
+            powershell_quote(&python),
+            powershell_quote(&script.display().to_string())
         )
     } else {
         format!(
-            "PYTHONPATH={} {} -m catalyst_radar.cli dashboard-snapshot --json --fast",
+            "PYTHONPATH={} {} {}",
             shell_quote(&src_path.display().to_string()),
-            shell_quote(&python)
+            shell_quote(&python),
+            shell_quote(&script.display().to_string())
         )
     }
 }
@@ -445,7 +448,7 @@ fn dashboard_surfaces() -> DashboardSurfaces {
 fn dashboard_data_contract() -> DashboardDataContract {
     DashboardDataContract {
         snapshot_endpoint: "/api/dashboard/snapshot?fast=true",
-        snapshot_command: "catalyst-radar dashboard-snapshot --json --fast",
+        snapshot_command: "scripts/discovery-snapshot.py",
         provider_calls_for_browsing: 0,
     }
 }
@@ -1380,7 +1383,7 @@ fn automation_recipe() -> AutomationRecipe {
                 expected_page: None,
                 expected_nav: None,
                 expected_provider_calls: Some(0),
-                expected_state: vec!["native MarketRadar Trading Workbench window closes"],
+                expected_state: vec!["native MarketRadar window closes"],
                 requires_review: true,
             },
         ],
@@ -1393,12 +1396,12 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "launch",
             action: "Launch the app by executable path through Computer Use, then select the returned window object.",
             target: "target\\release\\radar-desktop.exe",
-            expected: "A native window titled MarketRadar Trading Workbench is targetable.",
+            expected: "A native window titled MarketRadar is targetable.",
         },
         ComputerUseStep {
             step: "capture",
             action: "Capture screenshot and accessibility text for the selected window.",
-            target: "MarketRadar Trading Workbench",
+            target: "MarketRadar",
             expected: "The window exposes MarketRadar workflow tabs, dashboard-page, command-input, command-state, automation-state, automation-json, filter-state, loading-dashboard before first data, next-safe-action, keys-panel, snapshot-panel, page=<PAGE>, nav=<WORKFLOW_PAGE>, snapshot-page=<PAGE>, and provider_calls=0.",
         },
         ComputerUseStep {
@@ -1525,7 +1528,7 @@ fn computer_use_steps() -> Vec<ComputerUseStep> {
             step: "close-command",
             action: "Type q and press Return only when the automation session is finished.",
             target: "command-input",
-            expected: "The native MarketRadar Trading Workbench window closes without provider, OpenAI, broker, or DB-write actions.",
+            expected: "The native MarketRadar window closes without provider, OpenAI, broker, or DB-write actions.",
         },
     ]
 }
@@ -1538,7 +1541,7 @@ mod tests {
     fn default_command_uses_local_snapshot_contract() {
         let command = default_snapshot_command(Path::new("C:/repo/MarketRadar"));
 
-        assert!(command.contains("dashboard-snapshot --json --fast"));
+        assert!(command.contains("discovery-snapshot.py"));
         assert!(command.contains("PYTHONPATH") || command.contains("$env:PYTHONPATH"));
     }
 
@@ -1742,7 +1745,7 @@ mod tests {
         );
         assert_eq!(
             payload["data_contract"]["snapshot_command"],
-            "catalyst-radar dashboard-snapshot --json --fast"
+            "scripts/discovery-snapshot.py"
         );
         assert_eq!(payload["data_contract"]["provider_calls_for_browsing"], 0);
         assert_eq!(
@@ -2112,7 +2115,7 @@ mod tests {
                 && step.action.contains("Type q")
                 && step
                     .expected
-                    .contains("native MarketRadar Trading Workbench window closes")
+                    .contains("native MarketRadar window closes")
         }));
         assert!(
             manifest

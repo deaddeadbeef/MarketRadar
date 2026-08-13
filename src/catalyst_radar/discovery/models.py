@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-
 WORLD_EVENTS_SCHEMA = "world-events-v1"
 DISCOVERY_BRIEF_SCHEMA = "discovery-brief-v1"
 
