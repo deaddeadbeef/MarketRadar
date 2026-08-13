@@ -56,8 +56,8 @@ def test_tauri_trading_workbench_shell_exposes_platform_tools() -> None:
         encoding="utf-8",
     )
 
-    assert "MarketRadar Trading Workbench" in html
-    assert "MarketRadar Trading Workbench" in tauri_config
+    assert "MarketRadar" in html
+    assert "MarketRadar" in tauri_config
     assert "const TRADING_WORKBENCH_TITLE" in rust_source
     assert "app_name: TRADING_WORKBENCH_TITLE" in rust_source
     assert 'schema_version: "trading-platform-manifest-v1"' in rust_source
@@ -1137,7 +1137,7 @@ def test_tauri_dashboard_quit_command_closes_native_window() -> None:
     )
 
     assert "['q', 'quit', 'exit'].includes(command)" in source
-    assert "setCommandStatus('Closing MarketRadar Trading Workbench.');" in source
+    assert "setCommandStatus('Closing MarketRadar.');" in source
     assert "await closeDashboardWindow();" in source
     assert "await invoke('close_dashboard_window');" in source
     assert "fn close_dashboard_window(app: AppHandle) -> Result<(), String>" in rust_source
@@ -1188,7 +1188,7 @@ def test_tauri_dashboard_global_keys_match_rust_tui() -> None:
     assert "if (plainKey === 'r')" in source
     assert "if (plainKey === 'j')" in source
     assert "if (plainKey === 'k')" in source
-    assert "setCommandStatus('Closing MarketRadar Trading Workbench.');" in source
+    assert "setCommandStatus('Closing MarketRadar.');" in source
     assert "closeDashboardWindow();" in source
     assert "setCommandStatus('Refreshed.');" in source
     assert "refreshSnapshot();" in source

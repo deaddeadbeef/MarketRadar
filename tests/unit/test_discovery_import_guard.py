@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.discovery
+
 FORBIDDEN = (
     "catalyst_radar.brokers",
     "catalyst_radar.trading",
@@ -12,6 +16,9 @@ FORBIDDEN = (
     "catalyst_radar.portfolio",
     "catalyst_radar.decision_cards",
     "catalyst_radar.universe",
+    "catalyst_radar.dashboard.data",
+    "catalyst_radar.textint",
+    "load_candidate_rows",
 )
 
 

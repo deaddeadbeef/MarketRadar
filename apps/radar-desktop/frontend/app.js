@@ -3,7 +3,7 @@ const tauriInvoke = window.__TAURI__?.core?.invoke;
 const state = {
   config: null,
   snapshot: null,
-  page: 'overview',
+  page: 'world-events',
   loading: false,
   lastRefresh: null,
   scanOffset: 0,
@@ -338,7 +338,7 @@ function commandReference() {
 
 function platformManifest() {
   return state.config?.platform || {
-    name: 'MarketRadar Trading Workbench',
+    name: 'MarketRadar',
     primary_tool: 'market-radar',
     modules: fallbackPlatformModules.map(([key, label, page, role, status]) => ({
       key,
@@ -768,7 +768,7 @@ function updatePlatformState() {
   setText(
     '#platform-state',
     [
-      `app=${manifest.name || 'MarketRadar Trading Workbench'}`,
+      `app=${manifest.name || 'MarketRadar'}`,
       `primary_tool=${manifest.primary_tool || 'market-radar'}`,
       `modules=${platformModules().length}`,
       `live_trading_enabled=${Boolean(boundary.live_trading_enabled)}`,
@@ -1103,7 +1103,7 @@ function renderSnapshot() {
 function renderLoadingDashboard() {
   setText('#page-title', 'World Events');
   setText('#next-action', 'Loading local discovery snapshot.');
-  setText('#next-command', 'dashboard-snapshot --json --fast');
+  setText('#next-command', 'scripts/discovery-snapshot.py');
   setText('#boundary-copy', 'Rendering remains local and makes zero provider calls.');
   setText('#provider-calls', 'provider_calls=0');
   setText('#snapshot-page', navigationPageKey(state.page));
@@ -5846,7 +5846,7 @@ async function applyCommand(raw) {
   const value = parts.join(' ').trim();
 
   if (['q', 'quit', 'exit'].includes(command)) {
-    setCommandStatus('Closing MarketRadar Trading Workbench.');
+    setCommandStatus('Closing MarketRadar.');
     await closeDashboardWindow();
     return false;
   }
@@ -6505,7 +6505,7 @@ function guardedCommandMessage(normalized) {
     'ticket',
     'trigger',
   ].includes(first)) {
-    const nextCommand = compact(state.snapshot?.next_command || state.snapshot?.canonical_next_command, 'catalyst-radar dashboard-snapshot --json --fast');
+    const nextCommand = compact(state.snapshot?.next_command || state.snapshot?.canonical_next_command, 'scripts/discovery-snapshot.py');
     return `Review command boundary. Suggested external command: ${nextCommand}`;
   }
   return '';
@@ -6641,7 +6641,7 @@ function handleKeyboard(event) {
   if (!commandModifier) {
     if (plainKey === 'q') {
       event.preventDefault();
-      setCommandStatus('Closing MarketRadar Trading Workbench.');
+      setCommandStatus('Closing MarketRadar.');
       closeDashboardWindow();
       return;
     }

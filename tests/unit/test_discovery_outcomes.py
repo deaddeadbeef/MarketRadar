@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.discovery
+
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 

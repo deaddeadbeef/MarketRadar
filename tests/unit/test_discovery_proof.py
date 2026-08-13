@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.discovery
+
 from pathlib import Path
 
 from catalyst_radar.discovery.label import build_discovery_label_payload

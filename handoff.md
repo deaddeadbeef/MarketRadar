@@ -1,5 +1,9 @@
 # MarketRadar Handoff
 
+> **HISTORICAL.** This file is a May 2026 dashboard-polishing log. It is **not**
+> the product contract. Current product: `docs/PRODUCT_SCOPE.md` and `AGENTS.md`.
+> Archived workbench notes: `docs/legacy/`.
+
 Last updated: 2026-05-30 11:20:52 +08:00
 
 ## 2026-05-30 Pause Handoff: Dashboard Polishing Goal

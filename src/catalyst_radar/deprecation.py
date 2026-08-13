@@ -113,6 +113,7 @@ ACTIVE_CLI_COMMANDS: frozenset[str] = frozenset(
         "discovery-case",
         "discovery-label",
         "discovery-outcomes",
+        "assert-discovery-ready",
         "product-scope",
         "init-db",
     }
@@ -200,14 +201,20 @@ REMOVAL_PHASES: tuple[dict[str, Any], ...] = (
     {
         "id": "D4",
         "name": "Code quarantine",
-        "status": "planned",
-        "summary": "Move or isolate legacy packages; shrink dashboard.data.",
+        "status": "done",
+        "summary": (
+            "Deprecated CLI hard-blocked unless CATALYST_ENABLE_LEGACY_WORKBENCH; "
+            "discovery join isolated from dashboard.data; theme YAML local to discovery."
+        ),
     },
     {
         "id": "D5",
         "name": "Delete",
-        "status": "planned",
-        "summary": "Remove deprecated packages, pages, routes, and tests.",
+        "status": "in_progress",
+        "summary": (
+            "Legacy docs archived; product CI/tests isolated; workbench packages "
+            "remain importable behind the legacy flag until a later deletion PR."
+        ),
     },
 )
 
@@ -301,6 +308,14 @@ def product_scope_payload() -> dict[str, Any]:
     }
 
 
+def legacy_workbench_enabled(env: Mapping[str, str] | None = None) -> bool:
+    from os import environ
+
+    source = environ if env is None else env
+    value = str(source.get("CATALYST_ENABLE_LEGACY_WORKBENCH") or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def warn_if_deprecated_cli(command: str) -> str | None:
     """Return a human warning string if command is deprecated, else None."""
     status = cli_command_status(command)
@@ -310,6 +325,23 @@ def warn_if_deprecated_cli(command: str) -> str | None:
         f"DEPRECATED: CLI command '{command}' is outside the event-first product "
         f"scope ({SCOPE_VERSION}). See docs/PRODUCT_SCOPE.md and docs/DEPRECATION.md. "
         "Prefer discovery-brief / discovery-case / discovery-label / World Events UI."
+    )
+
+
+def block_if_deprecated_cli(
+    command: str,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Return a blocking error if a deprecated command is used without the flag."""
+    if cli_command_status(command) != "deprecated":
+        return None
+    if legacy_workbench_enabled(env):
+        return None
+    return (
+        f"BLOCKED: CLI command '{command}' is deprecated. "
+        "Set CATALYST_ENABLE_LEGACY_WORKBENCH=true to run legacy workbench "
+        "commands, or use discovery-brief / World Events."
     )
 
 
@@ -332,5 +364,7 @@ __all__ = [
     "is_deprecated_desktop_page",
     "package_status",
     "product_scope_payload",
+    "block_if_deprecated_cli",
+    "legacy_workbench_enabled",
     "warn_if_deprecated_cli",
 ]

@@ -41,12 +41,8 @@ if ([System.IO.Path]::IsPathRooted($Destination)) {
 
 $source = $EventsPath
 if ([string]::IsNullOrWhiteSpace($source)) {
-  if (Test-Path $destResolved) {
-    $source = $destResolved
-    Write-Host "No -EventsPath provided; checking existing install: $source"
-  } else {
-    Write-Error @"
-No events file to install.
+  Write-Error @"
+Refusing to validate-only the installed feed. That never refreshes world events.
 
 Provide a fresh world-events-v1 JSON, for example:
   powershell -ExecutionPolicy Bypass -File scripts/refresh-world-events.ps1 ``
@@ -54,7 +50,6 @@ Provide a fresh world-events-v1 JSON, for example:
 
 The main app reads: $Destination
 "@
-  }
 }
 
 if (-not [System.IO.Path]::IsPathRooted($source)) {

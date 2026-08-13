@@ -51,6 +51,25 @@ def _weekday_sessions(end: date, count: int) -> list[date]:
     return list(reversed(sessions))
 
 
+def _mapped_bar_count_for_date(engine, session: date, tickers: list[str]) -> int:
+    from sqlalchemy import text
+
+    if not tickers:
+        return 0
+    placeholders = ", ".join(f":t{i}" for i in range(len(tickers)))
+    params = {f"t{i}": ticker for i, ticker in enumerate(tickers)}
+    params["day"] = session.isoformat()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                f"SELECT COUNT(DISTINCT ticker) FROM daily_bars "
+                f"WHERE date = :day AND ticker IN ({placeholders})"
+            ),
+            params,
+        ).fetchone()
+    return int(row[0] or 0) if row else 0
+
+
 def _mapped_tickers(events_path: Path) -> list[str]:
     from catalyst_radar.discovery.brief import build_discovery_brief
 
@@ -172,8 +191,10 @@ def main(argv: list[str] | None = None) -> int:
             "existing_bar_count": have,
             "command": "catalyst-radar " + " ".join(cmd),
         }
-        # Full-market fixtures land ~10k+ rows; skip slow re-import when already loaded.
-        if have >= 5000:
+        # Discovery join only needs mapped tickers. Skip full-universe re-import.
+        mapped_have = _mapped_bar_count_for_date(engine, fixture_date, tickers)
+        step["mapped_bar_count"] = mapped_have
+        if mapped_have >= max(1, len(tickers) // 2):
             step["result"] = {
                 "status": "skipped_already_loaded",
                 "existing_bar_count": have,
@@ -233,10 +254,17 @@ def main(argv: list[str] | None = None) -> int:
         }
         have = existing_bar_counts.get(session.isoformat(), 0)
         step["existing_bar_count"] = have
-        if have >= 5000:
-            step["capture_result"] = {"status": "skipped_already_loaded"}
-            steps.append(step)
-            continue
+        mapped_have = _mapped_bar_count_for_date(engine, session, tickers)
+        step["mapped_bar_count"] = mapped_have
+        step["capture_result"] = {
+            "status": "skipped_full_market_not_discovery",
+            "detail": (
+                "Mapped-ticker join does not capture grouped-daily. "
+                "Import a local fixture or supply bars for mapped names only."
+            ),
+        }
+        steps.append(step)
+        continue
         if out.is_file():
             plan["external_calls_planned"] = int(plan["external_calls_planned"] or 0)
             if args.execute:

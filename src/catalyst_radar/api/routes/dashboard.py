@@ -20,7 +20,7 @@ from catalyst_radar.storage.db import create_schema, engine_from_url
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
-TRADING_WORKBENCH_TITLE = "MarketRadar Trading Workbench"
+TRADING_WORKBENCH_TITLE = "MarketRadar"
 
 
 @dataclass(frozen=True)
@@ -789,7 +789,7 @@ def _automation_recipe() -> dict[str, object]:
                 "expected_nav": None,
                 "expected_provider_calls": 0,
                 "expected_state": [
-                    "native MarketRadar Trading Workbench window closes",
+                    "native MarketRadar window closes",
                 ],
                 "requires_review": True,
             },
@@ -911,13 +911,13 @@ def manifest() -> dict[str, object]:
                     ),
                     "target": "target\\release\\radar-desktop.exe",
                     "expected": (
-                        "A native window titled MarketRadar Trading Workbench is targetable."
+                        "A native window titled MarketRadar is targetable."
                     ),
                 },
                 {
                     "step": "capture",
                     "action": "Capture screenshot and accessibility text for the selected window.",
-                    "target": "MarketRadar Trading Workbench",
+                    "target": "MarketRadar",
                     "expected": (
                         "The window exposes MarketRadar workflow tabs, dashboard-page, "
                         "command-input, command-state, automation-state, "
@@ -1160,7 +1160,7 @@ def manifest() -> dict[str, object]:
                     ),
                     "target": "command-input",
                     "expected": (
-                        "The native MarketRadar Trading Workbench window closes "
+                        "The native MarketRadar window closes "
                         "without provider, OpenAI, broker, or DB-write actions."
                     ),
                 },
