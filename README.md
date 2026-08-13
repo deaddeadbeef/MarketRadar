@@ -17,7 +17,14 @@ Ship gate: `catalyst-radar assert-discovery-ready --json`
 2. Install and smoke-check:
 
 ```powershell
+# From a local x-posts-v1 dump (zero provider calls):
+catalyst-radar discovery-from-posts --posts path\to\x_posts.json --execute
+# Or install an already-built world-events-v1 file:
 powershell -ExecutionPolicy Bypass -File scripts/refresh-world-events.ps1 -EventsPath path\to\world_events.json -Execute
+
+# Optional: mapped bars so the join is event-time, not missing_scan
+catalyst-radar discovery-bars --csv path\to\mapped_bars.csv --execute
+
 catalyst-radar discovery-brief --json --persist
 catalyst-radar assert-discovery-ready --json
 ```

@@ -1,0 +1,31 @@
+{
+  "schema_version": "x-posts-v1",
+  "generated_at": "2026-08-13T12:00:00+00:00",
+  "source": "sample_x_posts",
+  "posts": [
+    {
+      "id": "x1",
+      "event_id": "memory_asp",
+      "title": "HBM and DRAM ASP commentary stays tight",
+      "text": "$MU and $SNDK still described as sold out on HBM while conventional DRAM ASPs print higher.",
+      "url": "https://x.com/example/status/1",
+      "author": "@example",
+      "published_at": "2026-08-12T15:00:00+00:00",
+      "themes": ["memory"],
+      "direction": "bullish",
+      "engagement": {"likes": 12, "views": 800}
+    },
+    {
+      "id": "x2",
+      "event_id": "memory_asp",
+      "text": "Second-order memory names lag the same physical shortage story.",
+      "url": "https://x.com/example/status/2",
+      "author": "@example2",
+      "published_at": "2026-08-12T16:00:00+00:00",
+      "tickers": ["WDC"],
+      "themes": ["memory"],
+      "direction": "bullish",
+      "engagement": {"likes": 4, "views": 200}
+    }
+  ]
+}

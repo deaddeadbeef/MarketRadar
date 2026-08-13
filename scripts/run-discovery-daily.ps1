@@ -10,6 +10,8 @@
 [CmdletBinding()]
 param(
   [string]$EventsPath = "",
+  [string]$PostsPath = "",
+  [string]$BarsCsv = "",
   [switch]$Execute
 )
 
@@ -19,6 +21,31 @@ Set-Location $repoRoot
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { $python = "python" }
 $env:PYTHONPATH = "src"
+
+if (-not [string]::IsNullOrWhiteSpace($PostsPath)) {
+  $fromPosts = @(
+    "-m", "catalyst_radar.cli",
+    "discovery-from-posts",
+    "--posts", $PostsPath,
+    "--destination", "data\local\world_events.json",
+    "--json"
+  )
+  if ($Execute) { $fromPosts += "--execute" }
+  & $python @fromPosts
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($BarsCsv)) {
+  $bars = @(
+    "-m", "catalyst_radar.cli",
+    "discovery-bars",
+    "--csv", $BarsCsv,
+    "--json"
+  )
+  if ($Execute) { $bars += "--execute" }
+  & $python @bars
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 
 if (-not [string]::IsNullOrWhiteSpace($EventsPath)) {
   $refresh = @(

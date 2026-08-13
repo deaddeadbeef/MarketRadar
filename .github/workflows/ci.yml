@@ -22,13 +22,26 @@ jobs:
           src/catalyst_radar/discovery/ready.py
           src/catalyst_radar/discovery/persist.py
           src/catalyst_radar/discovery/yaml_util.py
+          src/catalyst_radar/discovery/from_posts.py
+          src/catalyst_radar/discovery/bars.py
           tests/unit/test_discovery_join.py
           tests/unit/test_discovery_ready.py
+          tests/unit/test_discovery_from_posts.py
+          tests/unit/test_discovery_bars.py
+          tests/unit/test_discovery_daily_loop.py
       - name: Product tests
         env:
           PYTHONPATH: src
         run: >
           python -m pytest
-          tests/unit/test_discovery_*.py
+          tests/unit/test_discovery_brief.py
+          tests/unit/test_discovery_join.py
+          tests/unit/test_discovery_ready.py
+          tests/unit/test_discovery_from_posts.py
+          tests/unit/test_discovery_bars.py
+          tests/unit/test_discovery_daily_loop.py
+          tests/unit/test_discovery_import_guard.py
+          tests/unit/test_discovery_outcomes.py
+          tests/unit/test_discovery_proof.py
           tests/unit/test_product_scope.py
           -q

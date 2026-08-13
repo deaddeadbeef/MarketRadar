@@ -1295,6 +1295,38 @@ def build_parser() -> argparse.ArgumentParser:
     discovery_ready.add_argument("--no-db", action="store_true")
     discovery_ready.add_argument("--json", action="store_true")
 
+    discovery_from_posts = subparsers.add_parser(
+        "discovery-from-posts",
+        help="Convert local x-posts-v1 JSON into world-events-v1 (zero provider calls).",
+    )
+    discovery_from_posts.add_argument(
+        "--posts",
+        type=Path,
+        required=True,
+        help="Path to x-posts-v1 JSON.",
+    )
+    discovery_from_posts.add_argument(
+        "--destination",
+        type=Path,
+        default=Path("data/local/world_events.json"),
+    )
+    discovery_from_posts.add_argument("--execute", action="store_true")
+    discovery_from_posts.add_argument("--json", action="store_true")
+
+    discovery_bars = subparsers.add_parser(
+        "discovery-bars",
+        help="Import mapped-ticker daily bars from CSV for event-time joins.",
+    )
+    discovery_bars.add_argument("--database-url")
+    discovery_bars.add_argument(
+        "--csv",
+        type=Path,
+        required=True,
+        help="CSV with ticker,date,open,high,low,close,volume.",
+    )
+    discovery_bars.add_argument("--execute", action="store_true")
+    discovery_bars.add_argument("--json", action="store_true")
+
     discovery_ingest = subparsers.add_parser(
         "discovery-ingest",
         help=(
@@ -1721,6 +1753,26 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         return 0
+
+    if args.command == "discovery-from-posts":
+        from catalyst_radar.discovery.from_posts import convert_posts_file
+
+        payload = convert_posts_file(
+            posts_path=args.posts,
+            destination=args.destination,
+            execute=bool(args.execute),
+        )
+        if args.json:
+            print(json.dumps(payload, default=str, sort_keys=True))
+        else:
+            print(
+                "discovery_from_posts "
+                f"status={payload.get('status')} "
+                f"events={payload.get('event_count')} "
+                f"dest={payload.get('destination')}"
+            )
+            print(f"next={payload.get('next_action')}")
+        return 0 if payload.get("status") in {"preview", "executed"} else 1
 
     if args.command == "discovery-outcomes":
         from catalyst_radar.discovery.outcomes import build_discovery_outcomes_update
@@ -2659,6 +2711,27 @@ def main(argv: list[str] | None = None) -> int:
             print(f"next={payload.get('canonical_next_action')}")
             print(f"cmd={payload.get('canonical_next_command')}")
         return 0 if payload.get("ready") else 1
+
+    if args.command == "discovery-bars":
+        from catalyst_radar.discovery.bars import import_discovery_bars
+
+        payload = import_discovery_bars(
+            engine=engine,
+            csv_path=args.csv,
+            execute=bool(args.execute),
+        )
+        if args.json:
+            print(json.dumps(payload, default=str, sort_keys=True))
+        else:
+            print(
+                "discovery_bars "
+                f"status={payload.get('status')} "
+                f"rows={payload.get('row_count')} "
+                f"tickers={payload.get('ticker_count')} "
+                f"writes={payload.get('db_writes_made')}"
+            )
+            print(f"next={payload.get('next_action')}")
+        return 0
 
     if args.command == "discovery-ingest":
         from catalyst_radar.discovery.ingest import (

@@ -114,6 +114,8 @@ ACTIVE_CLI_COMMANDS: frozenset[str] = frozenset(
         "discovery-label",
         "discovery-outcomes",
         "assert-discovery-ready",
+        "discovery-from-posts",
+        "discovery-bars",
         "product-scope",
         "init-db",
     }
