@@ -904,11 +904,11 @@ function applyChromeMode() {
   const shell = qs('.shell');
   if (shell) shell.classList.toggle('discovery-focus', isDiscoveryHome());
   const navTitle = qs('.nav-title');
-  if (navTitle) navTitle.textContent = isDiscoveryHome() ? 'Discover' : 'Tools';
+  if (navTitle) navTitle.textContent = isDiscoveryHome() ? 'Menu' : 'Tools';
   const eyebrow = qs('.eyebrow');
   if (eyebrow) {
     eyebrow.textContent = isDiscoveryHome()
-      ? 'MarketRadar · Event-first discovery'
+      ? 'MarketRadar · Today’s briefing'
       : 'MarketRadar · Workbench';
   }
 }
@@ -1043,7 +1043,7 @@ function filterInput() {
     source_gap: state.sourceGap,
     decision_gap: state.decisionGap,
     stocks_only: qs('#filter-stocks-only').checked,
-    scan_limit: Number(qs('#filter-limit').value || 50),
+    scan_limit: isDiscoveryHome() ? 12 : Number(qs('#filter-limit').value || 50),
     scan_offset: state.scanOffset,
     telemetry_limit: 8,
   };
@@ -1066,16 +1066,13 @@ function renderSnapshot() {
       '#next-action',
       compact(
         discovery.next_action || snapshot.next_action,
-        'Scan today’s events, pick a ticker that may lag, then confirm with primary sources.',
+        'Read the first name, then check a regular news site before you do anything with money.',
       ),
     );
-    setText(
-      '#next-command',
-      compact(discovery.next_command || snapshot.next_command, 'Review discovery queue'),
-    );
+    setText('#next-command', 'Press R if you want a fresh briefing.');
     setText(
       '#boundary-copy',
-      'Research only · not investment advice · 0 provider calls while browsing',
+      'This is a research briefing. It is not investment advice and it will not buy or sell anything.',
     );
   } else {
     setText('#next-action', compact(snapshot.next_action || snapshot.canonical_next_action, 'Review the current page.'));
@@ -1574,95 +1571,80 @@ function renderOverview(snapshot) {
 
 function renderWorldEvents(snapshot) {
   const discovery = at(snapshot, ['event_discovery'], {}) || {};
-  const events = Array.isArray(discovery.events) ? discovery.events : [];
+  const novice = discovery.novice && typeof discovery.novice === 'object' ? discovery.novice : {};
+  const events = Array.isArray(novice.events) && novice.events.length
+    ? novice.events
+    : (Array.isArray(discovery.events) ? discovery.events : []);
   const discoveries = Array.isArray(discovery.discoveries) ? discovery.discoveries : [];
   const freshness = compact(discovery.freshness_status, 'unknown');
   const selected = (qs('#filter-ticker')?.value || '').trim().toUpperCase();
   const top = discoveries[0] || null;
-  const focusTicker = selected || compact(top?.ticker, '');
+  const focusTicker = selected || compact(novice.focus_ticker || top?.ticker, '');
 
   const eventCards = events.map((event) => {
-    const tickers = [
-      ...(Array.isArray(event.tickers) ? event.tickers : []),
-      ...(Array.isArray(event.secondary_tickers) ? event.secondary_tickers : []),
-    ].slice(0, 6).join(' · ');
+    const names = Array.isArray(event.names) && event.names.length
+      ? event.names.join(', ')
+      : (Array.isArray(event.tickers) ? event.tickers.slice(0, 5).join(', ') : '');
+    const mood = compact(event.mood, compact(event.direction, 'mixed'));
     const direction = compact(event.direction, 'mixed');
     return `
       <article class="discover-card" data-testid="world-event-row">
         <div class="discover-card-top">
-          <span class="pill direction-${escapeHtml(direction)}">${escapeHtml(direction)}</span>
-          <span class="muted">${escapeHtml(String(event.materiality ?? ''))}</span>
+          <span class="pill direction-${escapeHtml(direction)}">${escapeHtml(mood)}</span>
         </div>
-        <h3>${escapeHtml(compact(event.title, 'Untitled event'))}</h3>
-        <p class="muted">${escapeHtml(tickers || 'No tickers mapped')}</p>
+        <h3>${escapeHtml(compact(event.title, 'Untitled story'))}</h3>
+        <p class="muted">${escapeHtml(names || 'No companies mapped yet')}</p>
       </article>
     `;
   }).join('') || `
     <article class="discover-card empty">
-      <h3>No world events yet</h3>
-      <p class="muted">Drop a world-events file into data/local/world_events.json (or run the Grok daily task).</p>
+      <h3>No stories yet</h3>
+      <p class="muted">When today’s X briefing is installed, the big stories show up here.</p>
     </article>
   `;
 
-  const leadRows = discoveries.slice(0, 12).map((row) => {
+  const leadRows = discoveries.slice(0, 8).map((row) => {
     const ticker = compact(row.ticker, '');
     const active = ticker && ticker === focusTicker ? 'is-active' : '';
-    const why = compact(row.event_title || row.why_now, 'World event map');
+    const name = compact(row.name || ticker, ticker);
+    const why = compact(row.event_title, 'Tied to a current story');
+    const price = compact(row.price_line, '');
     return `
       <button type="button" class="lead-row ${active}" data-testid="discovery-row" data-ticker="${escapeHtml(ticker)}">
-        <span class="lead-ticker">${escapeHtml(ticker || '—')}</span>
+        <span class="lead-name">
+          <b>${escapeHtml(name)}</b>
+          <span class="lead-ticker">${escapeHtml(ticker)}</span>
+        </span>
         <span class="lead-why">${escapeHtml(why)}</span>
-        <span class="lead-gap" title="Emotion vs reaction gap">${escapeHtml(String(row.emotion_reaction_gap ?? '—'))}</span>
+        <span class="lead-gap">${escapeHtml(price || 'Open to read more')}</span>
       </button>
     `;
-  }).join('') || '<p class="muted">No discovery leads yet.</p>';
+  }).join('') || '<p class="muted">No names to review yet.</p>';
 
   const caseFile = discovery.case_file && typeof discovery.case_file === 'object'
     ? discovery.case_file
     : null;
-  const join = discovery.join_coverage && typeof discovery.join_coverage === 'object'
-    ? discovery.join_coverage
-    : {};
-  const goal = discovery.goal_status && typeof discovery.goal_status === 'object'
-    ? discovery.goal_status
-    : (productUiFromSnapshot(snapshot)?.goal_status || {});
-  const joinPct = Number(join.coverage_pct ?? goal.join_coverage_pct ?? 0);
-  const joinTarget = Number(join.target_pct ?? goal.join_target_pct ?? 50);
-  const joinMet = Boolean(join.target_met ?? goal.join_target_met);
-  const joinJoined = Number(join.joined ?? 0);
-  const joinMissing = Number(join.missing_scan ?? 0);
-  const proofLabels = Number(goal.proof_label_count ?? 0);
-  const goalBannerClass = joinMet && freshness !== 'stale' ? 'goal-banner ok' : 'goal-banner attention';
-  const goalBannerText = freshness === 'stale'
-    ? `Events stale (${String(discovery.events_age_hours ?? '?')}h). Install a fresh world-events file (scripts/refresh-world-events.ps1 -Execute), then press R to reload.`
-    : joinMet
-      ? `Goal track: join ${joinPct.toFixed(0)}% (≥${joinTarget.toFixed(0)}% target met) · ${proofLabels} proof label(s).`
-      : `Goal track: join ${joinPct.toFixed(0)}% of leads (target ≥${joinTarget.toFixed(0)}%). ${joinMissing} missing scan · run mapped bar fill.`;
 
   return `
     <section class="discover-hero" data-testid="world-events-header">
       <div>
-        <p class="discover-kicker">What might the market not have priced yet?</p>
-        <h2 class="discover-title">${escapeHtml(compact(discovery.headline, 'Load world events to start'))}</h2>
-        <p class="muted">${escapeHtml(
-          freshness === 'stale'
-            ? `Events look stale (${String(discovery.events_age_hours ?? '?')}h). Next Safe Action installs a fresh feed into data/local/world_events.json — not validate-only.`
-            : 'Research only — confirm with primary sources before any capital decision.',
-        )}</p>
-        <p class="${goalBannerClass}" data-testid="discovery-goal-banner">${escapeHtml(goalBannerText)}</p>
+        <p class="discover-kicker">Today’s briefing from X</p>
+        <h2 class="discover-title">${escapeHtml(compact(discovery.headline, 'Load today’s stories to start'))}</h2>
+        <p class="muted">${escapeHtml(compact(
+          novice.disclaimer,
+          'This is a research briefing, not investment advice. Check a real news site before you do anything with money.',
+        ))}</p>
       </div>
       <div class="discover-stats" data-testid="world-events-metrics">
-        <div><b>${escapeHtml(String(events.length))}</b><span>events</span></div>
-        <div><b>${escapeHtml(String(discoveries.length))}</b><span>leads</span></div>
-        <div><b>${escapeHtml(String(joinJoined))}/${escapeHtml(String(discoveries.length || 0))}</b><span>joined</span></div>
-        <div><b>${escapeHtml(String(joinPct.toFixed(0)))}%</b><span>join cov</span></div>
+        <div><b>${escapeHtml(String(events.length))}</b><span>stories</span></div>
+        <div><b>${escapeHtml(String(discoveries.length))}</b><span>names to read</span></div>
       </div>
     </section>
 
     <section class="discover-section" data-testid="world-events-table">
       <div class="discover-section-head">
-        <h2>1 · What happened</h2>
-        <p class="muted">World narratives mapped to equities</p>
+        <h2>What’s going on</h2>
+        <p class="muted">The big public conversations right now</p>
       </div>
       <div class="discover-card-grid">${eventCards}</div>
     </section>
@@ -1670,14 +1652,13 @@ function renderWorldEvents(snapshot) {
     <section class="discover-split">
       <section class="discover-section" data-testid="discovery-queue-table">
         <div class="discover-section-head">
-          <h2>2 · Who may lag</h2>
-          <p class="muted">Click a ticker to open its case</p>
+          <h2>Names that may not have reacted yet</h2>
+          <p class="muted">Tap one to see a plain-English note</p>
         </div>
         <div class="lead-list">${leadRows}</div>
       </section>
       ${renderDiscoveryCaseFile(caseFile, focusTicker)}
     </section>
-    ${renderDiscoveryProof(snapshot, discovery)}
   `;
 }
 
@@ -1760,10 +1741,10 @@ function renderDiscoveryCaseFile(caseFile, focusTicker) {
     return `
       <section class="discover-section case" data-testid="discovery-case-file">
         <div class="discover-section-head">
-          <h2>3 · Look closer</h2>
-          <p class="muted">${escapeHtml(focusTicker ? `No case for ${focusTicker}` : 'Pick a ticker from the list')}</p>
+          <h2>Read the note</h2>
+          <p class="muted">${escapeHtml(focusTicker ? `No note for ${focusTicker} yet` : 'Tap a name on the left')}</p>
         </div>
-        <p class="muted">Select a lead to see why it showed up and what would kill the thesis.</p>
+        <p class="muted">Pick a company to see what happened and what to do next.</p>
       </section>
     `;
   }
@@ -1813,57 +1794,40 @@ function renderDiscoveryCaseFile(caseFile, focusTicker) {
     ret5 == null ? null : `5d ${Number(ret5) >= 0 ? '+' : ''}${formatCaseNum(ret5)}%`,
   ].filter(Boolean).join(' · ');
 
+  const ticker = compact(caseFile.ticker, focusTicker || '');
+  const name = compact(caseFile.company_name, ticker);
+  const story = compact(caseFile.discovery?.event_title || caseFile.headline, 'A current story from X');
+  const priceLine = compact(caseFile.price_detail, compact(signal?.summary, 'Read the story, then check a news site.'));
+  const trustLine = compact(
+    trust?.summary,
+    'This started on social media. Treat it as unconfirmed until you see it in regular news.',
+  );
+  const nextLine = compact(
+    caseFile.next_action || disposition?.next_action,
+    'Read the linked posts, then search the company name on a news site. Do not buy from this screen.',
+  );
+
   return `
     <section class="discover-section case" data-testid="discovery-case-file">
       <div class="discover-section-head">
-        <h2>3 · Look closer · ${escapeHtml(compact(caseFile.ticker, '—'))}</h2>
-        <p class="muted">${escapeHtml(compact(caseFile.usefulness, 'research_only'))} · ${escapeHtml(compact(confirm.status, 'unconfirmed'))}</p>
+        <h2>${escapeHtml(name)}</h2>
+        <p class="muted">${escapeHtml(ticker)} · not a buy recommendation</p>
       </div>
-      <p class="case-analysis-headline">${escapeHtml(compact(signal?.headline, caseFile.headline || ''))}</p>
-      <p class="case-why muted">${escapeHtml(compact(caseFile.why_this_ticker, ''))}</p>
-      <div class="case-chips">${chipHtml}</div>
-      <p class="case-metrics muted">${escapeHtml(metricLine)}</p>
-      <div class="case-analysis-grid" data-testid="case-operator-analysis">
+      <p class="case-analysis-headline">${escapeHtml(story)}</p>
+      <div class="case-simple-grid" data-testid="case-operator-analysis">
         <article>
-          <h3>Signal</h3>
-          <p><strong>${escapeHtml(compact(signal?.label, 'Mixed'))}</strong></p>
-          <p>${escapeHtml(compact(signal?.summary, 'Review gap and reaction before escalating.'))}</p>
+          <h3>What the stock did</h3>
+          <p>${escapeHtml(priceLine)}</p>
         </article>
         <article>
-          <h3>Map</h3>
-          <p><strong>${escapeHtml(compact(mapping?.label, 'Mapped'))}</strong></p>
-          <p>${escapeHtml(compact(mapping?.summary, 'Confirm the causal chain to this ticker.'))}</p>
-        </article>
-        <article>
-          <h3>Trust</h3>
-          <p><strong>${escapeHtml(compact(trust?.label, compact(confirm.status, 'unconfirmed')))}</strong></p>
-          <p>${escapeHtml(compact(trust?.summary, 'Social-only stays research_only.'))}</p>
-        </article>
-        <article>
-          <h3>Queue</h3>
-          <p>${escapeHtml(compact(queue?.summary, 'Compare this lead to peers on the same event.'))}</p>
+          <h3>How sure is this?</h3>
+          <p>${escapeHtml(trustLine)}</p>
         </article>
       </div>
-      <div class="case-disposition">
-        <h3>Disposition</h3>
-        <p><strong>${escapeHtml(compact(disposition?.title, 'Research only'))}</strong>
-          <span class="pill">${escapeHtml(compact(disposition?.label || analysis?.disposition_label, 'good-research'))}</span>
-        </p>
-        <p class="muted">${escapeHtml(compact(disposition?.reason, 'Decision support only — not investment advice.'))}</p>
-        <div class="case-label-actions" data-testid="case-label-actions">
-          ${renderCaseLabelButtons(caseFile, disposition?.label || analysis?.disposition_label)}
-        </div>
+      <p class="case-next"><strong>What you should do:</strong> ${escapeHtml(nextLine)}</p>
+      <div class="case-label-actions" data-testid="case-label-actions">
+        ${renderCaseLabelButtons(caseFile, 'good-research')}
       </div>
-      <p class="case-next"><strong>Next:</strong> ${escapeHtml(compact(caseFile.next_action || disposition?.next_action, 'Confirm with primary sources.'))}</p>
-      <div class="case-checklist">
-        <h3>10-minute checklist</h3>
-        <ol>${checklistHtml || '<li>Confirm event → map → price → label.</li>'}</ol>
-      </div>
-      <div class="case-kills">
-        <h3>Kill the thesis if…</h3>
-        <ul>${kills || '<li>No invalidation checks.</li>'}</ul>
-      </div>
-      ${caseFile.label_command_preview ? `<p class="case-label-cmd muted" title="CLI preview only"><code>${escapeHtml(String(caseFile.label_command_preview))}</code></p>` : ''}
     </section>
   `;
 }
@@ -1873,11 +1837,8 @@ function renderCaseLabelButtons(caseFile, suggestedLabel) {
   const eventId = compact(caseFile?.discovery?.event_id, '');
   const suggested = compact(suggestedLabel, 'good-research');
   const choices = [
-    ['good-research', 'Useful research'],
-    ['noisy', 'Noisy'],
-    ['too-late', 'Too late'],
-    ['false-positive', 'False positive'],
-    ['useful', 'Useful'],
+    ['good-research', 'This helped'],
+    ['noisy', 'This was noise'],
   ];
   return choices.map(([value, title]) => {
     const active = value === suggested ? ' is-suggested' : '';
@@ -1890,7 +1851,7 @@ function renderCaseLabelButtons(caseFile, suggestedLabel) {
         data-event-id="${escapeHtml(eventId)}"
         data-label="${escapeHtml(value)}"
         title="${escapeHtml(title)} — writes local value-ledger discovery_row"
-      >${escapeHtml(value)}</button>
+      >${escapeHtml(title)}</button>
     `;
   }).join('') + `
     <button

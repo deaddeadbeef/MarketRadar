@@ -1517,7 +1517,12 @@ dialog::backdrop {
 
 /* —— Discovery focus mode: calm, simple World Events home —— */
 .shell.discovery-focus {
-  grid-template-columns: 180px minmax(0, 1fr) 280px;
+  grid-template-columns: 160px minmax(0, 1fr);
+}
+
+.shell.discovery-focus .right-rail,
+.shell.discovery-focus .footer {
+  display: none !important;
 }
 
 .shell.discovery-focus .dashboard-toolbar,
@@ -1570,8 +1575,8 @@ dialog::backdrop {
 }
 
 .discover-title {
-  font-size: 20px !important;
-  line-height: 1.3 !important;
+  font-size: 28px !important;
+  line-height: 1.25 !important;
   text-transform: none !important;
   color: var(--ink) !important;
   letter-spacing: 0 !important;
@@ -1689,9 +1694,21 @@ dialog::backdrop {
   gap: 6px;
 }
 
+.lead-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lead-name b {
+  font-size: 15px;
+  font-weight: 750;
+}
+
 .lead-row {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) 56px;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(0, 1.4fr) minmax(140px, 0.8fr);
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -1732,9 +1749,33 @@ dialog::backdrop {
 
 .lead-gap {
   justify-self: end;
-  font-weight: 700;
+  font-weight: 650;
   color: var(--ink);
-  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  text-align: right;
+  line-height: 1.35;
+}
+
+.case-simple-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+
+.case-simple-grid article {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.case-simple-grid h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
 }
 
 .case-why {

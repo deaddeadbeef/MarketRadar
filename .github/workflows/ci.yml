@@ -26,6 +26,7 @@ jobs:
           src/catalyst_radar/discovery/bars.py
           src/catalyst_radar/discovery/polygon_bars.py
           src/catalyst_radar/discovery/insights.py
+          src/catalyst_radar/discovery/ux.py
           tests/unit/test_discovery_join.py
           tests/unit/test_discovery_ready.py
           tests/unit/test_discovery_from_posts.py
@@ -44,6 +45,7 @@ jobs:
           tests/unit/test_discovery_bars.py
           tests/unit/test_discovery_daily_loop.py
           tests/unit/test_discovery_insights.py
+          tests/unit/test_discovery_ux.py
           tests/unit/test_discovery_import_guard.py
           tests/unit/test_discovery_outcomes.py
           tests/unit/test_discovery_proof.py
