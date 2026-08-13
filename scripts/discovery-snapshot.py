@@ -322,16 +322,31 @@ def main(argv: list[str] | None = None) -> int:
             engine=engine,
             limit=limit,
         )
+        from catalyst_radar.discovery.ux import apply_novice_ux
+
+        brief = apply_novice_ux(brief)
         brief["status"] = "ready"
         discoveries = brief.get("discoveries") or []
+        novice = brief.get("novice") if isinstance(brief.get("novice"), dict) else {}
+        if not focus:
+            focus = str(novice.get("focus_ticker") or "").strip().upper()
         if not focus and discoveries and isinstance(discoveries[0], dict):
             focus = str(discoveries[0].get("ticker") or "").strip().upper()
         if focus:
-            brief["case_file"] = build_discovery_case_file(
+            from catalyst_radar.discovery.ux import company_name, _price_detail
+
+            case = build_discovery_case_file(
                 ticker=focus,
                 events_path=events_path,
                 engine=engine,
             )
+            discovery_row = case.get("discovery") if isinstance(case.get("discovery"), dict) else {}
+            case["company_name"] = company_name(focus)
+            case["price_detail"] = _price_detail(
+                discovery_row.get("ret_5d_pct"),
+                joined=str(discovery_row.get("join_status")) == "joined",
+            )
+            brief["case_file"] = case
         proof = build_discovery_proof(engine=engine, limit=40)
         brief["proof"] = proof
     except Exception as exc:
