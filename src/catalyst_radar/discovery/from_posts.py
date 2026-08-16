@@ -167,6 +167,7 @@ def _parse_post(raw: object, index: int) -> dict[str, object]:
         if symbol not in tickers:
             tickers.append(symbol)
     themes = list(normalize_themes(raw.get("themes")))
+    # event_id is the story; first theme / post_id fill a missing id (not Jaccard).
     group_key = str(raw.get("event_id") or (themes[0] if themes else post_id)).strip()
     published = parse_datetime(raw.get("published_at") or raw.get("available_at"), "published_at")
     engagement = raw.get("engagement") if isinstance(raw.get("engagement"), Mapping) else {}
