@@ -1,19 +1,22 @@
 # MarketRadar product scope (event-first discovery)
 
-**Authority date:** 2026-07-19  
-**Status:** Active product contract for this codebase.
+**Authority date:** 2026-08-15  
+**Status:** Pointer plus ship-gate table. Not the narrative contract.
 
-This document defines the **only supported product surface** for MarketRadar
-going forward. Everything else remains in-tree for now but is **deprecated**
-and scheduled for phased removal. See `docs/DEPRECATION.md`.
+**Narrative product contract:**
+`docs/designs/2026-08-15-marketradar-product-spec.md`
+
+This file keeps the supported-surface map, product laws, and ship-gate table.
+Runtime registry: `src/catalyst_radar/deprecation.py`. Removal plan:
+`docs/DEPRECATION.md`. Grok `event_id` contract: spec §15.1 (no separate file).
 
 ---
 
 ## One-sentence product
 
-**MarketRadar turns world events into a short ranked list of equities that may
-not have fully priced the event yet, with research case files, human
-confirmation, and proof labels — never autonomous trading or investment advice.**
+**MarketRadar is an operator-produced weekday briefing that a market newbie can
+read: public world events, mapped to companies, with honest recent-tape context
+and a trust ladder. It is decision support only.**
 
 ---
 
@@ -33,7 +36,7 @@ confirmation, and proof labels — never autonomous trading or investment advice
 | Area | Path / surface | Role |
 |------|----------------|------|
 | Discovery core | `src/catalyst_radar/discovery/` | Primary product logic |
-| World-events I/O | `scripts/discovery-snapshot.py`, `scripts/import-world-events.ps1`, `scripts/fill-discovery-gaps.*` | Daily loop |
+| World-events I/O | `scripts/discovery-snapshot.py`, `scripts/import-world-events.ps1` | Daily loop |
 | Desktop home | Tauri **World Events** page (`world-events`) | Primary UI |
 | Priced-in join | `scoring/priced_in.py`, `features/market.py`, `pipeline/scan.py` | Reaction join for mapped names |
 | Market bars (supporting) | `market/`, `connectors/polygon*.py`, `ingest-polygon` / `market-bars` | Fill gaps for discovery |
@@ -42,6 +45,12 @@ confirmation, and proof labels — never autonomous trading or investment advice
 | Sparse Grok (optional) | `agents/llm_provider.py`, gated agent brief | Optional synthesis only |
 | Config / docs | `.env.example`, README event-first path, this file | Operator contract |
 
+### Operator leftover
+
+| Area | Path / surface | Role |
+|------|----------------|------|
+| Mapped-bar leftover | `scripts/fill-discovery-gaps.*` | Operator leftover — not the keep supporting path |
+
 ### Product laws (non-negotiable)
 
 - Decision support only; `investment_advice: false`
@@ -49,6 +58,8 @@ confirmation, and proof labels — never autonomous trading or investment advice
 - Social/X-only leads stay `research_only` until primary confirmation
 - Discovery never auto-submits broker orders
 - Do not block discovery on full-universe SEC residual fill
+
+Full law text: spec §6.
 
 ---
 
@@ -89,5 +100,6 @@ as the discovery success criterion.
 
 ## Related plans
 
-- `docs/superpowers/plans/2026-07-19-marketradar-event-first-product.md`
-- `docs/superpowers/plans/2026-07-19-goal-and-phases.md`
+- `docs/designs/2026-08-15-marketradar-product-spec.md` (narrative contract)
+- `docs/superpowers/plans/2026-07-19-marketradar-event-first-product.md` (historical)
+- `docs/superpowers/plans/2026-07-19-goal-and-phases.md` (historical)
