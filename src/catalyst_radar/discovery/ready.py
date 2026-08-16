@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy.engine import Engine
 
 from catalyst_radar.discovery.brief import (
+    DISCOVERY_BARS_NEXT_COMMAND,
     FRESHNESS_STALE_HOURS,
     build_discovery_brief,
     default_events_path,
@@ -84,6 +85,8 @@ def build_discovery_readiness(
 
     next_action = str(brief.get("next_action") or "")
     next_command = str(brief.get("next_command") or "")
+    if blocker == "event_join_coverage":
+        next_command = DISCOVERY_BARS_NEXT_COMMAND
     if ready:
         next_action = (
             "Review the top-20 event-time leads, open a case, and label from Proof."

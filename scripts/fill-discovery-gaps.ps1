@@ -1,8 +1,10 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Fill MarketRadar discovery join gaps: load .env.local, import/capture daily bars,
-  rescan mapped world-event tickers, and print discovery-brief join coverage.
+  Operator leftover around discovery join gaps.
+
+  Discovery bar path: catalyst-radar discovery-bars --polygon --confirm-external-call
+  Grouped-daily capture here is already skipped_full_market_not_discovery.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts/fill-discovery-gaps.ps1

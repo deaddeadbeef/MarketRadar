@@ -34,6 +34,9 @@ from catalyst_radar.discovery.models import (
 DEFAULT_EVENTS_PATH = Path("data/sample/world_events.json")
 LOCAL_EVENTS_PATH = Path("data/local/world_events.json")
 FRESHNESS_STALE_HOURS = 24.0
+DISCOVERY_BARS_NEXT_COMMAND = (
+    "catalyst-radar discovery-bars --polygon --confirm-external-call"
+)
 
 
 def load_world_events(path: str | Path) -> WorldEventBundle:
@@ -499,10 +502,6 @@ def _next_operator_step(
     join_coverage_pct: float = 0.0,
     no_db_count: int = 0,
 ) -> tuple[str, str]:
-    fill_cmd = (
-        "powershell -ExecutionPolicy Bypass -File scripts/fill-discovery-gaps.ps1 "
-        "-Execute -ConfirmExternalCall -CaptureDays 5"
-    )
     if freshness_status == "stale":
         # validate-only never refreshes the feed; point operators at the install path.
         return (
@@ -516,7 +515,7 @@ def _next_operator_step(
         return (
             "Discovery has no local DB join. Load .env.local database URL and rescan "
             "mapped tickers before trusting reaction gaps.",
-            fill_cmd,
+            DISCOVERY_BARS_NEXT_COMMAND,
         )
     if missing_scan_count > 0:
         sample = ",".join(missing_sample[:8]) if missing_sample else "TICKER"
@@ -525,7 +524,7 @@ def _next_operator_step(
             f"(join coverage {join_coverage_pct:.0f}%, target 50%). "
             "Run mapped bar fill + scan, then reopen World Events. "
             f"Sample missing: {sample}.",
-            fill_cmd,
+            DISCOVERY_BARS_NEXT_COMMAND,
         )
     if discovery_count == 0:
         return (
@@ -537,7 +536,7 @@ def _next_operator_step(
         return (
             f"Join coverage {join_coverage_pct:.0f}% is below the 50% goal for top leads. "
             "Fill bars for mapped tickers and rescan, then label useful/noisy leads.",
-            fill_cmd,
+            DISCOVERY_BARS_NEXT_COMMAND,
         )
     return (
         "Review top discovery rows as research-only leads, open a case, and label "
