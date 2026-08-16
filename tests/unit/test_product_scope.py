@@ -30,6 +30,9 @@ def test_product_scope_payload_lists_event_first_core() -> None:
     assert "discovery-from-posts" in payload["cli_commands"]["active"]
     assert "discovery-bars" in payload["cli_commands"]["active"]
     assert "discovery-insights" in payload["cli_commands"]["active"]
+    assert payload["docs"]["spec"] == "docs/designs/2026-08-15-marketradar-product-spec.md"
+    assert payload["docs"]["scope"] == "docs/PRODUCT_SCOPE.md"
+    assert payload["docs"]["deprecation"] == "docs/DEPRECATION.md"
 
 
 def test_page_and_package_status() -> None:

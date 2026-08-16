@@ -1,6 +1,7 @@
 """Product scope and deprecation registry for MarketRadar.
 
-Canonical narrative: docs/PRODUCT_SCOPE.md and docs/DEPRECATION.md.
+Canonical narrative: docs/designs/2026-08-15-marketradar-product-spec.md.
+Ship-gate table: docs/PRODUCT_SCOPE.md. Removal registry: docs/DEPRECATION.md.
 
 This module is intentionally import-light so CLI and UI can consult it without
 pulling the full dashboard graph.
@@ -287,6 +288,7 @@ def product_scope_payload() -> dict[str, Any]:
             "case file → proof labels. Decision support only."
         ),
         "docs": {
+            "spec": "docs/designs/2026-08-15-marketradar-product-spec.md",
             "scope": "docs/PRODUCT_SCOPE.md",
             "deprecation": "docs/DEPRECATION.md",
         },

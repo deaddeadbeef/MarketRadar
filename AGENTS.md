@@ -2,7 +2,9 @@
 
 This repository's **only supported product** is event-first discovery.
 
-Authoritative docs: `docs/PRODUCT_SCOPE.md`, `docs/DEPRECATION.md`.
+Authoritative docs: `docs/designs/2026-08-15-marketradar-product-spec.md`,
+`docs/PRODUCT_SCOPE.md`, `docs/DEPRECATION.md`. Grok `event_id` contract is
+spec §15.1.
 
 ## Do
 

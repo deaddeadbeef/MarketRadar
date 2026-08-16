@@ -1,7 +1,9 @@
 # MarketRadar
 
 **Product scope (authoritative):** event-first discovery only.  
-See `docs/PRODUCT_SCOPE.md`. Everything else is **deprecated** (`docs/DEPRECATION.md`, `docs/legacy/`).
+Narrative contract: `docs/designs/2026-08-15-marketradar-product-spec.md`.  
+Ship-gate table and laws: `docs/PRODUCT_SCOPE.md`. Everything else is
+**deprecated** (`docs/DEPRECATION.md`, `docs/legacy/`).
 
 MarketRadar turns **world events** into a ranked list of equities whose **price
 may not have fully discovered** the event yet. It is decision support only — not
