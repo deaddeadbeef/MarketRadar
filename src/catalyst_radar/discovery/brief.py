@@ -32,6 +32,7 @@ from catalyst_radar.discovery.models import (
 )
 
 DEFAULT_EVENTS_PATH = Path("data/sample/world_events.json")
+SAMPLE_EVENTS_PATH = Path("data/sample/world_events.json")
 LOCAL_EVENTS_PATH = Path("data/local/world_events.json")
 FRESHNESS_STALE_HOURS = 24.0
 DISCOVERY_BARS_NEXT_COMMAND = (
@@ -209,6 +210,7 @@ def build_discovery_brief(
         "schema_version": DISCOVERY_BRIEF_SCHEMA,
         "generated_at": clock.isoformat(),
         "events_path": str(Path(events_path)),
+        "events_path_kind": classify_events_path(events_path),
         "events_source": bundle.source,
         "events_generated_at": bundle.generated_at.isoformat(),
         "events_age_hours": round(age_hours, 2),
@@ -260,16 +262,64 @@ def build_discovery_brief(
     }
 
 
-def default_events_path() -> Path:
-    candidates = [
-        LOCAL_EVENTS_PATH,
-        Path("data/sample/world_events.json"),
-        DEFAULT_EVENTS_PATH,
-    ]
-    for path in candidates:
-        if path.is_file():
-            return path
-    return DEFAULT_EVENTS_PATH
+def classify_events_path(path: str | Path | None) -> str:
+    """Classify a world-events file as local, dated fixture, or missing."""
+    if path is None:
+        return "missing"
+    file_path = Path(path)
+    if not file_path.is_file():
+        return "missing"
+    if _is_sample_events_path(file_path):
+        return "fixture"
+    return "local"
+
+
+def empty_world_events_brief(
+    *,
+    events_path: str | Path,
+    events_path_kind: str,
+) -> dict[str, object]:
+    """Empty briefing used when the desktop path has no live file."""
+    path = Path(events_path)
+    status = "missing_events" if events_path_kind == "missing" else "fixture_refused"
+    return {
+        "schema_version": DISCOVERY_BRIEF_SCHEMA,
+        "generated_at": datetime.now(tz=UTC).isoformat(),
+        "status": status,
+        "events_path": str(path),
+        "events_path_kind": events_path_kind,
+        "events_source": None,
+        "events_generated_at": None,
+        "events_age_hours": None,
+        "freshness_status": "unknown",
+        "event_count": 0,
+        "discovery_count": 0,
+        "events": [],
+        "discoveries": [],
+        "investment_advice": False,
+        "can_make_investment_decision": False,
+        "decision_support_only": True,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def default_events_path(*, allow_sample: bool = False) -> Path:
+    """Prefer the installed local file. Do not treat the July sample as today."""
+    if LOCAL_EVENTS_PATH.is_file():
+        return LOCAL_EVENTS_PATH
+    if allow_sample and SAMPLE_EVENTS_PATH.is_file():
+        return SAMPLE_EVENTS_PATH
+    return LOCAL_EVENTS_PATH
+
+
+def _is_sample_events_path(path: Path) -> bool:
+    parts = [part.casefold() for part in Path(path).parts]
+    try:
+        data_idx = parts.index("data")
+    except ValueError:
+        return False
+    return data_idx + 1 < len(parts) and parts[data_idx + 1] == "sample"
 
 
 def _parse_event(raw: object) -> WorldEvent:
