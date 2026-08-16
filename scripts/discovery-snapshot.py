@@ -20,7 +20,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from catalyst_radar.discovery.brief import build_discovery_brief, default_events_path
+from catalyst_radar.discovery.brief import (
+    build_discovery_brief,
+    classify_events_path,
+    default_events_path,
+    empty_world_events_brief,
+)
 from catalyst_radar.discovery.case_file import build_discovery_case_file
 from catalyst_radar.discovery.proof import build_discovery_proof
 from catalyst_radar.security.secrets import load_app_dotenv
@@ -39,7 +44,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--source-gap", action="append", default=[])
     parser.add_argument("--decision-gap", action="append", default=[])
     parser.add_argument("--stocks-only", action="store_true")
-    parser.add_argument("--scan-limit", type=int, default=25)
+    parser.add_argument("--scan-limit", type=int, default=20)
     parser.add_argument("--scan-offset", type=int, default=0)
     parser.add_argument("--telemetry-limit", type=int, default=8)
     parser.add_argument("--database-url")
@@ -298,10 +303,8 @@ def main(argv: list[str] | None = None) -> int:
     # Load operator env before resolving default events/database paths.
     load_app_dotenv()
     args = parse_args(argv)
-    events_path = args.events or default_events_path()
-    if not Path(events_path).is_file():
-        sample = ROOT / "data" / "sample" / "world_events.json"
-        events_path = sample if sample.is_file() else events_path
+    events_path = Path(args.events) if args.events else default_events_path()
+    events_kind = classify_events_path(events_path)
 
     engine = _local_engine(args.database_url)
     focus = (args.ticker or "").strip().upper()
@@ -314,27 +317,39 @@ def main(argv: list[str] | None = None) -> int:
             ticker_hint=focus or None,
         )
 
-    limit = max(1, min(int(args.scan_limit or 25), 50))
+    limit = max(1, min(int(args.scan_limit or 20), 50))
 
     try:
-        brief = build_discovery_brief(
-            events_path=events_path,
-            engine=engine,
-            limit=limit,
+        from catalyst_radar.discovery.ux import (
+            apply_novice_case_file,
+            apply_novice_ux,
+            company_name,
+            _price_detail,
         )
-        from catalyst_radar.discovery.ux import apply_novice_ux
 
+        # Desktop must not serve data/sample as today's briefing.
+        if events_kind != "local":
+            brief = empty_world_events_brief(
+                events_path=events_path,
+                events_path_kind=events_kind,
+            )
+        else:
+            brief = build_discovery_brief(
+                events_path=events_path,
+                engine=engine,
+                limit=limit,
+            )
+            brief["events_path_kind"] = events_kind
         brief = apply_novice_ux(brief)
-        brief["status"] = "ready"
+        if events_kind == "local":
+            brief["status"] = "ready"
         discoveries = brief.get("discoveries") or []
         novice = brief.get("novice") if isinstance(brief.get("novice"), dict) else {}
         if not focus:
             focus = str(novice.get("focus_ticker") or "").strip().upper()
         if not focus and discoveries and isinstance(discoveries[0], dict):
             focus = str(discoveries[0].get("ticker") or "").strip().upper()
-        if focus:
-            from catalyst_radar.discovery.ux import company_name, _price_detail
-
+        if focus and events_kind == "local":
             case = build_discovery_case_file(
                 ticker=focus,
                 events_path=events_path,
@@ -346,9 +361,10 @@ def main(argv: list[str] | None = None) -> int:
                 discovery_row.get("ret_5d_pct"),
                 joined=str(discovery_row.get("join_status")) == "joined",
             )
-            brief["case_file"] = case
+            brief["case_file"] = apply_novice_case_file(case)
         proof = build_discovery_proof(engine=engine, limit=40)
         brief["proof"] = proof
+        brief["events_path_kind"] = events_kind
     except Exception as exc:
         brief = {
             "schema_version": "discovery-brief-v1",
@@ -356,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
             "error": str(exc),
             "events": [],
             "discoveries": [],
+            "events_path": str(events_path),
+            "events_path_kind": events_kind,
             "headline": f"Discovery snapshot failed: {exc}",
             "external_calls_made": 0,
             "db_writes_made": 0,
@@ -406,6 +424,8 @@ def main(argv: list[str] | None = None) -> int:
         "canonical_next_command": brief.get("canonical_next_command")
         or brief.get("next_command"),
         "external_calls_made": 0,
+        "events_path": str(events_path),
+        "events_path_kind": events_kind,
         "event_discovery": brief,
         "discovery_proof": proof_payload,
         "product_ui": {

@@ -1043,7 +1043,7 @@ function filterInput() {
     source_gap: state.sourceGap,
     decision_gap: state.decisionGap,
     stocks_only: qs('#filter-stocks-only').checked,
-    scan_limit: isDiscoveryHome() ? 12 : Number(qs('#filter-limit').value || 50),
+    scan_limit: isDiscoveryHome() ? 20 : Number(qs('#filter-limit').value || 50),
     scan_offset: state.scanOffset,
     telemetry_limit: 8,
   };
@@ -1771,9 +1771,6 @@ function renderDiscoveryCaseFile(caseFile, focusTicker) {
     ? analysis.map_quality
     : null;
   const trust = analysis?.trust && typeof analysis.trust === 'object' ? analysis.trust : null;
-  const disposition = analysis?.disposition && typeof analysis.disposition === 'object'
-    ? analysis.disposition
-    : null;
   const queue = analysis?.queue_context && typeof analysis.queue_context === 'object'
     ? analysis.queue_context
     : null;
@@ -1797,13 +1794,16 @@ function renderDiscoveryCaseFile(caseFile, focusTicker) {
   const ticker = compact(caseFile.ticker, focusTicker || '');
   const name = compact(caseFile.company_name, ticker);
   const story = compact(caseFile.discovery?.event_title || caseFile.headline, 'A current story from X');
-  const priceLine = compact(caseFile.price_detail, compact(signal?.summary, 'Read the story, then check a news site.'));
+  const priceLine = compact(
+    caseFile.price_detail,
+    'We do not have enough recent prices to say what the stock did.',
+  );
   const trustLine = compact(
     trust?.summary,
     'This started on social media. Treat it as unconfirmed until you see it in regular news.',
   );
   const nextLine = compact(
-    caseFile.next_action || disposition?.next_action,
+    caseFile.next_action,
     'Read the linked posts, then search the company name on a news site. Do not buy from this screen.',
   );
 
@@ -1850,20 +1850,10 @@ function renderCaseLabelButtons(caseFile, suggestedLabel) {
         data-ticker="${escapeHtml(ticker)}"
         data-event-id="${escapeHtml(eventId)}"
         data-label="${escapeHtml(value)}"
-        title="${escapeHtml(title)} — writes local value-ledger discovery_row"
+        title="${escapeHtml(title)}"
       >${escapeHtml(title)}</button>
     `;
-  }).join('') + `
-    <button
-      type="button"
-      class="case-label-btn ghost"
-      data-label-action="preview"
-      data-ticker="${escapeHtml(ticker)}"
-      data-event-id="${escapeHtml(eventId)}"
-      data-label="${escapeHtml(suggested)}"
-      title="Preview only — no DB write"
-    >preview ${escapeHtml(suggested)}</button>
-  `;
+  }).join('');
 }
 
 function fallbackCaseChips(price, confirm) {
