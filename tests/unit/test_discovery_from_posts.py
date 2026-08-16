@@ -17,6 +17,7 @@ pytestmark = pytest.mark.discovery
 LAW_POSTS = Path("data/sample/x_posts_2026-08-13.json")
 LAW_EVENT_IDS = ("hbm4_memory_asp", "china_nand_share", "cpi_hormuz_macro")
 LAW_WORLD_EVENT_IDS = tuple(f"evt_{event_id}" for event_id in LAW_EVENT_IDS)
+NOW = datetime(2026, 8, 13, 12, tzinfo=UTC)
 
 
 def _write_posts(tmp_path: Path, posts: list[dict[str, object]]) -> Path:
@@ -63,7 +64,7 @@ def test_from_posts_groups_and_extracts_cashtags(tmp_path: Path) -> None:
     path.write_text(json.dumps(posts), encoding="utf-8")
     payload = build_world_events_from_posts(
         posts_path=path,
-        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+        now=NOW,
     )
     assert payload["schema_version"] == "world-events-v1"
     assert len(payload["events"]) == 1
@@ -85,6 +86,8 @@ def test_convert_posts_preview_does_not_write(tmp_path: Path) -> None:
     assert executed["status"] == "executed"
     assert dest.is_file()
     assert executed["event_count"] >= 1
+    assert executed["external_calls_made"] == 0
+    assert preview["external_calls_made"] == 0
 
 
 def test_law_fixture_clusters_eight_posts_to_three_world_events() -> None:
@@ -96,7 +99,7 @@ def test_law_fixture_clusters_eight_posts_to_three_world_events() -> None:
 
     payload = build_world_events_from_posts(
         posts_path=LAW_POSTS,
-        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+        now=NOW,
     )
     ids = {event["id"] for event in payload["events"]}
     assert payload["schema_version"] == "world-events-v1"
@@ -125,7 +128,7 @@ def test_missing_event_id_groups_by_first_theme(tmp_path: Path) -> None:
     )
     payload = build_world_events_from_posts(
         posts_path=path,
-        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+        now=NOW,
     )
     assert [event["id"] for event in payload["events"]] == ["evt_memory"]
 
@@ -150,7 +153,7 @@ def test_missing_event_id_and_theme_groups_by_post_id(tmp_path: Path) -> None:
     )
     payload = build_world_events_from_posts(
         posts_path=path,
-        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+        now=NOW,
     )
     assert {event["id"] for event in payload["events"]} == {"evt_solo_a", "evt_solo_b"}
 
@@ -168,6 +171,126 @@ def test_missing_event_id_theme_and_tickers_drops_group(tmp_path: Path) -> None:
     )
     payload = build_world_events_from_posts(
         posts_path=path,
-        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+        now=NOW,
     )
     assert payload["events"] == []
+
+
+def test_from_posts_picks_title_from_highest_materiality_post(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "first",
+                "event_id": "hbm",
+                "title": "First post is not the story",
+                "text": "Low-signal recap of $MU.",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory"],
+                "materiality": 0.2,
+            },
+            {
+                "id": "lead",
+                "event_id": "hbm",
+                "title": "Micron sold out through 2027",
+                "text": "$MU HBM is sold out through 2027.",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["memory"],
+                "materiality": 0.9,
+            },
+        ],
+    )
+    event = build_world_events_from_posts(posts_path=path, now=NOW)["events"][0]
+    assert event["title"] == "Micron sold out through 2027"
+    assert event["summary"] == "$MU HBM is sold out through 2027."
+    assert "Low-signal recap" not in event["summary"]
+    assert "First post" not in event["title"]
+
+
+def test_from_posts_title_tiebreak_prefers_longer_title(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "short",
+                "event_id": "hbm",
+                "title": "Short MU note",
+                "text": "Short text about $MU",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory"],
+                "materiality": 0.5,
+            },
+            {
+                "id": "long",
+                "event_id": "hbm",
+                "title": "Much longer Micron sold-out briefing",
+                "text": "The longer title should win the tie.",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["memory"],
+                "materiality": 0.5,
+            },
+        ],
+    )
+    event = build_world_events_from_posts(posts_path=path, now=NOW)["events"][0]
+    assert event["title"] == "Much longer Micron sold-out briefing"
+    assert event["summary"] == "The longer title should win the tie."
+    assert "Short text" not in event["summary"]
+
+
+def test_from_posts_summary_falls_back_to_title_when_text_empty(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "noise",
+                "event_id": "hbm",
+                "title": "Keep this noise",
+                "text": "noise tweet about $MU",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory"],
+                "materiality": 0.1,
+            },
+            {
+                "id": "lead",
+                "event_id": "hbm",
+                "title": "Lead story title only",
+                "text": "",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["memory"],
+                "materiality": 0.8,
+            },
+        ],
+    )
+    event = build_world_events_from_posts(posts_path=path, now=NOW)["events"][0]
+    assert event["title"] == "Lead story title only"
+    assert event["summary"] == "Lead story title only"
+
+
+def test_from_posts_truncates_chosen_title_and_summary(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "short",
+                "event_id": "hbm",
+                "title": "Short first title",
+                "text": "First tweet body that must not be concatenated.",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory"],
+                "materiality": 0.2,
+            },
+            {
+                "id": "lead",
+                "event_id": "hbm",
+                "title": "T" * 200,
+                "text": "S" * 900,
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["memory"],
+                "materiality": 0.9,
+            },
+        ],
+    )
+    event = build_world_events_from_posts(posts_path=path, now=NOW)["events"][0]
+    assert event["title"] == "T" * 180
+    assert event["summary"] == "S" * 800
+    assert "First tweet body" not in event["summary"]
