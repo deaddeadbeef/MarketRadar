@@ -10,6 +10,7 @@ import pytest
 from catalyst_radar.discovery.brief import (
     LOCAL_EVENTS_PATH,
     SAMPLE_EVENTS_PATH,
+    build_discovery_brief,
     classify_events_path,
     default_events_path,
 )
@@ -315,13 +316,35 @@ def test_novice_visible_copy_has_no_operator_jargon() -> None:
     assert "news site" in str(case["next_action"])
 
 
-def test_default_events_path_does_not_fall_back_to_sample() -> None:
+def test_cli_default_events_path_falls_back_to_sample_when_local_missing() -> None:
+    assert not LOCAL_EVENTS_PATH.is_file()
     assert SAMPLE_EVENTS_PATH.is_file()
     path = default_events_path()
-    assert path == LOCAL_EVENTS_PATH
-    assert "sample" not in path.parts
+    assert path == SAMPLE_EVENTS_PATH
+    assert classify_events_path(path) == "fixture"
+    brief = build_discovery_brief(events_path=path, limit=5)
+    assert brief["event_count"] >= 1
+    assert brief["events"]
+    desktop_path = default_events_path(allow_sample=False)
+    assert desktop_path == LOCAL_EVENTS_PATH
+    assert classify_events_path(desktop_path) == "missing"
     assert classify_events_path(SAMPLE_EVENTS_PATH) == "fixture"
     assert classify_events_path(Path("data/local/does-not-exist.json")) == "missing"
+
+
+def test_desktop_snapshot_default_path_is_empty_when_local_missing(capsys) -> None:
+    assert not LOCAL_EVENTS_PATH.is_file()
+    snapshot = _load_discovery_snapshot()
+    code = snapshot.main(["--json", "--scan-limit", "20"])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    brief = payload["event_discovery"]
+    assert payload["events_path_kind"] == "missing"
+    assert brief["events_path_kind"] == "missing"
+    assert brief["events"] == []
+    assert brief.get("event_count", 0) == 0
+    assert "Hormuz" not in str(brief.get("headline") or "")
+    assert "No stories loaded yet" in str(brief["headline"])
 
 
 def test_desktop_snapshot_missing_local_is_empty(tmp_path: Path, capsys) -> None:

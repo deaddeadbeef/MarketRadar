@@ -303,7 +303,9 @@ def main(argv: list[str] | None = None) -> int:
     # Load operator env before resolving default events/database paths.
     load_app_dotenv()
     args = parse_args(argv)
-    events_path = Path(args.events) if args.events else default_events_path()
+    events_path = (
+        Path(args.events) if args.events else default_events_path(allow_sample=False)
+    )
     events_kind = classify_events_path(events_path)
 
     engine = _local_engine(args.database_url)
