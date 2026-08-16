@@ -304,8 +304,12 @@ def empty_world_events_brief(
     }
 
 
-def default_events_path(*, allow_sample: bool = False) -> Path:
-    """Prefer the installed local file. Do not treat the July sample as today."""
+def default_events_path(*, allow_sample: bool = True) -> Path:
+    """Prefer the installed local file.
+
+    Operator CLI may fall back to the dated sample. The desktop snapshot must
+    pass allow_sample=False so a missing local file is empty, not July-as-today.
+    """
     if LOCAL_EVENTS_PATH.is_file():
         return LOCAL_EVENTS_PATH
     if allow_sample and SAMPLE_EVENTS_PATH.is_file():
