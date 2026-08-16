@@ -61,8 +61,6 @@ def build_world_events_from_posts(
         tickers: list[str] = []
         themes: list[str] = []
         sources: list[dict[str, object]] = []
-        titles: list[str] = []
-        summaries: list[str] = []
         directions: list[str] = []
         materiality_values: list[float] = []
         quality_values: list[float] = []
@@ -75,8 +73,6 @@ def build_world_events_from_posts(
                 if theme not in themes:
                     themes.append(theme)
             sources.append(post["source"])
-            titles.append(str(post["title"]))
-            summaries.append(str(post["text"]))
             directions.append(str(post["direction"]))
             materiality_values.append(float(post["materiality"]))
             quality_values.append(float(post["source_quality"]))
@@ -88,11 +84,17 @@ def build_world_events_from_posts(
         if not tickers and not themes:
             continue
         direction = _majority_direction(directions)
+        # Title/summary come from the most material post, not a tweet mashup.
+        lead = max(
+            posts,
+            key=lambda post: (float(post["materiality"]), len(str(post["title"]))),
+        )
+        lead_text = str(lead["text"] or "").strip()
         events.append(
             {
                 "id": f"evt_{_slug(group_key)}",
-                "title": titles[0][:180],
-                "summary": " ".join(part for part in summaries if part)[:800],
+                "title": str(lead["title"])[:180],
+                "summary": (lead_text or str(lead["title"]))[:800],
                 "themes": themes,
                 "tickers": tickers[:8],
                 "secondary_tickers": tickers[8:16],
