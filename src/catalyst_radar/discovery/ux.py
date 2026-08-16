@@ -79,6 +79,8 @@ COMPANY_NAMES: dict[str, str] = {
 }
 
 NOVICE_LIMIT = 8
+# Unlisted / non-US-common cashtags stay on operator JSON; they do not consume the eight.
+NOVICE_UNLISTED: frozenset[str] = frozenset({"SKHY", "CXMT"})
 
 
 def company_name(ticker: str) -> str:
@@ -86,10 +88,21 @@ def company_name(ticker: str) -> str:
     return COMPANY_NAMES.get(symbol, symbol)
 
 
+def is_novice_eligible(ticker: str) -> bool:
+    """Keep names the newbie can recognize; drop unlisted cashtags."""
+    symbol = str(ticker or "").strip().upper()
+    if not symbol or symbol in {"SPY", "QQQ", "IWM"}:
+        return False
+    if symbol in NOVICE_UNLISTED:
+        return False
+    return symbol in COMPANY_NAMES
+
+
 def apply_novice_ux(brief: Mapping[str, Any]) -> dict[str, Any]:
     """Return a brief copy shaped for a first-time user."""
     payload = dict(brief)
-    events = [row for row in (brief.get("events") or []) if isinstance(row, Mapping)]
+    raw_events = [row for row in (brief.get("events") or []) if isinstance(row, Mapping)]
+    events = _pick_novice_events(raw_events)
     raw_leads = [row for row in (brief.get("discoveries") or []) if isinstance(row, Mapping)]
     leads = _pick_novice_leads(raw_leads)
     top = leads[0] if leads else None
@@ -101,6 +114,8 @@ def apply_novice_ux(brief: Mapping[str, Any]) -> dict[str, Any]:
     payload["next_command"] = "Press R to refresh this briefing."
     payload["canonical_next_action"] = payload["next_action"]
     payload["canonical_next_command"] = payload["next_command"]
+    if isinstance(payload.get("case_file"), Mapping):
+        payload["case_file"] = apply_novice_case_file(payload["case_file"])
     payload["novice"] = {
         "schema_version": "discovery-novice-v1",
         "tagline": "Stories from X, then which stocks have not moved much yet.",
@@ -115,11 +130,47 @@ def apply_novice_ux(brief: Mapping[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def apply_novice_case_file(case: Mapping[str, Any]) -> dict[str, Any]:
+    """Overwrite mounted case_file.next_action with newbie English."""
+    payload = dict(case)
+    ticker = str(payload.get("ticker") or "").strip().upper()
+    name = str(payload.get("company_name") or "").strip() or company_name(ticker)
+    if str(payload.get("status") or "") != "ready" or not name:
+        payload["next_action"] = (
+            "When stories appear, start with the first name and read why it showed up."
+        )
+        return payload
+    payload["next_action"] = (
+        f"Open {name}, read the short explanation, then check a regular news site "
+        "before you make any money decision."
+    )
+    return payload
+
+
+def _pick_novice_events(events: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    scored = [dict(event) for event in events]
+    scored.sort(key=_event_rank_score, reverse=True)
+    return scored[:NOVICE_LIMIT]
+
+
+def _event_rank_score(event: Mapping[str, Any]) -> float:
+    try:
+        materiality = float(event.get("materiality") or 0.0)
+    except (TypeError, ValueError):
+        materiality = 0.0
+    sources = event.get("sources")
+    if isinstance(sources, Sequence) and not isinstance(sources, (str, bytes)):
+        source_count = len(sources)
+    else:
+        source_count = 0
+    return materiality * max(1, source_count)
+
+
 def _pick_novice_leads(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     scored: list[dict[str, Any]] = []
     for row in rows:
         ticker = str(row.get("ticker") or "").strip().upper()
-        if not ticker or ticker in {"SPY", "QQQ", "IWM"}:
+        if not ticker or not is_novice_eligible(ticker):
             continue
         origin = str(row.get("origin") or "event")
         join = str(row.get("join_status") or "")
@@ -160,11 +211,12 @@ def _headline(
     if not events:
         return "No stories loaded yet. Add today's world events to get started."
     count = len(events)
+    story_word = "story" if count == 1 else "stories"
     if top is None:
-        return f"{count} story from X today." if count == 1 else f"{count} stories from X today."
+        return f"{count} {story_word} from X today."
     name = company_name(str(top.get("ticker") or ""))
     move = _price_phrase(top.get("ret_5d_pct"), joined=str(top.get("join_status")) == "joined")
-    return f"{count} stories from X. {name} {move}."
+    return f"{count} {story_word} from X. {name} {move}."
 
 
 def _next_action(freshness: str, top: Mapping[str, Any] | None) -> str:
