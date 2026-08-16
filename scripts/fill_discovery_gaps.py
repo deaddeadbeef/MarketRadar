@@ -1,4 +1,8 @@
-"""Fill discovery join gaps: bars for recent sessions + scan mapped tickers."""
+"""Operator leftover around discovery join gaps.
+
+Discovery bar fetch is `catalyst-radar discovery-bars --polygon --confirm-external-call`.
+Grouped-daily capture in this script is already skipped_full_market_not_discovery.
+"""
 
 from __future__ import annotations
 

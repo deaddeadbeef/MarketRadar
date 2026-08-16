@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from time import sleep
@@ -10,11 +11,13 @@ from typing import Any
 from catalyst_radar.connectors.http import JsonHttpClient, UrlLibHttpTransport
 from catalyst_radar.core.models import DailyBar
 from catalyst_radar.discovery.brief import build_discovery_brief
+from catalyst_radar.security.redaction import redact_text
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
 
 POLYGON_BARS_SCHEMA = "discovery-polygon-bars-v1"
-DEFAULT_LOOKBACK_DAYS = 21
+DEFAULT_LOOKBACK_DAYS = 40
+_API_KEY_QUERY_RE = re.compile(r"(?i)(?:\?|&)?apiKey=[^&\s\"']*")
 
 
 def mapped_tickers_from_events(
@@ -76,6 +79,7 @@ def fetch_polygon_daily_bars(
     if not key:
         raise ValueError("missing CATALYST_POLYGON_API_KEY")
     http = client or JsonHttpClient(UrlLibHttpTransport(), timeout_seconds=20.0)
+    headers = {"Authorization": f"Bearer {key}"}
     bars: list[DailyBar] = []
     errors: list[str] = []
     calls = 0
@@ -83,31 +87,32 @@ def fetch_polygon_daily_bars(
         symbol = str(ticker).strip().upper()
         if not symbol:
             continue
+        # Key stays in the Authorization header so it cannot land in URL/errors.
         url = (
             f"{base_url.rstrip('/')}/v2/aggs/ticker/{symbol}/range/1/day/"
             f"{start.isoformat()}/{end.isoformat()}"
-            f"?adjusted=true&sort=asc&limit=120&apiKey={key}"
+            "?adjusted=true&sort=asc&limit=120"
         )
         calls += 1
         try:
-            payload = http.get_json(url)
+            payload = http.get_json(url, headers=headers)
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             if "429" in message:
                 sleep(12.0)
                 try:
-                    payload = http.get_json(url)
+                    payload = http.get_json(url, headers=headers)
                     calls += 1
                 except Exception as retry_exc:  # noqa: BLE001
-                    errors.append(f"{symbol}: {retry_exc}")
+                    errors.append(_redact_polygon_error(symbol, retry_exc, key))
                     continue
             else:
-                errors.append(f"{symbol}: {exc}")
+                errors.append(_redact_polygon_error(symbol, exc, key))
                 continue
         sleep(1.1)
         status = str(payload.get("status") or "")
         if status not in {"OK", "DELAYED"}:
-            errors.append(f"{symbol}: status={status}")
+            errors.append(_redact_polygon_text(f"{symbol}: status={status}", key))
             continue
         for item in payload.get("results") or []:
             if not isinstance(item, dict):
@@ -121,7 +126,7 @@ def fetch_polygon_daily_bars(
         "end": end.isoformat(),
         "bar_count": len(bars),
         "external_calls_made": calls,
-        "errors": errors[:20],
+        "errors": [_redact_polygon_text(item, key) for item in errors[:20]],
         "bars": bars,
     }
 
@@ -174,6 +179,15 @@ def default_bar_window(
     last = end or datetime.now(tz=UTC).date()
     start = last - timedelta(days=max(5, lookback_days))
     return start, last
+
+
+def _redact_polygon_text(text: str, api_key: str) -> str:
+    redacted = redact_text(text, known_secrets=(api_key,))
+    return _API_KEY_QUERY_RE.sub("", redacted)
+
+
+def _redact_polygon_error(symbol: str, exc: object, api_key: str) -> str:
+    return _redact_polygon_text(f"{symbol}: {exc}", api_key)
 
 
 def _agg_to_bar(ticker: str, item: dict[str, Any]) -> DailyBar:
