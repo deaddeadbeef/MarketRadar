@@ -36,6 +36,10 @@ def _write_posts(tmp_path: Path, posts: list[dict[str, object]]) -> Path:
     return path
 
 
+def _payload(path: Path) -> dict[str, object]:
+    return build_world_events_from_posts(posts_path=path, now=NOW)
+
+
 def test_from_posts_groups_and_extracts_cashtags(tmp_path: Path) -> None:
     posts = {
         "schema_version": "x-posts-v1",
@@ -294,3 +298,100 @@ def test_from_posts_truncates_chosen_title_and_summary(tmp_path: Path) -> None:
     assert event["title"] == "T" * 180
     assert event["summary"] == "S" * 800
     assert "First tweet body" not in event["summary"]
+
+
+def test_empty_event_id_falls_back_to_first_theme(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "p1",
+                "event_id": "",
+                "text": "$MU sold out through 2027",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory"],
+            },
+            {
+                "id": "p2",
+                "event_id": "",
+                "text": "$SNDK still described as tight",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["memory"],
+            },
+        ],
+    )
+    assert [event["id"] for event in _payload(path)["events"]] == ["evt_memory"]
+
+
+def test_empty_event_id_without_theme_groups_by_post_id(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "solo_a",
+                "event_id": "",
+                "text": "$MU sold out through 2027",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "tickers": ["MU"],
+            }
+        ],
+    )
+    assert [event["id"] for event in _payload(path)["events"]] == ["evt_solo_a"]
+
+
+def test_different_event_ids_do_not_merge_on_shared_theme(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "p1",
+                "event_id": "hbm4_memory_asp",
+                "text": "$MU sold out through 2027",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory"],
+            },
+            {
+                "id": "p2",
+                "event_id": "china_nand_share",
+                "text": "$SNDK NAND share commentary",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["memory"],
+            },
+        ],
+    )
+    assert {event["id"] for event in _payload(path)["events"]} == {
+        "evt_hbm4_memory_asp",
+        "evt_china_nand_share",
+    }
+
+
+def test_different_first_themes_stay_split_despite_shared_later_theme(
+    tmp_path: Path,
+) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "p1",
+                "text": "$MU sold out through 2027",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory", "china_export"],
+                "tickers": ["MU", "SNDK"],
+            },
+            {
+                "id": "p2",
+                "text": "$WDC NAND share commentary",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["china_export", "memory"],
+                "tickers": ["MU", "WDC"],
+            },
+        ],
+    )
+    assert {event["id"] for event in _payload(path)["events"]} == {
+        "evt_memory",
+        "evt_china_export",
+    }
+
+
+def test_no_stripped_live_dump_fixture_with_false_count_three() -> None:
+    assert not Path("data/sample/x_posts_no_event_id.json").exists()
