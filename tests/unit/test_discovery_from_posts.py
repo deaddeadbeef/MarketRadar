@@ -13,6 +13,27 @@ from catalyst_radar.discovery.from_posts import (
 
 pytestmark = pytest.mark.discovery
 
+# 8 posts / 3 event_ids. Do not use data/sample/x_posts.json as the story-count law.
+LAW_POSTS = Path("data/sample/x_posts_2026-08-13.json")
+LAW_EVENT_IDS = ("hbm4_memory_asp", "china_nand_share", "cpi_hormuz_macro")
+LAW_WORLD_EVENT_IDS = tuple(f"evt_{event_id}" for event_id in LAW_EVENT_IDS)
+
+
+def _write_posts(tmp_path: Path, posts: list[dict[str, object]]) -> Path:
+    path = tmp_path / "posts.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "x-posts-v1",
+                "generated_at": "2026-08-13T12:00:00+00:00",
+                "source": "unit",
+                "posts": posts,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
 
 def test_from_posts_groups_and_extracts_cashtags(tmp_path: Path) -> None:
     posts = {
@@ -64,3 +85,89 @@ def test_convert_posts_preview_does_not_write(tmp_path: Path) -> None:
     assert executed["status"] == "executed"
     assert dest.is_file()
     assert executed["event_count"] >= 1
+
+
+def test_law_fixture_clusters_eight_posts_to_three_world_events() -> None:
+    raw = json.loads(LAW_POSTS.read_text(encoding="utf-8"))
+    posts = raw["posts"]
+    assert raw["source"] == "x_live_curated_2026-08-13"
+    assert len(posts) == 8
+    assert {str(post["event_id"]) for post in posts} == set(LAW_EVENT_IDS)
+
+    payload = build_world_events_from_posts(
+        posts_path=LAW_POSTS,
+        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+    )
+    ids = {event["id"] for event in payload["events"]}
+    assert payload["schema_version"] == "world-events-v1"
+    assert len(payload["events"]) == 3
+    assert len(payload["events"]) != len(posts)
+    assert ids == set(LAW_WORLD_EVENT_IDS)
+
+
+def test_missing_event_id_groups_by_first_theme(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "p1",
+                "text": "$MU sold out through 2027",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory", "hbm"],
+            },
+            {
+                "id": "p2",
+                "text": "$SNDK still described as tight",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["memory"],
+            },
+        ],
+    )
+    payload = build_world_events_from_posts(
+        posts_path=path,
+        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+    )
+    assert [event["id"] for event in payload["events"]] == ["evt_memory"]
+
+
+def test_missing_event_id_and_theme_groups_by_post_id(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "solo_a",
+                "text": "$MU sold out through 2027",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "tickers": ["MU"],
+            },
+            {
+                "id": "solo_b",
+                "text": "$XOM slips on inventory",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "tickers": ["XOM"],
+            },
+        ],
+    )
+    payload = build_world_events_from_posts(
+        posts_path=path,
+        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+    )
+    assert {event["id"] for event in payload["events"]} == {"evt_solo_a", "evt_solo_b"}
+
+
+def test_missing_event_id_theme_and_tickers_drops_group(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "empty",
+                "text": "No mapped names in this note.",
+                "published_at": "2026-08-13T10:00:00+00:00",
+            }
+        ],
+    )
+    payload = build_world_events_from_posts(
+        posts_path=path,
+        now=datetime(2026, 8, 13, 12, tzinfo=UTC),
+    )
+    assert payload["events"] == []
