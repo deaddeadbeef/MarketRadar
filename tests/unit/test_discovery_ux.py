@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from catalyst_radar.discovery.ux import apply_novice_ux, company_name
+from catalyst_radar.discovery.mapper import DEFAULT_THEME_TICKERS
+from catalyst_radar.discovery.ux import COMPANY_NAMES, apply_novice_ux, company_name
 
 pytestmark = pytest.mark.discovery
 
@@ -53,3 +54,13 @@ def test_novice_ux_hides_theme_missing_scan_and_speaks_plain_english() -> None:
     assert "barely moved" in payload["headline"]
     assert payload["novice"]["focus_ticker"] == "SNDK"
     assert company_name("SNDK") == "Sandisk"
+
+
+def test_every_default_theme_ticker_has_display_name() -> None:
+    tickers = {ticker for values in DEFAULT_THEME_TICKERS.values() for ticker in values}
+    assert tickers
+    for ticker in sorted(tickers):
+        name = company_name(ticker)
+        assert ticker in COMPANY_NAMES
+        assert name == COMPANY_NAMES[ticker]
+        assert name != ticker or COMPANY_NAMES[ticker] == ticker
