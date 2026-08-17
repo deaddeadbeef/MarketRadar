@@ -125,21 +125,52 @@ def convert_posts_file(
     posts_path: str | Path,
     destination: str | Path,
     execute: bool = False,
+    require_event_id: bool = False,
     now: datetime | None = None,
 ) -> dict[str, object]:
-    events = build_world_events_from_posts(posts_path=posts_path, now=now)
+    bundle = load_x_posts(posts_path)
+    missing_event_id = sum(1 for post in bundle["posts"] if not post["event_id_present"])
     dest = Path(destination)
+    if require_event_id and missing_event_id:
+        return {
+            "schema_version": FROM_POSTS_SCHEMA,
+            "status": "error",
+            "posts_path": str(posts_path),
+            "destination": str(dest),
+            "event_count": 0,
+            "missing_event_id_count": missing_event_id,
+            "file_writes_made": 0,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "investment_advice": False,
+            "next_action": (
+                f"{missing_event_id} post(s) lack event_id. Set a shared event_id "
+                "per story in the Grok dump, then re-run."
+            ),
+        }
+    events = build_world_events_from_posts(posts_path=posts_path, now=now)
     writes = 0
     if execute:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(json.dumps(events, indent=2), encoding="utf-8")
         writes = 1
+    next_action = (
+        f"Install completed. Run discovery-brief --events {dest}."
+        if execute
+        else f"Preview only. Re-run with --execute to write {dest}."
+    )
+    if missing_event_id:
+        next_action = (
+            f"{missing_event_id} post(s) lack event_id; grouped by first theme or post id. "
+            + next_action
+        )
     return {
         "schema_version": FROM_POSTS_SCHEMA,
         "status": "executed" if execute else "preview",
         "posts_path": str(posts_path),
         "destination": str(dest),
         "event_count": len(events.get("events") or []),
+        "missing_event_id_count": missing_event_id,
         "events_source": events.get("source"),
         "generated_at": events.get("generated_at"),
         "file_writes_made": writes,
@@ -147,11 +178,7 @@ def convert_posts_file(
         "db_writes_made": 0,
         "investment_advice": False,
         "world_events": events if not execute else None,
-        "next_action": (
-            f"Install completed. Run discovery-brief --events {dest}."
-            if execute
-            else f"Preview only. Re-run with --execute to write {dest}."
-        ),
+        "next_action": next_action,
     }
 
 
@@ -168,7 +195,8 @@ def _parse_post(raw: object, index: int) -> dict[str, object]:
             tickers.append(symbol)
     themes = list(normalize_themes(raw.get("themes")))
     # event_id is the story; first theme / post_id fill a missing id (not Jaccard).
-    group_key = str(raw.get("event_id") or (themes[0] if themes else post_id)).strip()
+    raw_event_id = str(raw.get("event_id") or "").strip()
+    group_key = raw_event_id or (themes[0] if themes else post_id)
     published = parse_datetime(raw.get("published_at") or raw.get("available_at"), "published_at")
     engagement = raw.get("engagement") if isinstance(raw.get("engagement"), Mapping) else {}
     likes = _as_int(engagement.get("likes"))
@@ -181,6 +209,7 @@ def _parse_post(raw: object, index: int) -> dict[str, object]:
     return {
         "id": post_id,
         "group_key": group_key,
+        "event_id_present": bool(raw_event_id),
         "title": title,
         "text": text,
         "tickers": tickers,

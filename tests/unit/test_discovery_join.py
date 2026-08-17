@@ -98,7 +98,11 @@ def test_event_join_uses_bars_not_missing_pre_event_tape() -> None:
     )
     assert moved.join_status == "joined"
     assert moved.ret_5d_pct is not None
+    assert moved.post_event_bar_count >= 2
+    assert moved.ret_since_event_pct is not None
+    assert moved.ret_since_event_pct > 0
     assert flat.join_status == "joined"
+    assert flat.ret_since_event_pct == 0.0
     assert flat.reaction_score < moved.reaction_score
     assert round(flat.emotion_reaction_gap, 2) == round(70.0 - flat.reaction_score, 2)
     assert old.join_status == "missing_scan"
