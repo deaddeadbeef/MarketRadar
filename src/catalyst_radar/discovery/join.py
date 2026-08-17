@@ -37,6 +37,8 @@ class EventJoin:
     last_bar_date: str | None
     bar_count: int
     reason: str
+    ret_since_event_pct: float | None = None
+    post_event_bar_count: int = 0
 
     def as_payload(self) -> dict[str, object]:
         return {
@@ -47,6 +49,8 @@ class EventJoin:
             "emotion_reaction_gap": self.emotion_reaction_gap,
             "ret_5d_pct": self.ret_5d_pct,
             "ret_20d_pct": self.ret_20d_pct,
+            "ret_since_event_pct": self.ret_since_event_pct,
+            "post_event_bar_count": self.post_event_bar_count,
             "last_bar_date": self.last_bar_date,
             "bar_count": self.bar_count,
             "reason": self.reason,
@@ -211,6 +215,7 @@ def join_event_ticker(
         gap=gap,
         direction=direction,
     )
+    since_event, post_count = _return_since_event(rows, event_date)
     return EventJoin(
         join_status="joined",
         priced_in_status=status,
@@ -221,6 +226,8 @@ def join_event_ticker(
         last_bar_date=last_bar_date.isoformat(),
         bar_count=len(rows),
         reason="Event-window bars used for reaction; candidate_states ignored.",
+        ret_since_event_pct=since_event,
+        post_event_bar_count=post_count,
     )
 
 
@@ -244,6 +251,20 @@ def _bars_frame(rows: Sequence[DailyBar]) -> pd.DataFrame:
             "vwap": [row.vwap for row in rows],
         }
     )
+
+
+def _return_since_event(
+    rows: Sequence[DailyBar],
+    event_date: date,
+) -> tuple[float | None, int]:
+    post = [row for row in rows if row.date >= event_date]
+    if len(post) < 2:
+        return None, len(post)
+    first = float(post[0].close)
+    last = float(post[-1].close)
+    if first == 0.0:
+        return None, len(post)
+    return round((last / first - 1.0) * 100.0, 2), len(post)
 
 
 def _direction_sign(direction: str) -> int:

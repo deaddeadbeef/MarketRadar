@@ -12,7 +12,10 @@ param(
   [string]$EventsPath = "",
   [string]$PostsPath = "",
   [string]$BarsCsv = "",
-  [switch]$Execute
+  [switch]$Execute,
+  [switch]$RequireEventId,
+  [switch]$PolygonBars,
+  [switch]$ConfirmExternalCall
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +34,7 @@ if (-not [string]::IsNullOrWhiteSpace($PostsPath)) {
     "--json"
   )
   if ($Execute) { $fromPosts += "--execute" }
+  if ($RequireEventId) { $fromPosts += "--require-event-id" }
   & $python @fromPosts
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
@@ -44,6 +48,19 @@ if (-not [string]::IsNullOrWhiteSpace($BarsCsv)) {
   )
   if ($Execute) { $bars += "--execute" }
   & $python @bars
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+if ($PolygonBars) {
+  $poly = @(
+    "-m", "catalyst_radar.cli",
+    "discovery-bars",
+    "--polygon",
+    "--json"
+  )
+  if ($ConfirmExternalCall) { $poly += "--confirm-external-call" }
+  if ($Execute) { $poly += "--execute" }
+  & $python @poly
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

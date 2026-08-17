@@ -475,6 +475,8 @@ def _discovery_row(
         "reaction_score": round(reaction, 2),
         "emotion_reaction_gap": round(gap, 2),
         "ret_5d_pct": ret_5d_pct,
+        "ret_since_event_pct": getattr(event_join, "ret_since_event_pct", None),
+        "post_event_bar_count": int(getattr(event_join, "post_event_bar_count", 0) or 0),
         "join_status": join_status,
         "last_bar_date": event_join.last_bar_date,
         "bar_count": event_join.bar_count,

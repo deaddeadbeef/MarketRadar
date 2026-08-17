@@ -1311,6 +1311,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("data/local/world_events.json"),
     )
     discovery_from_posts.add_argument("--execute", action="store_true")
+    discovery_from_posts.add_argument(
+        "--require-event-id",
+        action="store_true",
+        help="Fail if any post is missing event_id (weekday Grok-task contract).",
+    )
     discovery_from_posts.add_argument("--json", action="store_true")
 
     discovery_bars = subparsers.add_parser(
@@ -1786,6 +1791,7 @@ def main(argv: list[str] | None = None) -> int:
             posts_path=args.posts,
             destination=args.destination,
             execute=bool(args.execute),
+            require_event_id=bool(args.require_event_id),
         )
         if args.json:
             print(json.dumps(payload, default=str, sort_keys=True))

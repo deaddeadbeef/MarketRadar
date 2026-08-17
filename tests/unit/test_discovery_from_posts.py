@@ -94,6 +94,59 @@ def test_convert_posts_preview_does_not_write(tmp_path: Path) -> None:
     assert preview["external_calls_made"] == 0
 
 
+def test_convert_posts_require_event_id_rejects_missing_ids(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "p1",
+                "text": "$MU sold out through 2027",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory"],
+            }
+        ],
+    )
+    dest = tmp_path / "world_events.json"
+    payload = convert_posts_file(
+        posts_path=path,
+        destination=dest,
+        execute=True,
+        require_event_id=True,
+    )
+    assert payload["status"] == "error"
+    assert payload["missing_event_id_count"] == 1
+    assert payload["file_writes_made"] == 0
+    assert not dest.exists()
+
+
+def test_convert_posts_counts_missing_event_id_without_failing(tmp_path: Path) -> None:
+    path = _write_posts(
+        tmp_path,
+        [
+            {
+                "id": "p1",
+                "event_id": "hbm4_memory_asp",
+                "text": "$MU sold out through 2027",
+                "published_at": "2026-08-13T10:00:00+00:00",
+                "themes": ["memory"],
+            },
+            {
+                "id": "p2",
+                "text": "$SNDK still tight",
+                "published_at": "2026-08-13T11:00:00+00:00",
+                "themes": ["memory"],
+            },
+        ],
+    )
+    payload = convert_posts_file(
+        posts_path=path,
+        destination=tmp_path / "out.json",
+        execute=False,
+    )
+    assert payload["status"] == "preview"
+    assert payload["missing_event_id_count"] == 1
+
+
 def test_law_fixture_clusters_eight_posts_to_three_world_events() -> None:
     raw = json.loads(LAW_POSTS.read_text(encoding="utf-8"))
     posts = raw["posts"]
