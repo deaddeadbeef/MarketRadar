@@ -12,6 +12,33 @@ investment advice, and it never submits broker orders.
 Inspect live scope: `catalyst-radar product-scope --json`  
 Ship gate: `catalyst-radar assert-discovery-ready --json`
 
+## Grok Build (specialized radar)
+
+This repo is meant to be opened **as Grok Build**, not as a generic coding agent.
+
+```powershell
+cd C:\Users\fpan1\MarketRadar
+grok
+```
+
+Then:
+
+| Command | What it does |
+|---------|----------------|
+| `/radar-brief` | Show today’s stories |
+| `/radar-hunt` | Hunt pending binaries across domains and install the file |
+| `/radar-ready` | Ship gate |
+
+Headless:
+
+```powershell
+grok -p "/radar-brief" --cwd C:\Users\fpan1\MarketRadar
+grok -p "/radar-hunt" --cwd C:\Users\fpan1\MarketRadar
+```
+
+Scripts: `scripts/radar-grok.ps1 brief|convert|ready|bars|status`.  
+Skill: `.grok/skills/radar/SKILL.md`. The desktop only **reads**; Grok is the loop.
+
 ## Daily path
 
 1. Produce a fresh `world-events-v1` JSON (Grok daily task or manual file).
