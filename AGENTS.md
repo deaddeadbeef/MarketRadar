@@ -10,9 +10,10 @@ Authoritative docs: `docs/designs/2026-08-15-marketradar-product-spec.md`,
 
 - Work on isolated branches/worktrees. Never commit on `main`.
 - Add features only in `src/catalyst_radar/discovery/` plus supporting join/bar fill.
-- Capture **pending binaries** (PDUFA, Phase 3 windows, medical-meeting follow-up
-  ahead of a readout). Do not fill the weekday dump with “stock +100% today”
-  posts. Lesson: `docs/designs/2026-08-19-catalyst-signals.md`.
+- Capture **pending binaries across domains** (policy, energy, semis, health,
+  macro, legal — not a biotech desk). Do not fill the weekday dump with
+  “stock +100% today” posts. Lesson: `docs/designs/2026-08-19-catalyst-signals.md`.
+  Standing mission: `docs/missions/pending-binaries.md`.
 - Keep browse/snapshot paths at zero hidden provider, broker, and LLM calls.
 - Keep social/X-only leads at `research_only` until SEC/EDGAR/PRIMARY/REGULATORY confirmation.
 - Run product tests before handoff:
