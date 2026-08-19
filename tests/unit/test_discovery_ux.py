@@ -119,6 +119,13 @@ def test_every_default_theme_ticker_has_display_name() -> None:
         assert name != ticker or COMPANY_NAMES[ticker] == ticker
 
 
+def test_oncology_theme_maps_moderna_and_merck() -> None:
+    assert "MRNA" in DEFAULT_THEME_TICKERS["oncology"]
+    assert "MRK" in DEFAULT_THEME_TICKERS["oncology"]
+    assert company_name("MRNA") == "Moderna"
+    assert company_name("MRK") == "Merck"
+
+
 def test_unlisted_cashtags_stay_off_the_novice_eight() -> None:
     assert is_novice_eligible("SKHY") is False
     assert is_novice_eligible("CXMT") is False

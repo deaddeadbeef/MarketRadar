@@ -448,3 +448,20 @@ def test_different_first_themes_stay_split_despite_shared_later_theme(
 
 def test_no_stripped_live_dump_fixture_with_false_count_three() -> None:
     assert not Path("data/sample/x_posts_no_event_id.json").exists()
+
+
+def test_asco_intismeran_teaching_fixture_is_one_pending_binary() -> None:
+    path = Path("data/sample/x_posts_2026-06-02_asco_intismeran.json")
+    payload = build_world_events_from_posts(
+        posts_path=path,
+        now=datetime(2026, 6, 2, 18, tzinfo=UTC),
+    )
+    events = payload["events"]
+    assert len(events) == 1
+    event = events[0]
+    assert event["id"] == "evt_mrna_intismeran_p3_window"
+    assert "MRNA" in event["tickers"]
+    assert "MRK" in event["tickers"]
+    assert "Phase 3" in event["title"] or "Phase 3" in event["summary"]
+    assert "+130" not in event["title"]
+    assert "+130" not in event["summary"]

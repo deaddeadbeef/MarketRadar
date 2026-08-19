@@ -4,7 +4,9 @@
 **Status:** Pointer plus ship-gate table. Not the narrative contract.
 
 **Narrative product contract:**
-`docs/designs/2026-08-15-marketradar-product-spec.md`
+`docs/designs/2026-08-15-marketradar-product-spec.md`  
+**Signal types (pending binary vs gap-up):**
+`docs/designs/2026-08-19-catalyst-signals.md`
 
 This file keeps the supported-surface map, product laws, and ship-gate table.
 Runtime registry: `src/catalyst_radar/deprecation.py`. Removal plan:
@@ -15,8 +17,8 @@ Runtime registry: `src/catalyst_radar/deprecation.py`. Removal plan:
 ## One-sentence product
 
 **MarketRadar is an operator-produced weekday briefing that a market newbie can
-read: public world events, mapped to companies, with honest recent-tape context
-and a trust ladder. It is decision support only.**
+read: pending binaries and world events, mapped to companies, with honest
+recent-tape context and a trust ladder. It is decision support only.**
 
 ---
 
