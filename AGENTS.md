@@ -10,9 +10,12 @@ Authoritative docs: `docs/designs/2026-08-15-marketradar-product-spec.md`,
 
 - Work on isolated branches/worktrees. Never commit on `main`.
 - Add features only in `src/catalyst_radar/discovery/` plus supporting join/bar fill.
-- Capture **pending binaries** (PDUFA, Phase 3 windows, medical-meeting follow-up
-  ahead of a readout). Do not fill the weekday dump with “stock +100% today”
-  posts. Lesson: `docs/designs/2026-08-19-catalyst-signals.md`.
+- Capture **pending binaries across domains** (policy, energy, semis, health,
+  macro, legal — not a biotech desk). Do not fill the weekday dump with
+  “stock +100% today” posts. Lesson: `docs/designs/2026-08-19-catalyst-signals.md`.
+  Standing mission: `docs/missions/pending-binaries.md`.
+  Grok Build: `.grok/skills/radar/SKILL.md`, slash commands `/radar-hunt`,
+  `/radar-brief`, `/radar-ready`. Headless: `grok -p "/radar-brief"`.
 - Keep browse/snapshot paths at zero hidden provider, broker, and LLM calls.
 - Keep social/X-only leads at `research_only` until SEC/EDGAR/PRIMARY/REGULATORY confirmation.
 - Run product tests before handoff:
@@ -32,4 +35,7 @@ $env:PYTHONPATH='src'
 
 ## Product loop
 
-World events JSON → `discovery-brief` → event-time bar join → case file → proof labels.
+Grok Build (`/radar-hunt`) → `x-posts-v1` → world-events JSON → `discovery-brief`
+→ event-time bar join → World Events desktop (reader) → labels.
+
+The desktop is not the agent. Grok Build in this repo is the agentic operator.
