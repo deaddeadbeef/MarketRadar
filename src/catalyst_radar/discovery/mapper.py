@@ -25,6 +25,10 @@ DEFAULT_THEME_TICKERS: dict[str, tuple[str, ...]] = {
     "tariffs": ("CAT", "DE", "UPS", "FDX"),
     "china_export": ("TSLA", "F", "GM", "ALB"),
     "gold": ("GLD", "NEM", "AEM"),
+    # Pending scientific/regulatory binaries (MRNA 2026 lesson: not only semis/energy).
+    "oncology": ("MRNA", "MRK", "BNTX", "REGN", "AMGN", "GILD"),
+    "biotech_catalyst": ("MRNA", "MRK", "BNTX", "PFE"),
+    "mrna": ("MRNA", "BNTX", "PFE"),
 }
 
 # Mega-caps often already reflect world narratives; demote when ranking lag.

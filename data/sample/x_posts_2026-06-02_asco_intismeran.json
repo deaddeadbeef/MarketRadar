@@ -1,0 +1,37 @@
+{
+  "schema_version": "x-posts-v1",
+  "generated_at": "2026-06-02T18:00:00+00:00",
+  "source": "teaching_asco_intismeran_pending_binary",
+  "posts": [
+    {
+      "id": "asco_intismeran_5yr",
+      "event_id": "mrna_intismeran_p3_window",
+      "title": "ASCO: 5-year melanoma follow-up keeps Phase 3 window in view",
+      "text": "Moderna and Merck present 5-year KEYNOTE-942 data for intismeran autogene plus Keytruda in resected high-risk melanoma. Risk of recurrence or death still lower vs Keytruda alone. Phase 3 INTerpath-001 fully enrolled; readout expected in 2026. $MRNA $MRK",
+      "url": "https://www.merck.com/news/moderna-and-merck-present-5-year-data-for-intismeran-autogene-in-combination-with-keytruda-pembrolizumab-in-patients-with-high-risk-stage-iii-iv-melanoma-following-complete-resection-at-the-20/",
+      "author": "@teaching",
+      "published_at": "2026-06-01T14:00:00+00:00",
+      "themes": ["oncology", "mrna", "biotech_catalyst"],
+      "tickers": ["MRNA", "MRK"],
+      "direction": "bullish",
+      "materiality": 0.82,
+      "source_quality": 0.62,
+      "engagement": {"likes": 40, "views": 12000}
+    },
+    {
+      "id": "asco_intismeran_street",
+      "event_id": "mrna_intismeran_p3_window",
+      "title": "Street: 5-year data is confidence into 2026 Phase 3, not the Phase 3",
+      "text": "Jefferies: 5-year survival figures help instill confidence in pivotal Phase 3 data in 2026. This is not a top-line print. $MRNA $MRK",
+      "url": "https://www.biospace.com/drug-development/asco-modernas-mrna-based-melanoma-vaccine-shows-encouraging-5-year-survival",
+      "author": "@teaching",
+      "published_at": "2026-06-02T12:00:00+00:00",
+      "themes": ["oncology", "biotech_catalyst"],
+      "tickers": ["MRNA", "MRK"],
+      "direction": "mixed",
+      "materiality": 0.74,
+      "source_quality": 0.55,
+      "engagement": {"likes": 18, "views": 5400}
+    }
+  ]
+}

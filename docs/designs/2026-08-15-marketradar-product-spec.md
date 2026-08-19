@@ -47,9 +47,11 @@ By month 12:
 
 ### Job to be done
 
-When something public happens — a shipping choke point, a memory-price shock, an export rule — a curious investor wants to know: *what is the story, which listed companies sit on the causal chain, and what has the recent tape done given prices we can actually observe around that story?*
+When something public is **pending or just printed** — a Phase 3 window, a PDUFA date, a shipping choke point, a memory-price shock — a curious investor wants to know: *what is the story, which listed companies sit on the causal chain, and has the tape already made the move obvious?*
 
-That job is **research triage**, not execution. Causal “return since the headline” is a later measurement (PR 10), not the current join.
+The highest-value object is a **pending binary** (dated or windowed) whose names are still quiet. The day-of “stock +100%” post is too late. Teaching case and taxonomy: `docs/designs/2026-08-19-catalyst-signals.md` (Moderna melanoma vaccine, 2026).
+
+That job is **research triage**, not execution. Join still reports trailing 5d plus optional `ret_since_event_pct`; newbie copy stays honest.
 
 ### Pain
 
@@ -121,6 +123,7 @@ These are product laws, not style preferences. Implementation that weakens them 
 10. **Newbie copy is plain English.** Company names, price in words, no theme slugs, no `missing_scan` jargon, no PowerShell as the next action on the default surface.
 11. **Grok/X search is the event bus.** MarketRadar does not need in-app X OAuth. The operator (or a scheduled Grok task **outside** the app) writes a file; the product reads it.
 12. **Ship gate is discovery-ready.** `catalyst-radar assert-discovery-ready --json`. Do not use `assert-trial-ready`, `assert-shadow-ready`, or `assert-investable-readiness`.
+13. **Capture the pending binary, not the gap-up.** Weekday stories must be type A/B in `docs/designs/2026-08-19-catalyst-signals.md` (windowed catalyst + names + quiet-enough tape). Intraday “JUST IN +130%” posts are type X and must not crowd the briefing.
 
 ## 7. Primary user journeys
 
@@ -457,6 +460,8 @@ Required of the weekday dump (operator or scheduled task):
 From-posts sets bundle `generated_at` to the **conversion clock** and event `available_at` to the **earliest** `published_at` in the group. Ship-gate freshness is bundle `generated_at`. Do not convert an old dump and call it today.
 
 Missing `event_id` is an operator-contract miss. From-posts then uses **today’s** fallback (`first theme` else `post_id`) — not a Jaccard merge. The task is still required to set `event_id`.
+
+**What to search for (not optional after 19 Aug 2026):** PDUFA / FDA dates in the next 90 days; Phase 2/3 or pivotal “readout / top-line / fully enrolled”; major medical-meeting data tied to a ticker; IR / trial-registry hooks. Do **not** fill the dump from trending “stock is up 100%” posts. See `docs/designs/2026-08-19-catalyst-signals.md`.
 
 ### 15.2 Empty vs stale vs last-good (operator away)
 
@@ -1038,6 +1043,7 @@ Defaults below are recommendations. Several are now **decided in Key Decisions**
 | Primary confirm defaults to “go read the news” | Avoids hidden fetches. |
 | Helped/noise on; proof dollars off | Already the UI. Do not staff a feature PR to remount it. |
 | Do not revive deprecated surfaces | Gaps close inside `discovery/` and World Events copy. |
+| **Pending binary over post-gap tape** | MRNA 19 Aug 2026 doubled on a Phase 3 that was telegraphed in Jan/Jun. The radar object was the window, not the +130% posts. |
 
 ---
 
