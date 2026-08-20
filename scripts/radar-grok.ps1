@@ -1,12 +1,12 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Grok Build entrypoints for MarketRadar (brief, convert, ready, bars, status).
+  Grok Build entrypoints for MarketRadar (brief, convert, ready, bars, status, open).
 #>
 [CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet("brief", "convert", "ready", "bars", "status")]
+  [ValidateSet("brief", "convert", "ready", "bars", "status", "open")]
   [string]$Action = "brief",
   [string]$PostsPath = "",
   [switch]$Execute,
@@ -40,6 +40,10 @@ switch ($Action) {
     if ($ConfirmExternalCall) { $args += "--confirm-external-call" }
     if ($Execute) { $args += "--execute" }
     & $python @args
+    exit $LASTEXITCODE
+  }
+  "open" {
+    & (Join-Path $PSScriptRoot "open-market-radar.ps1")
     exit $LASTEXITCODE
   }
 }

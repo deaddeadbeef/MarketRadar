@@ -28,8 +28,9 @@ Then one skill with params:
 
 | Command | What it does |
 |---------|----------------|
-| `/market-radar hunt` | Mine X, install today’s file |
-| `/market-radar brief` | Show stories |
+| `/market-radar hunt` | Mine X, install today’s file, open World Events |
+| `/market-radar brief` | Show stories and open World Events |
+| `/market-radar open` | Open World Events only |
 | `/market-radar ready` | Ship gate |
 | `/market-radar` | Hunt if the file is stale, else brief |
 
@@ -40,8 +41,9 @@ grok -p "/market-radar hunt" --cwd C:\Users\fpan1\MarketRadar
 grok -p "/market-radar brief" --cwd C:\Users\fpan1\MarketRadar
 ```
 
-Scripts: `scripts/radar-grok.ps1 brief|convert|ready|bars|status`.  
-Skill: `.grok/skills/market-radar/SKILL.md` (`/market-radar hunt`). The desktop only **reads**.
+Scripts: `scripts/radar-grok.ps1 brief|convert|ready|bars|status|open`.  
+Skill source: `.grok/skills/market-radar/SKILL.md`. Install into Grok:
+`scripts/install-market-radar-skill.ps1`. The desktop only **reads**.
 
 ## Daily path
 

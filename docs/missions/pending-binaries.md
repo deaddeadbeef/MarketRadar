@@ -8,7 +8,7 @@ MarketRadar hunts **pending, dated or windowed binaries** that map to listed nam
 
 Authoritative taxonomy: `docs/designs/2026-08-19-catalyst-signals.md`.  
 Product laws: `docs/designs/2026-08-15-marketradar-product-spec.md`.  
-Grok Build surface: one skill `.grok/skills/market-radar/SKILL.md` (`/market-radar hunt|brief|ready|bars`).
+Grok Build surface: one skill `.grok/skills/market-radar/SKILL.md` (`/market-radar hunt|brief|ready|bars|open`). Install into Grok with `scripts/install-market-radar-skill.ps1`.
 
 This is research triage, not investment advice.
 

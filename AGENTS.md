@@ -15,8 +15,9 @@ Authoritative docs: `docs/designs/2026-08-15-marketradar-product-spec.md`,
   “stock +100% today” posts. Lesson: `docs/designs/2026-08-19-catalyst-signals.md`.
   Standing mission: `docs/missions/pending-binaries.md`.
   Grok Build: one skill `.grok/skills/market-radar/SKILL.md` with params
-  `hunt|brief|ready|bars`. Slash: `/market-radar hunt`. Headless: `grok -p "/market-radar hunt"`.
-  Daily scheduled prompt runs `/market-radar hunt`.
+  `hunt|brief|ready|bars|open`. Slash: `/market-radar hunt`. Headless: `grok -p "/market-radar hunt"`.
+  Daily scheduled prompt runs `/market-radar hunt`. Install into Grok with
+  `scripts/install-market-radar-skill.ps1`.
 - Keep browse/snapshot paths at zero hidden provider, broker, and LLM calls.
 - Keep social/X-only leads at `research_only` until SEC/EDGAR/PRIMARY/REGULATORY confirmation.
 - Run product tests before handoff:
@@ -38,6 +39,7 @@ $env:PYTHONPATH='src'
 
 **Skill-triggered:** Grok `market-radar` skill mines X and public sources, classifies
 pending binaries, writes `x-posts-v1`, converts, optionally fills bars.
-World Events is the **receive surface** (press R). Labels stay human.
+World Events is the **receive surface**. Hunt/brief open the desktop; press R
+if it is already running. Labels stay human.
 
 Interactive: `/market-radar` (hunt if stale, else brief). Daily: `/market-radar hunt`.
