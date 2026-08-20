@@ -35,7 +35,8 @@ $env:PYTHONPATH='src'
 
 ## Product loop
 
-Grok Build (`/radar-hunt`) → `x-posts-v1` → world-events JSON → `discovery-brief`
-→ event-time bar join → World Events desktop (reader) → labels.
+**Skill-triggered:** Grok `radar` skill mines X and public sources, classifies
+pending binaries, writes `x-posts-v1`, converts, optionally fills bars.
+World Events is the **receive surface** (press R). Labels stay human.
 
-The desktop is not the agent. Grok Build in this repo is the agentic operator.
+Default in this repo: `/radar` hunts if the local file is missing or stale, else briefs.

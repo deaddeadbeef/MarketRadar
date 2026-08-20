@@ -3,4 +3,4 @@ description: MarketRadar specialized Grok — hunt, brief, or ready
 argument-hint: hunt | brief | ready | bars
 ---
 
-Load the `radar` skill and run the requested action (default: brief). Follow `docs/designs/2026-08-19-catalyst-signals.md`. Research only.
+Load the `radar` skill. Default: if `data/local/world_events.json` is missing or older than 24h, **hunt then brief**; otherwise brief. The desktop is the receive surface (press R). Research only.

@@ -125,7 +125,7 @@ def apply_novice_ux(brief: Mapping[str, Any]) -> dict[str, Any]:
         payload["case_file"] = apply_novice_case_file(payload["case_file"])
     payload["novice"] = {
         "schema_version": "discovery-novice-v1",
-        "tagline": "Stories from X, then which stocks have not moved much yet.",
+        "tagline": "Grok mines X; this screen is the briefing.",
         "disclaimer": (
             "This is a research briefing, not a shopping list and not investment advice. "
             "Check a real news site before you do anything with money."

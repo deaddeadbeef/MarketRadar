@@ -14,6 +14,9 @@ Ship gate: `catalyst-radar assert-discovery-ready --json`
 
 ## Grok Build (specialized radar)
 
+This repo is a **skill-triggered** Grok Build. The skill mines X and analyzes;
+the desktop is the last screen you look at.
+
 This repo is meant to be opened **as Grok Build**, not as a generic coding agent.
 
 ```powershell
