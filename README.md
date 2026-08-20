@@ -24,23 +24,24 @@ cd C:\Users\fpan1\MarketRadar
 grok
 ```
 
-Then:
+Then one skill with params:
 
 | Command | What it does |
 |---------|----------------|
-| `/radar-brief` | Show today’s stories |
-| `/radar-hunt` | Hunt pending binaries across domains and install the file |
-| `/radar-ready` | Ship gate |
+| `/radar hunt` | Mine X, install today’s file |
+| `/radar brief` | Show stories |
+| `/radar ready` | Ship gate |
+| `/radar` | Hunt if the file is stale, else brief |
 
-Headless:
+Headless / daily:
 
 ```powershell
-grok -p "/radar-brief" --cwd C:\Users\fpan1\MarketRadar
-grok -p "/radar-hunt" --cwd C:\Users\fpan1\MarketRadar
+grok -p "/radar hunt" --cwd C:\Users\fpan1\MarketRadar
+grok -p "/radar brief" --cwd C:\Users\fpan1\MarketRadar
 ```
 
 Scripts: `scripts/radar-grok.ps1 brief|convert|ready|bars|status`.  
-Skill: `.grok/skills/radar/SKILL.md`. The desktop only **reads**; Grok is the loop.
+Skill: `.grok/skills/radar/SKILL.md` (`/radar hunt`). The desktop only **reads**.
 
 ## Daily path
 

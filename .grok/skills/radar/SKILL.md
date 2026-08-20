@@ -1,59 +1,41 @@
 ---
 name: radar
 description: >
-  Skill-triggered MarketRadar engine: mine X and the public web for pending
-  binaries across domains, analyze, install the briefing file. The desktop UI
-  only displays. Use for MarketRadar, radar, briefing, world events, X mining,
-  /radar, /radar-hunt, /radar-brief, /radar-ready. Not a trading desk.
+  One MarketRadar skill with params: hunt, brief, ready, bars. Mines X and the
+  public web for pending binaries across domains, installs the briefing, or
+  shows it. Desktop only displays. Use for /radar, MarketRadar, briefing, world
+  events, X mining. Not a trading desk. Scheduled daily run uses param hunt.
 argument-hint: "hunt | brief | ready | bars"
 ---
 
-# MarketRadar engine (Grok skill)
+# /radar [hunt | brief | ready | bars]
 
-You **are** the product loop. The Tauri World Events window is the **receive surface** only.
+You **are** the product loop. World Events is the **receive surface** (press **R**).
 
-Read: `docs/designs/2026-08-19-catalyst-signals.md`, `docs/missions/pending-binaries.md`, `.grok/skills/radar/references/hunt.md`.
+Read: `docs/designs/2026-08-19-catalyst-signals.md`, `docs/missions/pending-binaries.md`, `references/hunt.md`.
 
-Default when the user opens this repo or asks about the market without a subcommand: **hunt if the local file is missing/stale, then brief.** Then tell them to open World Events and press **R**.
+Parse the user argument (or scheduled prompt) as **param**:
 
-## Split
+| Param | Do |
+|-------|----|
+| `hunt` (scheduled default) | Follow `references/hunt.md`. Write `data/local/inbox/x_posts_YYYY-MM-DD.json`. `scripts/radar-grok.ps1 convert -Execute`. Then `brief`. |
+| `brief` | `scripts/radar-grok.ps1 brief` and summarize in plain English. |
+| `ready` | `scripts/radar-grok.ps1 ready`. |
+| `bars` | `scripts/radar-grok.ps1 bars -ConfirmExternalCall -Execute` only if the user asked. |
+| *(empty, interactive)* | If `data/local/world_events.json` missing or older than 24h → `hunt`. Else `brief`. |
 
-| Layer | Does |
-|-------|------|
-| This skill | X + web mining, classify A/B vs X, write `x-posts-v1`, convert, optional bars |
-| `scripts/radar-grok.ps1` | Deterministic convert / brief JSON / ready / bars |
-| Desktop | Renders `data/local/world_events.json`. No mining. |
+```text
+/radar hunt
+/radar brief
+/radar ready
+grok -p "/radar hunt" --cwd <repo>
+```
 
 ## Laws
 
 - Research only. No investment advice. No broker orders.
 - Social/X-only stays `research_only` on the briefing queue.
-- Type A/B **across domains** (policy, energy, semis, health, macro, legal). Not an FDA desk.
-- Type X (gap-up “+100% today”) is never a hero card.
-- Polygon mapped `/v2/aggs` only, event tickers + SPY, only with explicit confirm.
+- Type A/B **across domains**. Not an FDA desk. Type X gap-up posts are never hero cards.
+- Polygon mapped `/v2/aggs` only, event tickers + SPY, explicit confirm.
 
-## Hunt (heavy lifting)
-
-Follow `references/hunt.md`. Then:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/radar-grok.ps1 convert -Execute
-# optional, only if the user asked for prices:
-powershell -ExecutionPolicy Bypass -File scripts/radar-grok.ps1 bars -ConfirmExternalCall -Execute
-powershell -ExecutionPolicy Bypass -File scripts/radar-grok.ps1 brief
-```
-
-Repo root = workspace. Python via `.venv\Scripts\python.exe`.
-
-## Other intents
-
-| Intent | Action |
-|--------|--------|
-| brief | `radar-grok.ps1 brief` + plain English |
-| ready | `radar-grok.ps1 ready` |
-| bars | `radar-grok.ps1 bars` only if asked |
-| open | World Events is the surface; press **R** |
-
-Headless: `grok -p "/radar-hunt" --cwd <repo>`
-
-No buy list.
+Repo root = workspace. After `hunt`, tell the user to press **R**. No buy list.

@@ -14,8 +14,9 @@ Authoritative docs: `docs/designs/2026-08-15-marketradar-product-spec.md`,
   macro, legal — not a biotech desk). Do not fill the weekday dump with
   “stock +100% today” posts. Lesson: `docs/designs/2026-08-19-catalyst-signals.md`.
   Standing mission: `docs/missions/pending-binaries.md`.
-  Grok Build: `.grok/skills/radar/SKILL.md`, slash commands `/radar-hunt`,
-  `/radar-brief`, `/radar-ready`. Headless: `grok -p "/radar-brief"`.
+  Grok Build: one skill `.grok/skills/radar/SKILL.md` with params
+  `hunt|brief|ready|bars`. Slash: `/radar hunt`. Headless: `grok -p "/radar hunt"`.
+  Daily scheduled prompt runs `/radar hunt`.
 - Keep browse/snapshot paths at zero hidden provider, broker, and LLM calls.
 - Keep social/X-only leads at `research_only` until SEC/EDGAR/PRIMARY/REGULATORY confirmation.
 - Run product tests before handoff:
@@ -39,4 +40,4 @@ $env:PYTHONPATH='src'
 pending binaries, writes `x-posts-v1`, converts, optionally fills bars.
 World Events is the **receive surface** (press R). Labels stay human.
 
-Default in this repo: `/radar` hunts if the local file is missing or stale, else briefs.
+Interactive: `/radar` (hunt if stale, else brief). Daily: `/radar hunt`.
