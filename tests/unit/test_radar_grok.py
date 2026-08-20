@@ -13,18 +13,19 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_grok_radar_skill_and_commands_exist() -> None:
-    skill = ROOT / ".grok" / "skills" / "radar" / "SKILL.md"
+    skill = ROOT / ".grok" / "skills" / "market-radar" / "SKILL.md"
     assert skill.is_file()
     text = skill.read_text(encoding="utf-8")
-    assert "name: radar" in text
+    assert "name: market-radar" in text
     assert "argument-hint" in text
-    assert "/radar hunt" in text
-    assert (ROOT / ".grok" / "skills" / "radar" / "references" / "hunt.md").is_file()
-    assert (ROOT / ".grok" / "rules" / "radar.md").is_file()
+    assert "/market-radar hunt" in text
+    assert (ROOT / ".grok" / "skills" / "market-radar" / "references" / "hunt.md").is_file()
+    assert (ROOT / ".grok" / "rules" / "market-radar.md").is_file()
+    assert not (ROOT / ".grok" / "skills" / "radar").exists()
     commands = ROOT / ".grok" / "commands"
     if commands.is_dir():
         leftovers = {p.name for p in commands.glob("*.md")}
-        assert leftovers <= {"radar.md"}
+        assert leftovers == set()
 
 
 def test_radar_grok_status_json() -> None:

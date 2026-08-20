@@ -1,14 +1,14 @@
 ---
-name: radar
+name: market-radar
 description: >
   One MarketRadar skill with params: hunt, brief, ready, bars. Mines X and the
   public web for pending binaries across domains, installs the briefing, or
-  shows it. Desktop only displays. Use for /radar, MarketRadar, briefing, world
-  events, X mining. Not a trading desk. Scheduled daily run uses param hunt.
+  shows it. Desktop only displays. Use for /market-radar, MarketRadar, briefing,
+  world events, X mining. Not a trading desk. Scheduled daily run uses param hunt.
 argument-hint: "hunt | brief | ready | bars"
 ---
 
-# /radar [hunt | brief | ready | bars]
+# /market-radar [hunt | brief | ready | bars]
 
 You **are** the product loop. World Events is the **receive surface** (press **R**).
 
@@ -25,10 +25,10 @@ Parse the user argument (or scheduled prompt) as **param**:
 | *(empty, interactive)* | If `data/local/world_events.json` missing or older than 24h → `hunt`. Else `brief`. |
 
 ```text
-/radar hunt
-/radar brief
-/radar ready
-grok -p "/radar hunt" --cwd <repo>
+/market-radar hunt
+/market-radar brief
+/market-radar ready
+grok -p "/market-radar hunt" --cwd <repo>
 ```
 
 ## Laws

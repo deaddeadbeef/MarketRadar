@@ -2,13 +2,13 @@
 
 **Status:** standing  
 **Started:** 2026-08-19  
-**Cadence:** daily scheduled `/radar hunt`; not a biotech desk  
+**Cadence:** daily scheduled `/market-radar hunt`; not a biotech desk  
 
 MarketRadar hunts **pending, dated or windowed binaries** that map to listed names while the tape is still quiet. Biotech (MRNA 2026) is one domain. It is not the product.
 
 Authoritative taxonomy: `docs/designs/2026-08-19-catalyst-signals.md`.  
 Product laws: `docs/designs/2026-08-15-marketradar-product-spec.md`.  
-Grok Build surface: one skill `.grok/skills/radar/SKILL.md` (`/radar hunt|brief|ready|bars`).
+Grok Build surface: one skill `.grok/skills/market-radar/SKILL.md` (`/market-radar hunt|brief|ready|bars`).
 
 This is research triage, not investment advice.
 
@@ -48,10 +48,10 @@ From this repo:
 
 ```text
 grok
-/radar hunt          # mine X + install
-/radar brief
-/radar ready
-grok -p "/radar hunt" --cwd .
+/market-radar hunt          # mine X + install
+/market-radar brief
+/market-radar ready
+grok -p "/market-radar hunt" --cwd .
 ```
 
 The desktop is the reader. Grok Build is the operator loop.
