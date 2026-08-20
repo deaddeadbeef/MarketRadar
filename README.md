@@ -12,7 +12,7 @@ investment advice, and it never submits broker orders.
 Inspect live scope: `catalyst-radar product-scope --json`  
 Ship gate: `catalyst-radar assert-discovery-ready --json`
 
-## Grok Build (specialized radar)
+## Grok Build (`/market-radar`)
 
 This repo is a **skill-triggered** Grok Build. The skill mines X and analyzes;
 the desktop is the last screen you look at.
@@ -28,20 +28,20 @@ Then one skill with params:
 
 | Command | What it does |
 |---------|----------------|
-| `/radar hunt` | Mine X, install today’s file |
-| `/radar brief` | Show stories |
-| `/radar ready` | Ship gate |
-| `/radar` | Hunt if the file is stale, else brief |
+| `/market-radar hunt` | Mine X, install today’s file |
+| `/market-radar brief` | Show stories |
+| `/market-radar ready` | Ship gate |
+| `/market-radar` | Hunt if the file is stale, else brief |
 
 Headless / daily:
 
 ```powershell
-grok -p "/radar hunt" --cwd C:\Users\fpan1\MarketRadar
-grok -p "/radar brief" --cwd C:\Users\fpan1\MarketRadar
+grok -p "/market-radar hunt" --cwd C:\Users\fpan1\MarketRadar
+grok -p "/market-radar brief" --cwd C:\Users\fpan1\MarketRadar
 ```
 
 Scripts: `scripts/radar-grok.ps1 brief|convert|ready|bars|status`.  
-Skill: `.grok/skills/radar/SKILL.md` (`/radar hunt`). The desktop only **reads**.
+Skill: `.grok/skills/market-radar/SKILL.md` (`/market-radar hunt`). The desktop only **reads**.
 
 ## Daily path
 
