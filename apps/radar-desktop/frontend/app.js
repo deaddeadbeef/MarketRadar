@@ -1599,7 +1599,7 @@ function renderWorldEvents(snapshot) {
   }).join('') || `
     <article class="discover-card empty">
       <h3>No stories yet</h3>
-      <p class="muted">When today’s X briefing is installed, the big stories show up here.</p>
+      <p class="muted">When Grok finishes a hunt, the stories show up here. Press R to reload.</p>
     </article>
   `;
 
@@ -1628,7 +1628,7 @@ function renderWorldEvents(snapshot) {
   return `
     <section class="discover-hero" data-testid="world-events-header">
       <div>
-        <p class="discover-kicker">Today’s briefing from X</p>
+        <p class="discover-kicker">Briefing · Grok mines X, this screen shows it</p>
         <h2 class="discover-title">${escapeHtml(compact(discovery.headline, 'Load today’s stories to start'))}</h2>
         <p class="muted">${escapeHtml(compact(
           novice.disclaimer,

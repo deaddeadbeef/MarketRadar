@@ -18,6 +18,8 @@ def test_grok_radar_skill_and_commands_exist() -> None:
     text = skill.read_text(encoding="utf-8")
     assert "name: radar" in text
     assert "/radar-hunt" in text
+    assert (ROOT / ".grok" / "skills" / "radar" / "references" / "hunt.md").is_file()
+    assert (ROOT / ".grok" / "rules" / "radar.md").is_file()
     for name in ("radar.md", "radar-hunt.md", "radar-brief.md", "radar-ready.md"):
         assert (ROOT / ".grok" / "commands" / name).is_file()
 
