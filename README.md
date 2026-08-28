@@ -56,8 +56,12 @@ catalyst-radar discovery-from-posts --posts path\to\x_posts.json --execute
 powershell -ExecutionPolicy Bypass -File scripts/refresh-world-events.ps1 -EventsPath path\to\world_events.json -Execute
 
 # Optional: mapped bars so the join is event-time, not missing_scan
-# Discovery bar path (mapped tickers only). Confirm, then add --execute to write.
-catalyst-radar discovery-bars --polygon --confirm-external-call
+# No-key public daily bars (Yahoo chart API). Confirm, then --execute to write.
+catalyst-radar discovery-bars --public --confirm-external-call --execute
+# Stooq alternative (same confirm/execute; some networks JS-challenge block it):
+catalyst-radar discovery-bars --stooq --confirm-external-call --execute
+# Paid Polygon path (unchanged; needs CATALYST_POLYGON_API_KEY):
+catalyst-radar discovery-bars --polygon --confirm-external-call --execute
 # Local CSV alternative (zero provider calls):
 catalyst-radar discovery-bars --csv path\to\mapped_bars.csv --execute
 

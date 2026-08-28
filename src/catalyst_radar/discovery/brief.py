@@ -30,13 +30,14 @@ from catalyst_radar.discovery.models import (
     normalize_tickers,
     parse_datetime,
 )
+from catalyst_radar.discovery.source_hosts import best_source_category
 
 DEFAULT_EVENTS_PATH = Path("data/sample/world_events.json")
 SAMPLE_EVENTS_PATH = Path("data/sample/world_events.json")
 LOCAL_EVENTS_PATH = Path("data/local/world_events.json")
 FRESHNESS_STALE_HOURS = 24.0
 DISCOVERY_BARS_NEXT_COMMAND = (
-    "catalyst-radar discovery-bars --polygon --confirm-external-call"
+    "catalyst-radar discovery-bars --public --confirm-external-call"
 )
 
 
@@ -360,7 +361,10 @@ def _parse_event(raw: object) -> WorldEvent:
     direction = str(raw.get("direction") or "mixed").casefold()
     if direction not in {"bullish", "bearish", "mixed"}:
         direction = "mixed"
-    source_category = str(raw.get("source_category") or "social").casefold()
+    source_category = best_source_category(
+        (source.url for source in sources),
+        declared=str(raw.get("source_category") or "social").casefold(),
+    )
     return WorldEvent(
         id=event_id,
         title=title,

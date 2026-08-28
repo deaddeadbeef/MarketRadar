@@ -1320,7 +1320,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     discovery_bars = subparsers.add_parser(
         "discovery-bars",
-        help="Import mapped-ticker daily bars from CSV or fetch Polygon for mapped names.",
+        help="Import mapped-ticker daily bars from CSV, public Yahoo/Stooq, or Polygon.",
     )
     discovery_bars.add_argument("--database-url")
     discovery_bars.add_argument(
@@ -1334,12 +1334,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fetch daily bars for mapped tickers from Polygon (explicit confirm).",
     )
     discovery_bars.add_argument(
+        "--stooq",
+        action="store_true",
+        help="Fetch daily bars for mapped tickers from Stooq (no API key; explicit confirm).",
+    )
+    discovery_bars.add_argument(
+        "--yahoo",
+        action="store_true",
+        help="Fetch daily bars for mapped tickers from Yahoo chart API (no API key; explicit confirm).",
+    )
+    discovery_bars.add_argument(
+        "--public",
+        action="store_true",
+        help="Alias for --yahoo (no-key public daily bars).",
+    )
+    discovery_bars.add_argument(
         "--events",
         type=Path,
-        help="world-events-v1 file used to choose mapped tickers for --polygon.",
+        help="world-events-v1 file used to choose mapped tickers for --polygon/--stooq/--public.",
     )
-    discovery_bars.add_argument("--start", help="YYYY-MM-DD start for Polygon fetch.")
-    discovery_bars.add_argument("--end", help="YYYY-MM-DD end for Polygon fetch.")
+    discovery_bars.add_argument("--start", help="YYYY-MM-DD start for Polygon/Stooq/Yahoo fetch.")
+    discovery_bars.add_argument("--end", help="YYYY-MM-DD end for Polygon/Stooq/Yahoo fetch.")
     discovery_bars.add_argument("--tickers", help="Comma-separated extra tickers.")
     discovery_bars.add_argument("--confirm-external-call", action="store_true")
     discovery_bars.add_argument("--execute", action="store_true")
@@ -2753,8 +2768,18 @@ def main(argv: list[str] | None = None) -> int:
             mapped_tickers_from_events,
             write_polygon_bars,
         )
+        from catalyst_radar.discovery.stooq_bars import write_stooq_bars
+        from catalyst_radar.discovery.yahoo_bars import write_yahoo_bars
 
-        if args.polygon:
+        use_stooq = bool(args.stooq)
+        use_public = bool(args.yahoo or args.public)
+        source_count = sum(bool(flag) for flag in (args.polygon, use_stooq, use_public, args.csv))
+        if source_count > 1:
+            payload = {
+                "status": "error",
+                "error": "discovery-bars accepts only one of --csv, --polygon, --stooq, or --public",
+            }
+        elif args.polygon:
             events_path = args.events or default_events_path()
             tickers = mapped_tickers_from_events(
                 str(events_path),
@@ -2779,6 +2804,56 @@ def main(argv: list[str] | None = None) -> int:
                 confirm_external_call=bool(args.confirm_external_call),
                 execute=bool(args.execute),
             )
+        elif use_stooq:
+            events_path = args.events or default_events_path()
+            tickers = mapped_tickers_from_events(
+                str(events_path),
+                theme_peers_path=str(Path("config/theme_peers.yaml")),
+                include_theme_expansion=True,
+            )
+            if args.tickers:
+                for extra in str(args.tickers).split(","):
+                    symbol = extra.strip().upper()
+                    if symbol and symbol not in tickers:
+                        tickers.append(symbol)
+            start, end = default_bar_window()
+            if args.start:
+                start = date_cls.fromisoformat(args.start)
+            if args.end:
+                end = date_cls.fromisoformat(args.end)
+            payload = write_stooq_bars(
+                engine=engine,
+                tickers=tickers,
+                start=start,
+                end=end,
+                confirm_external_call=bool(args.confirm_external_call),
+                execute=bool(args.execute),
+            )
+        elif use_public:
+            events_path = args.events or default_events_path()
+            tickers = mapped_tickers_from_events(
+                str(events_path),
+                theme_peers_path=str(Path("config/theme_peers.yaml")),
+                include_theme_expansion=True,
+            )
+            if args.tickers:
+                for extra in str(args.tickers).split(","):
+                    symbol = extra.strip().upper()
+                    if symbol and symbol not in tickers:
+                        tickers.append(symbol)
+            start, end = default_bar_window()
+            if args.start:
+                start = date_cls.fromisoformat(args.start)
+            if args.end:
+                end = date_cls.fromisoformat(args.end)
+            payload = write_yahoo_bars(
+                engine=engine,
+                tickers=tickers,
+                start=start,
+                end=end,
+                confirm_external_call=bool(args.confirm_external_call),
+                execute=bool(args.execute),
+            )
         elif args.csv:
             payload = import_discovery_bars(
                 engine=engine,
@@ -2788,7 +2863,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             payload = {
                 "status": "error",
-                "error": "discovery-bars requires --csv or --polygon",
+                "error": "discovery-bars requires --csv, --polygon, --stooq, or --public",
             }
         if args.json:
             print(json.dumps(payload, default=str, sort_keys=True))

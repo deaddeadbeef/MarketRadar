@@ -16,8 +16,11 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
-$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $python)) { $python = "python" }
+$pythonWin = Join-Path $repoRoot ".venv\Scripts\python.exe"
+$pythonUnix = Join-Path $repoRoot ".venv/bin/python"
+if (Test-Path $pythonWin) { $python = $pythonWin }
+elseif (Test-Path $pythonUnix) { $python = $pythonUnix }
+else { $python = "python3" }
 $env:PYTHONPATH = Join-Path $repoRoot "src"
 $helper = Join-Path $PSScriptRoot "radar_grok.py"
 

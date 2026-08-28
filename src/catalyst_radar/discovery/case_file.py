@@ -11,6 +11,12 @@ from catalyst_radar.discovery.brief import (
     build_discovery_brief,
     default_events_path,
 )
+from catalyst_radar.discovery.source_hosts import (
+    classify_url,
+    is_primary_host,
+    is_reputable_host,
+    is_social_host,
+)
 from catalyst_radar.events.models import SourceCategory
 
 CASE_FILE_SCHEMA = "discovery-case-file-v1"
@@ -711,21 +717,6 @@ def _events_for_discoveries(
     return events
 
 
-_REPUTABLE_HOST_MARKERS: tuple[str, ...] = (
-    "reuters.com",
-    "bloomberg.com",
-    "wsj.com",
-    "ft.com",
-    "apnews.com",
-    "nytimes.com",
-    "cnbc.com",
-    "sec.gov",
-    "edgar",
-    "businesswire.com",
-    "prnewswire.com",
-)
-
-
 def _confirmation_status(
     *,
     engine: Engine | None,
@@ -734,11 +725,12 @@ def _confirmation_status(
 ) -> dict[str, object]:
     social_sources = 0
     reputable_hits: list[dict[str, object]] = []
+    feed_primary_hits: list[dict[str, object]] = []
     high_engagement = 0
     for event in world_events:
         for source in _rows(event.get("sources")):
             provider = str(source.get("provider") or "").casefold()
-            url = str(source.get("url") or "").casefold()
+            url = source.get("url")
             author = str(source.get("author") or "")
             engagement = source.get("engagement") if isinstance(source.get("engagement"), Mapping) else {}
             likes = 0
@@ -750,16 +742,22 @@ def _confirmation_status(
                 pass
             if likes >= 100 or views >= 50_000:
                 high_engagement += 1
-            if any(marker in url for marker in _REPUTABLE_HOST_MARKERS):
-                reputable_hits.append(
-                    {
-                        "url": source.get("url"),
-                        "author": author,
-                        "provider": source.get("provider"),
-                        "event_id": event.get("id"),
-                    }
-                )
-            if provider in {"x", "twitter", "social"} or str(event.get("source_category")) == "social":
+            hit = {
+                "url": url,
+                "author": author,
+                "provider": source.get("provider"),
+                "event_id": event.get("id"),
+                "host_category": classify_url(url),
+            }
+            # Host wins over the X wrapper. A KC Fed / BLS / IR URL posted
+            # through Grok is still primary, not social.
+            if is_primary_host(url):
+                feed_primary_hits.append(hit)
+            elif is_reputable_host(url):
+                reputable_hits.append(hit)
+            elif is_social_host(url) or (
+                not url and provider in {"x", "twitter", "social"}
+            ):
                 social_sources += 1
 
     primary_events: list[dict[str, object]] = []
@@ -769,6 +767,12 @@ def _confirmation_status(
     if primary_events:
         status = "primary_confirmed"
         detail = f"{len(primary_events)} local primary/regulatory event(s) found for {ticker}."
+    elif feed_primary_hits:
+        status = "primary_confirmed"
+        detail = (
+            f"{len(feed_primary_hits)} official/IR/wire URL(s) on the world-event feed "
+            f"(host classified, ignoring provider=x wrapper)."
+        )
     elif reputable_hits:
         status = "corroborated_reputable"
         detail = (
@@ -798,6 +802,8 @@ def _confirmation_status(
         "high_engagement_source_count": high_engagement,
         "reputable_source_count": len(reputable_hits),
         "reputable_sources": reputable_hits[:5],
+        "feed_primary_source_count": len(feed_primary_hits),
+        "feed_primary_sources": feed_primary_hits[:5],
         "primary_event_count": len(primary_events),
         "primary_events": primary_events[:5],
         "allows_above_research_only": status
