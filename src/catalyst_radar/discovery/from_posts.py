@@ -16,6 +16,7 @@ from catalyst_radar.discovery.models import (
     normalize_tickers,
     parse_datetime,
 )
+from catalyst_radar.discovery.source_hosts import best_source_category
 
 POSTS_SCHEMA = "x-posts-v1"
 FROM_POSTS_SCHEMA = "discovery-from-posts-v1"
@@ -101,7 +102,10 @@ def build_world_events_from_posts(
                 "direction": direction,
                 "materiality": round(sum(materiality_values) / len(materiality_values), 3),
                 "source_quality": round(sum(quality_values) / len(quality_values), 3),
-                "source_category": "social",
+                "source_category": best_source_category(
+                    (item.get("url") for item in sources),
+                    declared="social",
+                ),
                 "sources": sources[:8],
                 "available_at": (
                     available_at.isoformat()

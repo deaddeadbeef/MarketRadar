@@ -50,7 +50,7 @@ def test_build_discovery_brief_zero_calls_research_only() -> None:
     assert brief["goal_status"]["join_target_pct"] == 50.0
     assert brief["goal_status"]["freshness_ok"] is True
     assert brief["next_command"] == (
-        "catalyst-radar discovery-bars --polygon --confirm-external-call"
+        "catalyst-radar discovery-bars --public --confirm-external-call"
     )
     assert brief["canonical_next_command"] == brief["next_command"]
     assert "fill-discovery-gaps" not in str(brief["next_command"])

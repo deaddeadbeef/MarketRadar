@@ -34,7 +34,7 @@ def test_discovery_ready_fresh_without_db_blocks_on_join() -> None:
     assert payload["ready"] is False
     assert payload["first_blocker"] == "event_join_coverage"
     assert payload["canonical_next_command"] == (
-        "catalyst-radar discovery-bars --polygon --confirm-external-call"
+        "catalyst-radar discovery-bars --public --confirm-external-call"
     )
     assert "fill-discovery-gaps" not in str(payload["canonical_next_command"])
 
