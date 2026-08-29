@@ -1,11 +1,11 @@
 ---
 name: market-radar
 description: >
-  One MarketRadar skill with params: hunt, brief, ready, bars. Mines X and the
-  public web for pending binaries across domains, converts into world-events,
-  and prints a CLI JSON briefing. Headless only. Use for /market-radar,
-  MarketRadar, briefing, world events, X mining. Not a trading desk. Not a GUI.
-  Scheduled daily run uses param hunt.
+  One MarketRadar skill with params: hunt, brief, ready, bars. Mines official
+  calendars/IR/regulators first, then news, then X, for pending binaries across
+  domains; converts into world-events and prints a CLI JSON briefing. Headless
+  only. Use for /market-radar, MarketRadar, briefing, world events. Not a trading
+  desk. Not a GUI. Scheduled daily run uses param hunt.
 argument-hint: "hunt | brief | ready | bars"
 ---
 
@@ -54,6 +54,7 @@ Cross-platform helper: `python scripts/radar_grok.py …`.
 - Research only. No investment advice. No broker orders. Never fake a buy call.
 - Social/X-only stays `research_only` on the briefing queue.
 - Type A/B **across domains**. Not an FDA desk. Type X gap-up posts are never hero cards.
+- Hunt cap is up to **16 distinct** `event_id`s (calendars/IR first; X last). Never pad. Official+X on one id is one story.
 - Polygon mapped `/v2/aggs` only, event tickers + SPY, explicit confirm.
 - Do not revive Streamlit, Tauri World Events, or the old workbench.
 
