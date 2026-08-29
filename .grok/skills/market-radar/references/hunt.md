@@ -23,7 +23,7 @@ Skip: “JUST IN +130%”, options sympathy, theme chatter with no date, already
 
 - required `event_id` (same id = one story)
 - `published_at`, `title` or `text`, tickers and/or themes
-- cap 8 stories; never pad
+- cap 16 stories; never pad
 - `investment_advice` is not a field on posts; keep copy research-only
 
 Then convert:

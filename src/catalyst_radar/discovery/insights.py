@@ -11,6 +11,7 @@ from sqlalchemy.engine import Engine
 from catalyst_radar.discovery.brief import build_discovery_brief, default_events_path
 from catalyst_radar.discovery.case_file import build_discovery_case_file
 from catalyst_radar.discovery.persist import persist_discovery_brief
+from catalyst_radar.discovery.ux import NOVICE_LIMIT
 
 INSIGHTS_SCHEMA = "discovery-insights-v1"
 
@@ -19,7 +20,7 @@ def build_discovery_insights(
     *,
     events_path: str | Path | None = None,
     engine: Engine | None = None,
-    limit: int = 8,
+    limit: int = NOVICE_LIMIT,
     include_cases: bool = True,
     now: datetime | None = None,
     theme_peers_path: str | Path | None = Path("config/theme_peers.yaml"),

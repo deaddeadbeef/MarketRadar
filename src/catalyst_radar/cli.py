@@ -255,6 +255,8 @@ def _json_default(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from catalyst_radar.discovery.ux import NOVICE_LIMIT
+
     parser = argparse.ArgumentParser(
         prog="catalyst-radar",
         description=(
@@ -1419,7 +1421,7 @@ def build_parser() -> argparse.ArgumentParser:
     discovery_insights.add_argument("--database-url")
     discovery_insights.add_argument("--events", type=Path)
     discovery_insights.add_argument("--theme-peers", type=Path, default=Path("config/theme_peers.yaml"))
-    discovery_insights.add_argument("--limit", type=int, default=8)
+    discovery_insights.add_argument("--limit", type=int, default=NOVICE_LIMIT)
     discovery_insights.add_argument("--no-db", action="store_true")
     discovery_insights.add_argument("--persist", action="store_true")
     discovery_insights.add_argument("--json", action="store_true")
@@ -2964,13 +2966,14 @@ def main(argv: list[str] | None = None) -> int:
             build_discovery_insights,
             format_discovery_insights,
         )
+        from catalyst_radar.discovery.ux import NOVICE_LIMIT
 
         events_path = args.events or default_events_path()
         join_engine = None if args.no_db else engine
         payload = build_discovery_insights(
             events_path=events_path,
             engine=join_engine,
-            limit=int(args.limit or 8),
+            limit=int(args.limit or NOVICE_LIMIT),
             theme_peers_path=args.theme_peers,
             persist=bool(args.persist),
         )

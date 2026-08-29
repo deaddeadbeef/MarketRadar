@@ -85,8 +85,8 @@ COMPANY_NAMES: dict[str, str] = {
     "ZIM": "ZIM",
 }
 
-NOVICE_LIMIT = 8
-# Unlisted / non-US-common cashtags stay on operator JSON; they do not consume the eight.
+NOVICE_LIMIT = 16
+# Unlisted / non-US-common cashtags stay on operator JSON; they do not consume the cap.
 NOVICE_UNLISTED: frozenset[str] = frozenset({"SKHY", "CXMT"})
 
 

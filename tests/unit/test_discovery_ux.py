@@ -101,9 +101,9 @@ def test_novice_stories_follow_world_events_not_post_count() -> None:
     payload = apply_novice_ux(brief)
     stories = payload["novice"]["events"]
     # 3 stories on the 8/3 fixture. Do not freeze uncapped copy as a forever law;
-    # the inequalities survive PR 6's cap of 8.
+    # the inequalities survive the selection cap (never pad).
     assert len(stories) == 3
-    assert len(stories) <= 8
+    assert len(stories) <= NOVICE_LIMIT
     assert len(stories) <= len(brief["events"])
     assert len(stories) != len(posts)
     assert {row["id"] for row in stories} == LAW_WORLD_EVENT_IDS
@@ -198,7 +198,7 @@ def test_unlisted_cashtags_stay_off_the_novice_eight() -> None:
     assert len(tickers) <= NOVICE_LIMIT
 
 
-def test_novice_events_rank_and_cap_eight_never_pad() -> None:
+def test_novice_events_rank_and_cap_never_pad() -> None:
     events = [
         {
             "id": f"e{i}",
@@ -213,22 +213,22 @@ def test_novice_events_rank_and_cap_eight_never_pad() -> None:
         {"freshness_status": "fresh", "events": events, "discoveries": []}
     )
     stories = payload["novice"]["events"]
-    assert len(stories) == 8
-    assert len(stories) <= min(8, len(events))
-    assert "8 stories" in payload["headline"]
+    assert len(stories) == NOVICE_LIMIT
+    assert len(stories) <= min(NOVICE_LIMIT, len(events))
+    assert f"{NOVICE_LIMIT} stories" in payload["headline"]
     assert "40 stor" not in payload["headline"]
 
     def rank(event: dict[str, object]) -> float:
         return float(event["materiality"]) * max(1, len(event["sources"]))  # type: ignore[arg-type]
 
-    expected_ids = [row["id"] for row in sorted(events, key=rank, reverse=True)[:8]]
+    expected_ids = [row["id"] for row in sorted(events, key=rank, reverse=True)[:NOVICE_LIMIT]]
     assert [row["id"] for row in stories] == expected_ids
 
     three = apply_novice_ux(
         {"freshness_status": "fresh", "events": events[:3], "discoveries": []}
     )
     assert len(three["novice"]["events"]) == 3
-    assert len(three["novice"]["events"]) <= min(8, 3)
+    assert len(three["novice"]["events"]) <= min(NOVICE_LIMIT, 3)
 
 
 def test_novice_picker_can_keep_ranks_thirteen_to_twenty() -> None:
@@ -273,8 +273,9 @@ def test_novice_picker_can_keep_ranks_thirteen_to_twenty() -> None:
         }
     )
     tickers = [row["ticker"] for row in payload["discoveries"]]
-    assert len(tickers) == 8
-    assert set(tickers) == {"AMD", "QCOM", "DELL", "HPQ", "SONY", "AAPL", "CAT", "DE"}
+    assert len(tickers) == NOVICE_LIMIT
+    # Ranks 13-20 are joined (highest rank); the cap may also keep lower ranks.
+    assert {"AMD", "QCOM", "DELL", "HPQ", "SONY", "AAPL", "CAT", "DE"} <= set(tickers)
 
 
 def test_novice_visible_copy_has_no_operator_jargon() -> None:
