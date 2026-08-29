@@ -41,6 +41,33 @@ def test_grok_radar_skill_and_commands_exist() -> None:
         assert leftovers == set()
 
 
+def test_hunt_playbook_calendars_first_distinct_event_cap() -> None:
+    """Contract: hunt.md is calendars-first; 16 = distinct event_id, not post count."""
+    hunt = (
+        ROOT / ".grok" / "skills" / "market-radar" / "references" / "hunt.md"
+    ).read_text(encoding="utf-8")
+    lower = hunt.casefold()
+    assert "official calendars" in lower or "calendars / ir" in lower
+    assert "distinct" in lower and "event_id" in lower
+    assert "16" in hunt
+    assert "never pad" in lower
+    assert "url host" in lower or "source class comes from the **url host**" in lower
+    # X is last, not the lead search instruction
+    assert lower.index("official") < lower.index("x") or "then x" in lower or "x — last" in lower or "x — last" in hunt.casefold()
+    assert "do not spend a story slot on an x mirror" in lower or "clustering" in lower
+    assert "do **not** drop a still-open dated primary" in lower or "still-open dated primary" in lower
+
+    skill = (ROOT / ".grok" / "skills" / "market-radar" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "calendars" in skill.casefold() or "official" in skill.casefold()
+    pending = (ROOT / "docs" / "missions" / "pending-binaries.md").read_text(
+        encoding="utf-8"
+    )
+    assert "distinct" in pending.casefold()
+    assert "calendars" in pending.casefold() or "regulator" in pending.casefold()
+
+
 def test_radar_grok_status_json() -> None:
     sys.path.insert(0, str(ROOT / "scripts"))
     import radar_grok  # type: ignore[import-not-found]
