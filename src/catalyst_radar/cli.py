@@ -225,8 +225,55 @@ from catalyst_radar.validation.value_outcomes import (
 from catalyst_radar.validation.value_report import monthly_value_report_payload
 
 
+CLI_COMMAND_ALIASES = {
+    "brief": "discovery-brief",
+    "convert": "discovery-from-posts",
+    "bars": "discovery-bars",
+    "ready": "assert-discovery-ready",
+}
+
+
+def _canonical_cli_command(command: str) -> str:
+    name = str(command or "").strip()
+    return CLI_COMMAND_ALIASES.get(name, name)
+
+
+def _json_default(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--json",
+        dest="json",
+        action="store_true",
+        default=True,
+        help="Print JSON (default; preferred receive surface).",
+    )
+    parser.add_argument(
+        "--human",
+        dest="json",
+        action="store_false",
+        help="Print compact text instead of JSON.",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="catalyst-radar")
+    parser = argparse.ArgumentParser(
+        prog="catalyst-radar",
+        description=(
+            "MarketRadar event-first discovery CLI. Research only. "
+            "Not investment advice. Never submits broker orders. "
+            "Headless JSON is the product receive surface."
+        ),
+        epilog=(
+            "Supported product surface (JSON by default):\n"
+            '  grok -p "/market-radar hunt"\n'
+            "  catalyst-radar convert --posts data/local/inbox/x_posts_YYYY-MM-DD.json --execute\n"
+            "  catalyst-radar brief\n"
+            "  catalyst-radar bars --public --confirm-external-call --execute\n"
+            "  catalyst-radar ready\n"
+            "  catalyst-radar product-scope\n"
+            "Tauri desktop, radar-tui, Streamlit, and dashboard-tui are deprecated."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_db = subparsers.add_parser("init-db")
@@ -1244,9 +1291,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     discovery_brief = subparsers.add_parser(
         "discovery-brief",
+        aliases=["brief"],
         help=(
             "Event-first discovery brief from local world-events JSON "
-            "(X/Grok pilot file). Optional local priced-in join. Zero provider calls."
+            "(X/Grok hunt file). Optional local priced-in join. Zero provider calls. "
+            "JSON is the human receive surface."
         ),
     )
     discovery_brief.add_argument("--database-url")
@@ -1272,10 +1321,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write today's brief JSON under data/local/discovery-briefs/.",
     )
-    discovery_brief.add_argument("--json", action="store_true")
+    _json_default(discovery_brief)
 
     discovery_ready = subparsers.add_parser(
         "assert-discovery-ready",
+        aliases=["ready"],
         help=(
             "Event-first ship gate: fresh world events, event-time join coverage, "
             "and investment_advice=false. Does not use trial/shadow/investable gates."
@@ -1293,10 +1343,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("config/theme_peers.yaml"),
     )
     discovery_ready.add_argument("--no-db", action="store_true")
-    discovery_ready.add_argument("--json", action="store_true")
+    _json_default(discovery_ready)
 
     discovery_from_posts = subparsers.add_parser(
         "discovery-from-posts",
+        aliases=["convert"],
         help="Convert local x-posts-v1 JSON into world-events-v1 (zero provider calls).",
     )
     discovery_from_posts.add_argument(
@@ -1316,10 +1367,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fail if any post is missing event_id (weekday Grok-task contract).",
     )
-    discovery_from_posts.add_argument("--json", action="store_true")
+    _json_default(discovery_from_posts)
 
     discovery_bars = subparsers.add_parser(
         "discovery-bars",
+        aliases=["bars"],
         help="Import mapped-ticker daily bars from CSV, public Yahoo/Stooq, or Polygon.",
     )
     discovery_bars.add_argument("--database-url")
@@ -1358,7 +1410,7 @@ def build_parser() -> argparse.ArgumentParser:
     discovery_bars.add_argument("--tickers", help="Comma-separated extra tickers.")
     discovery_bars.add_argument("--confirm-external-call", action="store_true")
     discovery_bars.add_argument("--execute", action="store_true")
-    discovery_bars.add_argument("--json", action="store_true")
+    _json_default(discovery_bars)
 
     discovery_insights = subparsers.add_parser(
         "discovery-insights",
@@ -1426,14 +1478,23 @@ def build_parser() -> argparse.ArgumentParser:
     discovery_case.add_argument("--no-db", action="store_true")
     discovery_case.add_argument("--json", action="store_true")
 
+    hunt = subparsers.add_parser(
+        "hunt",
+        help=(
+            "Print hunt status JSON. Mining X is grok -p \"/market-radar hunt\", "
+            "not this CLI."
+        ),
+    )
+    _json_default(hunt)
+
     product_scope = subparsers.add_parser(
         "product-scope",
         help=(
-            "Show the active event-first product scope and deprecated surfaces "
-            "(see docs/PRODUCT_SCOPE.md)."
+            "Show the active event-first CLI product scope and deprecated surfaces "
+            "(see docs/PRODUCT_SCOPE.md). JSON by default."
         ),
     )
-    product_scope.add_argument("--json", action="store_true")
+    _json_default(product_scope)
 
     discovery_outcomes = subparsers.add_parser(
         "discovery-outcomes",
@@ -1598,7 +1659,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     agent_brief.add_argument("--json", action="store_true")
 
-    dashboard_tui = subparsers.add_parser("dashboard-tui")
+    dashboard_tui = subparsers.add_parser(
+        "dashboard-tui",
+        help=(
+            "DEPRECATED: Python TUI is not the product. Use catalyst-radar brief. "
+            "Requires CATALYST_ENABLE_LEGACY_WORKBENCH=true."
+        ),
+    )
     dashboard_tui.add_argument("--database-url")
     dashboard_tui.add_argument("--ticker")
     dashboard_tui.add_argument("--available-at", type=_parse_aware_datetime)
@@ -1764,6 +1831,7 @@ def _print_ops_capabilities(payload: Mapping[str, object]) -> None:
 def main(argv: list[str] | None = None) -> int:
     dotenv_loaded = load_app_dotenv()
     args = build_parser().parse_args(argv)
+    args.command = _canonical_cli_command(str(args.command or ""))
     from catalyst_radar.deprecation import (
         block_if_deprecated_cli,
         product_scope_payload,
@@ -1776,12 +1844,13 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, sort_keys=True, default=str))
         else:
             print(f"scope={payload['scope_version']} date={payload['scope_date']}")
+            print(f"primary_surface={payload.get('primary_surface', 'cli')}")
             print(f"product={payload['product']}")
             print(f"docs.scope={payload['docs']['scope']}")
             print(f"docs.deprecation={payload['docs']['deprecation']}")
             print(
                 "desktop.active="
-                + ",".join(payload["desktop_pages"]["active"])
+                + (",".join(payload["desktop_pages"]["active"]) or "(none; deprecated)")
             )
             print(
                 "cli.active="
@@ -1797,6 +1866,17 @@ def main(argv: list[str] | None = None) -> int:
                     f"{row['id']}:{row['status']}" for row in payload["removal_phases"]
                 )
             )
+        return 0
+
+    if args.command == "hunt":
+        from catalyst_radar.discovery.hunt import build_hunt_status
+
+        payload = build_hunt_status()
+        if args.json:
+            print(json.dumps(payload, sort_keys=True, default=str))
+        else:
+            print(f"hunt status={payload.get('status')} next={payload.get('next_command')}")
+            print(str(payload.get("message") or ""))
         return 0
 
     if args.command == "discovery-from-posts":

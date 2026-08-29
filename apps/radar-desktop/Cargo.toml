@@ -1,3 +1,5 @@
+# DEPRECATED: Tauri World Events is not the product receive surface.
+# Use catalyst-radar / grok -p "/market-radar hunt". Not required to run the product.
 [package]
 name = "radar-desktop"
 version = "0.1.0"

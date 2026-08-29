@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Market Radar Command Center
-description: Evidence-first investment decision dashboard for public-equity review.
+description: Deprecated workbench tokens. Product receive surface is the headless CLI JSON briefing.
 colors:
   primary: "#191C1F"
   secondary: "#5C6670"
@@ -169,14 +169,19 @@ components:
 
 ## Overview
 
-Market Radar should feel like a quiet institutional workstation for investment
-review. It is dense enough for repeated use, but edited enough that risk,
-evidence, and next actions can be scanned without visual fatigue.
+**CLI discovery is primary.** The supported product is a headless weekday
+briefing: `grok -p "/market-radar hunt"` then `catalyst-radar brief` JSON.
+Ops may file that JSON into Notion outside this repo. Tauri World Events,
+radar-tui, and Streamlit are deprecated. Do not open the GUI.
 
-The design voice is analytical, calm, and exact. It should not look like a
-marketing site, a crypto terminal, or a decorative fintech mockup. The interface
-exists to help an investor judge candidates, evidence quality, IPO/S-1 filings,
-alerts, validation history, cost, and operational state.
+The tokens below document the **deprecated** workbench only. They must not be
+used to revive a trading desk, broker tickets, or a desktop receive surface.
+
+If a leftover renderer is still compiled, it should feel like a quiet
+institutional workstation: dense enough for review, edited enough that risk,
+evidence, and next actions can be scanned without visual fatigue. The design
+voice is analytical, calm, and exact — not a marketing site, crypto terminal,
+or decorative fintech mockup.
 
 ## Colors
 

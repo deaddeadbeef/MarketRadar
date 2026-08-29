@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "catalyst-radar"
 version = "0.1.0"
-description = "Deterministic-first market radar for public-equity opportunity review"
+description = "Headless event-first discovery CLI for public-equity research (not a trading desk)"
 requires-python = ">=3.11"
 dependencies = [
   "cryptography>=42",

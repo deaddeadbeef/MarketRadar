@@ -1,8 +1,12 @@
-"""Lightweight zero-call snapshot for World Events desktop browsing.
+"""Deprecated leftover snapshot for the Tauri World Events client.
 
-The desktop client appends CLI-style flags to whatever snapshot command is
-configured (e.g. --page world-events --ticker MU --scan-limit 50). Accept and
-honor the useful ones; ignore the rest so the process never dies on unknown args.
+The product receive surface is `catalyst-radar brief` (JSON). This script remains
+only so the deprecated desktop binary can still parse a local snapshot. Do not
+tell operators to open the GUI.
+
+The desktop client appends CLI-style flags (e.g. --page world-events --ticker MU).
+Accept and honor the useful ones; ignore the rest so the process never dies on
+unknown args.
 
 Also supports local discovery commands (labels) via --command for the proof loop:
   discovery-snapshot.py --command "label FRO good-research --execute"
@@ -16,7 +20,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-# Ensure repo src is importable when launched from radar-desktop.
+# Ensure repo src is importable when launched from the deprecated desktop binary.
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -394,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         legacy_on = False
         scope_payload = {}
-        SCOPE_VERSION = "event-first-discovery-v1"
+        SCOPE_VERSION = "event-first-cli-v1"
 
     proof_payload = proof if "proof" not in brief else brief.get("proof")
     goal = brief.get("goal_status") if isinstance(brief.get("goal_status"), dict) else {}
@@ -419,9 +423,9 @@ def main(argv: list[str] | None = None) -> int:
         "status": "discovery_ready",
         "first_blocker": None,
         "next_action": brief.get("next_action")
-        or "Review World Events discovery queue as research-only leads.",
+        or "Review catalyst-radar brief JSON as research-only leads.",
         "next_command": brief.get("next_command")
-        or f"catalyst-radar discovery-brief --events {events_path} --json",
+        or f"catalyst-radar brief --events {events_path}",
         "canonical_next_action": brief.get("canonical_next_action") or brief.get("next_action"),
         "canonical_next_command": brief.get("canonical_next_command")
         or brief.get("next_command"),
@@ -434,7 +438,8 @@ def main(argv: list[str] | None = None) -> int:
             "schema_version": "market-radar-product-ui-v1",
             "scope_version": SCOPE_VERSION,
             "enable_legacy_workbench": legacy_on,
-            "active_pages": ["world-events", "help"],
+            "primary_surface": "cli",
+            "active_pages": [],
             "docs": {
                 "scope": "docs/PRODUCT_SCOPE.md",
                 "deprecation": "docs/DEPRECATION.md",
@@ -443,9 +448,10 @@ def main(argv: list[str] | None = None) -> int:
         },
         "product_scope": {
             "scope_version": scope_payload.get("scope_version") if scope_payload else SCOPE_VERSION,
+            "primary_surface": (scope_payload.get("primary_surface") if scope_payload else "cli"),
             "desktop_active": (scope_payload.get("desktop_pages") or {}).get("active")
             if scope_payload
-            else ["help", "world-events"],
+            else [],
         },
         "candidates": {"count": 0, "rows": []},
         "alerts": {"count": 0, "rows": []},

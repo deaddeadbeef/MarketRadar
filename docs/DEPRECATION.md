@@ -1,11 +1,14 @@
 # Deprecation and phased removal plan
 
-**Authority date:** 2026-07-19  
+**Authority date:** 2026-08-29  
 **Product scope:** `docs/PRODUCT_SCOPE.md`  
 **Policy:** Mark → hide from default UX → warn on CLI → remove code/tests in phases.
 
 Nothing in this file deletes runtime behavior yet except labeling and navigation
 emphasis. Code stays importable until its removal phase.
+
+**CLI discovery is primary.** Tauri desktop and TUI are deprecated. Docs and
+scripts must not tell anyone to open the GUI.
 
 ---
 
@@ -42,7 +45,7 @@ emphasis. Code stays importable until its removal phase.
 | `textint` | **deprecated** | Not required for world-events spine |
 | `universe` (liquid seed hero) | **deprecated** | Discovery uses mapped tickers |
 | `ops.remote_runs` | **deprecated** | Infra side-quest |
-| `dashboard.tui` full workbench | **deprecated** | Desktop discovery is primary |
+| `dashboard.tui` full workbench | **deprecated** | CLI discovery is primary |
 | `dashboard.data` (monolith) | **legacy-test-only** | Shrink with page removal |
 | `api.routes` non-discovery | **deprecated** | Keep health/db until callers die |
 | `jobs` full daily radar | **supporting→trim** | Keep mapped scan path; trim hero residual |
@@ -55,17 +58,20 @@ Registry source of truth in code: `src/catalyst_radar/deprecation.py`.
 
 | Page key | Status |
 |----------|--------|
-| `world-events` | **active** (primary) |
-| `help` | **active** (docs/keys) |
+| `world-events` | **deprecated** (was primary; CLI replaced it) |
+| `help` | **deprecated** |
 | `overview` / workbench | **deprecated** |
 | `portfolio`, `market-radar`, `trade-planner`, `risk-desk` | **deprecated** |
 | `paper-trading`, `backtest`, `broker` | **deprecated** |
 | `readiness`, `run`, `candidates`, `review` | **deprecated** as primary path |
 | `alerts`, `ipo`, `ops`, `telemetry`, `agent` | **deprecated** |
 | `themes`, `validation`, `costs`, `features`, `journal` | **deprecated** |
-| `tutorial` | **deprecated** (replace with discovery quickstart later) |
+| `tutorial` | **deprecated** |
 
-Labels in the UI use a `deprecated` prefix so operators see the boundary.
+Cargo crates `apps/radar-desktop` and `crates/radar-tui` may remain so leftover
+CI can compile. They are **not required** to use the product.
+`scripts/open-market-radar.sh` and `scripts/open-market-radar.ps1` refuse to
+launch the GUI.
 
 ---
 
@@ -73,15 +79,25 @@ Labels in the UI use a `deprecated` prefix so operators see the boundary.
 
 ### Active / supporting (keep)
 
-- `discovery-brief`, `discovery-ingest`, `discovery-case`, `discovery-label`
+- `hunt` (status only; mining X is `grok -p "/market-radar hunt"`)
+- `convert` / `discovery-from-posts`
+- `brief` / `discovery-brief`
+- `bars` / `discovery-bars` (supporting bar fill)
+- `ready` / `assert-discovery-ready`
+- `product-scope`
+- `discovery-ingest`, `discovery-case`, `discovery-label`, `discovery-outcomes`
 - `market-bars` / `ingest-polygon` (supporting bar fill)
 - `scan` / `run-daily` **when used for mapped tickers** (supporting)
 - `value-ledger`, `value-report`, `value-outcome*` (proof)
 - `init-db`, config/env helpers
 
+Prefer JSON (default on hunt/convert/brief/bars/ready/product-scope). Pass
+`--human` for compact text.
+
 ### Deprecated (warn; remove later)
 
 - Full workbench dashboard command surface as product
+- `dashboard-tui`, Tauri desktop, radar-tui
 - Broker interactive / order preview / paper-decision product commands
 - IPO S-1 analysis as product
 - Agent cockpit execute as product
@@ -89,7 +105,7 @@ Labels in the UI use a `deprecated` prefix so operators see the boundary.
 - Full-universe residual-repair hero scripts as the default onboarding
 
 Exact lists: `DEPRECATED_CLI_COMMANDS` in `deprecation.py`.  
-Runtime: `catalyst-radar product-scope --json`.
+Runtime: `catalyst-radar product-scope`.
 
 ---
 
@@ -104,15 +120,15 @@ Runtime: `catalyst-radar product-scope --json`.
 - [x] Desktop page labels mark deprecated surfaces
 - [x] Package `__init__` module docs for major deprecated packages
 - [x] CLI stderr warning on deprecated commands
-- [x] Discovery-home nav limited to World Events + Help
+- [x] Discovery-home nav limited to World Events + Help (historical)
 
 ### Phase D2 — Default UX lockdown
 
 - [x] Hide deprecated pages unless `CATALYST_ENABLE_LEGACY_WORKBENCH=true`
-- [x] Discovery-home nav is World Events + Help only
+- [x] Discovery-home nav is World Events + Help only (historical)
 - [x] Workbench pages labeled Legacy when flag is on
 - [x] README / PRODUCT_SCOPE document residual-repair as non-primary
-- [x] Goal join-coverage banner on World Events (target ≥50%)
+- [x] Goal join-coverage banner on World Events (target ≥50%) (historical)
 
 ### Phase D3 — CLI warnings
 
@@ -136,6 +152,14 @@ Runtime: `catalyst-radar product-scope --json`.
 - [ ] Delete Streamlit / Python TUI / unused API routes in a later PR
 - Keep git history; do not force-push
 
+### Phase D6 — Headless CLI receive surface
+
+- [x] CLI is the only supported product surface
+- [x] Skill/rules: `grok -p "/market-radar hunt"`; no press R; no desktop receive
+- [x] Launchers `open-market-radar.sh` / `.ps1` refuse to open the GUI
+- [x] Cargo desktop crates deprecated, not required
+- [ ] Optional later: delete `apps/radar-desktop` and `crates/radar-tui`
+
 ---
 
 ## Rules for contributors
@@ -145,12 +169,13 @@ Runtime: `catalyst-radar product-scope --json`.
 2. Do not “fix” deprecated pages except security/correctness blockers.
 3. Prefer deleting call sites over extending deprecated APIs.
 4. Discovery browse remains zero-call by default.
+5. Do not tell anyone to open the GUI.
 
 ---
 
 ## Exit criteria for “scope limited”
 
-- Operator opens desktop → World Events is the product  
-- README start path is only event-first  
-- `product-scope --json` lists active vs deprecated  
-- Deprecation phases D2–D5 tracked as separate tasks/PRs  
+- Operator runs `catalyst-radar brief` → CLI JSON is the product
+- README start path is only event-first CLI
+- `product-scope` lists `primary_surface: cli` and desktop pages as deprecated
+- Deprecation phases D2–D6 tracked as separate tasks/PRs

@@ -1,13 +1,13 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Install a fresh world-events-v1 JSON into the path the main app reads, then
-  smoke-check discovery-brief so World Events stays in sync.
+  Install a fresh world-events-v1 JSON into the path the CLI reads, then
+  smoke-check discovery-brief JSON. Do not open the GUI.
 
 .DESCRIPTION
-  The desktop / discovery-snapshot always load data/local/world_events.json
-  (falling back to data/sample). Stale next-actions must not suggest
-  --validate-only — that never updates the feed.
+  catalyst-radar brief loads data/local/world_events.json (falling back to
+  data/sample). Stale next-actions must not suggest --validate-only — that
+  never updates the feed.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts/refresh-world-events.ps1 `
@@ -113,10 +113,10 @@ if (-not $samePath) {
 
 # Smoke-check the product path the main app uses.
 Write-Host ""
-Write-Host "Discovery brief (what World Events will show):"
+Write-Host "Discovery brief (CLI receive surface):"
 & $python -m catalyst_radar.cli discovery-brief --events $Destination --json
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""
-Write-Host "Installed. Refresh the desktop (R / F5) or relaunch Open-MarketRadar.bat."
+Write-Host "Installed. Read it with: catalyst-radar brief"
 exit 0

@@ -1,3 +1,5 @@
+# DEPRECATED: radar-tui is not the product receive surface.
+# Use catalyst-radar. This crate is not required to run the product.
 [package]
 name = "radar-tui"
 version = "0.1.0"

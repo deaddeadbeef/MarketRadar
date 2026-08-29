@@ -3,8 +3,8 @@
 Canonical narrative: docs/designs/2026-08-15-marketradar-product-spec.md.
 Ship-gate table: docs/PRODUCT_SCOPE.md. Removal registry: docs/DEPRECATION.md.
 
-This module is intentionally import-light so CLI and UI can consult it without
-pulling the full dashboard graph.
+This module is intentionally import-light so CLI can consult it without
+pulling the full dashboard graph. Desktop/TUI are deprecated.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-SCOPE_VERSION = "event-first-discovery-v1"
-SCOPE_DATE = "2026-07-19"
+SCOPE_VERSION = "event-first-cli-v1"
+SCOPE_DATE = "2026-08-29"
 
 # --- Python packages under catalyst_radar ---------------------------------
 
@@ -67,18 +67,15 @@ DEPRECATED_AGENT_MODULES: frozenset[str] = frozenset(
     }
 )
 
-# --- Desktop / TUI pages --------------------------------------------------
+# --- Desktop / TUI pages (all deprecated; CLI is the product surface) ------
 
-ACTIVE_DESKTOP_PAGES: frozenset[str] = frozenset(
+ACTIVE_DESKTOP_PAGES: frozenset[str] = frozenset()
+
+# Tauri World Events, Help, TUI, and the old workbench are not the product.
+DEPRECATED_DESKTOP_PAGES: frozenset[str] = frozenset(
     {
         "world-events",
         "help",
-    }
-)
-
-# Shown only as secondary / legacy workbench surfaces.
-DEPRECATED_DESKTOP_PAGES: frozenset[str] = frozenset(
-    {
         "tutorial",
         "overview",
         "portfolio",
@@ -109,6 +106,11 @@ DEPRECATED_DESKTOP_PAGES: frozenset[str] = frozenset(
 
 ACTIVE_CLI_COMMANDS: frozenset[str] = frozenset(
     {
+        "hunt",
+        "convert",
+        "brief",
+        "bars",
+        "ready",
         "discovery-brief",
         "discovery-ingest",
         "discovery-case",
@@ -133,7 +135,7 @@ SUPPORTING_CLI_COMMANDS: frozenset[str] = frozenset(
         "value-report",
         "value-outcome",
         "value-outcomes",
-        "dashboard-snapshot",  # full snapshot still used by workbench; discovery-snapshot is preferred
+        "dashboard-snapshot",  # leftover workbench snapshot; not the product receive surface
     }
 )
 
@@ -220,6 +222,16 @@ REMOVAL_PHASES: tuple[dict[str, Any], ...] = (
             "remain importable behind the legacy flag until a later deletion PR."
         ),
     },
+    {
+        "id": "D6",
+        "name": "Headless CLI receive surface",
+        "status": "done",
+        "summary": (
+            "CLI is the only supported product surface "
+            "(hunt/convert/brief/bars/ready/product-scope, prefer JSON). "
+            "Tauri desktop and TUI are deprecated and not required to use the product."
+        ),
+    },
 )
 
 
@@ -284,9 +296,12 @@ def product_scope_payload() -> dict[str, Any]:
         "scope_version": SCOPE_VERSION,
         "scope_date": SCOPE_DATE,
         "product": (
-            "Event-first discovery: world events → ranked under-priced leads → "
-            "case file → proof labels. Decision support only."
+            "Event-first discovery via headless CLI: hunt (Grok skill) → convert → "
+            "brief JSON → optional mapped bars → ready. Case file and proof labels "
+            "stay on the CLI. Decision support only. Desktop/TUI deprecated."
         ),
+        "primary_surface": "cli",
+        "receive_surface": "cli",
         "docs": {
             "spec": "docs/designs/2026-08-15-marketradar-product-spec.md",
             "scope": "docs/PRODUCT_SCOPE.md",
@@ -329,7 +344,7 @@ def warn_if_deprecated_cli(command: str) -> str | None:
     return (
         f"DEPRECATED: CLI command '{command}' is outside the event-first product "
         f"scope ({SCOPE_VERSION}). See docs/PRODUCT_SCOPE.md and docs/DEPRECATION.md. "
-        "Prefer discovery-brief / discovery-case / discovery-label / World Events UI."
+        "Prefer catalyst-radar brief / convert / ready / product-scope (JSON)."
     )
 
 
@@ -346,7 +361,7 @@ def block_if_deprecated_cli(
     return (
         f"BLOCKED: CLI command '{command}' is deprecated. "
         "Set CATALYST_ENABLE_LEGACY_WORKBENCH=true to run legacy workbench "
-        "commands, or use discovery-brief / World Events."
+        "commands, or use catalyst-radar brief / convert / ready."
     )
 
 

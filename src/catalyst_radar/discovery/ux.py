@@ -106,7 +106,7 @@ def is_novice_eligible(ticker: str) -> bool:
 
 
 def apply_novice_ux(brief: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a brief copy shaped for a first-time user."""
+    """Return a brief copy shaped for a first-time reader of CLI JSON."""
     payload = dict(brief)
     raw_events = [row for row in (brief.get("events") or []) if isinstance(row, Mapping)]
     events = _pick_novice_events(raw_events)
@@ -118,14 +118,14 @@ def apply_novice_ux(brief: Mapping[str, Any]) -> dict[str, Any]:
     payload["discovery_count"] = len(leads)
     payload["headline"] = _headline(events, top, freshness)
     payload["next_action"] = _next_action(freshness, top)
-    payload["next_command"] = "Press R to refresh this briefing."
+    payload["next_command"] = "catalyst-radar brief"
     payload["canonical_next_action"] = payload["next_action"]
     payload["canonical_next_command"] = payload["next_command"]
     if isinstance(payload.get("case_file"), Mapping):
         payload["case_file"] = apply_novice_case_file(payload["case_file"])
     payload["novice"] = {
         "schema_version": "discovery-novice-v1",
-        "tagline": "Grok mines X; this screen is the briefing.",
+        "tagline": "Grok mines X; the CLI JSON briefing is what you read.",
         "disclaimer": (
             "This is a research briefing, not a shopping list and not investment advice. "
             "Check a real news site before you do anything with money."

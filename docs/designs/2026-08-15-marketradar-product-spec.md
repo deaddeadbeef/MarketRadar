@@ -13,6 +13,8 @@ This is a combined PM spec and system design. It is not a changelog of past phas
 
 **Revision 2026-08-15c:** Clustering is authoritative `event_id` plus today’s first-theme/`post_id` fallback — Jaccard is not an SLA on the live 8-post dump. Story rank+cap lands in PR 6; PR 3 does not freeze the uncapped list. Jargon denylist is visible copy only.
 
+**Revision 2026-08-29:** Receive surface is the headless CLI (`catalyst-radar` JSON + `grok -p "/market-radar hunt"`). Tauri World Events and TUI are deprecated. Ops may file JSON into Notion outside this repo. Do not tell anyone to press R or open a GUI.
+
 ---
 
 # Part A — Product / PM spec
@@ -27,7 +29,7 @@ Shorter variant for the app kicker: *Stories from X, then which stocks have not 
 
 ## 2. Vision (what winning looks like in 6–12 months)
 
-An **operator** owns the weekday file. A **market newbie** opens the desktop and, in a few minutes, can answer:
+An **operator** owns the weekday file. A **market newbie** reads `catalyst-radar brief` JSON (or a Notion dump of that JSON, outside this repo) and, in a few minutes, can answer:
 
 1. **What happened** that markets might care about? (A short card list — **at most 8** stories, never padded.)
 2. **Which companies does that touch**, in company names, not theme slugs?
@@ -38,7 +40,7 @@ Winning is **asymmetric attention**. The product is useful when a human spends t
 By month 12:
 
 - The **operator** has installed a local `world-events-v1` file on most weekdays before the reader sits down (target: 09:00 local).
-- The default desktop is a briefing a first-time user can read without a CLI or PowerShell.
+- The default receive surface is CLI JSON a first-time user can read without a GUI. Desktop/TUI are deprecated.
 - Top leads have **coverage-join** price context for at least half of the top-20 names.
 - Briefing-queue `usefulness` for social/promotional rows stays `research_only`.
 - The operator can look back at helped/noise labels and say whether the radar was worth time.
@@ -82,7 +84,7 @@ MarketRadar is an **operator-produced briefing a market newbie can read.** Two r
 | Role | Job | Owns |
 |------|-----|------|
 | **Operator (customer of the loop)** | Produce or install today’s `x-posts-v1` / `world-events-v1`, optionally fill mapped bars, label whether a lead was worth attention. May use the CLI. | Weekday file. Without this person, there is no briefing. |
-| **Market newbie (primary UX reader)** | Open World Events, read stories and names in English, tap a note, check a regular news site. **Never runs a CLI.** | Nothing operational. Cannot create the feed. |
+| **Market newbie (primary UX reader)** | Read `catalyst-radar brief` JSON (or a Notion dump of it). Stories and names in English, then check a regular news site. | Nothing operational. Cannot create the feed. |
 
 Both share: **a story → mapped names → coverage-joined recent tape → human confirmation.**
 
@@ -111,7 +113,7 @@ What we explicitly do **not** sell: expected return, a ranked buy list, or auton
 These are product laws, not style preferences. Implementation that weakens them is out of scope.
 
 1. **Decision support only.** Every discovery payload sets `investment_advice: false`, `can_make_investment_decision: false`, `decision_support_only: true`. The UI says “not a buy recommendation.”
-2. **Browse is silent.** Opening World Events, running `scripts/discovery-snapshot.py`, or `discovery-brief` makes **zero** hidden provider, broker, or LLM calls. `external_calls_made = 0`, `db_writes_made = 0` unless the human passed an explicit write/confirm flag.
+2. **Browse is silent.** Running `catalyst-radar brief` / `discovery-brief` makes **zero** hidden provider, broker, or LLM calls. `external_calls_made = 0`, `db_writes_made = 0` unless the human passed an explicit write/confirm flag.
 3. **Briefing-queue social stays `research_only`.** The law field is `discoveries[].usefulness` on `discovery-brief-v1` / `event_discovery` (the queue the newbie sees). For `source_category` in `{social, promotional}` or `source_quality < 0.45`, that field is **always** `research_only`. This is what `AGENTS.md` and `docs/PRODUCT_SCOPE.md` mean by “social/X-only leads stay `research_only`.”  
    The case file may raise a **different** field — `case_file.usefulness` / `trust_ladder.current` — to `watch` as an **attention band** when confirmation is `primary_confirmed` or `corroborated_reputable`. `watch` is not capital and is **not** “left `research_only`” for Law 3. There is no “equivalent primary” escape hatch on the briefing queue.
 4. **No broker path.** Discovery never auto-submits, previews-as-product, or deep-links into order tickets. There is no “Buy” that hits a broker.
@@ -132,31 +134,31 @@ These are product laws, not style preferences. Implementation that weakens them 
 Assumes the operator already installed today’s file (Journey B). The newbie never creates the feed.
 
 ```text
-Open desktop (World Events is home)
+catalyst-radar brief
         │
         ▼
-Read the hero: “3 stories from X. Micron has barely moved this week.”
+Read the hero JSON: “3 stories from X. Micron has barely moved this week.”
         │
         ▼
-Scan “What’s going on” — up to 8 story cards (titles, company names, mood)
+Scan novice.events — up to 8 stories (titles, company names, mood)
         │
         ▼
-Scan “Names that may not have reacted yet” — up to 8 company rows
+Scan names that may not have reacted yet — up to 8 company rows
         │
         ▼
-Tap one name → “Read the note”
+Open one name with discovery-case
    • What the stock did (price in words)
    • How sure is this? (social = unconfirmed)
    • What you should do: check a regular news site
         │
         ▼
-Optional: tap “This helped” / “This was noise”
+Optional: discovery-label (helped / noise)
         │
         ▼
-Leave. Do not buy from this screen.
+Leave. Do not buy from this briefing.
 ```
 
-Refresh is **R** / current snapshot copy “Press R to refresh this briefing.” It re-reads local files. It does not call Polygon, a broker, or an LLM.
+Refresh is re-running `catalyst-radar brief`. It re-reads local files. It does not call Polygon, a broker, or an LLM. Do not press R. Do not open a GUI.
 
 **Empty / stale / last-good** (target). Current checkout differs — see §24.
 
@@ -188,13 +190,13 @@ Optional: discovery-bars --polygon --confirm-external-call --execute
 discovery-brief / discovery-insights / assert-discovery-ready
         │
         ▼
-Newbie opens World Events   OR   operator runs discovery-case MU
+operator runs discovery-case MU
         │
         ▼
 Confirm on a primary source (news / filing) — usually off-app
         │
         ▼
-Desktop “This helped / This was noise”  OR  discovery-label
+discovery-label
         │
         ▼
 After bars advance: discovery-outcomes (operator)
@@ -204,7 +206,7 @@ The operator path may show join coverage, `event_id`, and ledger artifact ids. T
 
 ## 8. Information hierarchy of the UI
 
-Default desktop nav is **World Events + Help** (`apps/radar-desktop/frontend/app.js` `renderNav`; legacy pages only if `CATALYST_ENABLE_LEGACY_WORKBENCH=true`).
+Default receive surface is **CLI JSON** (`catalyst-radar brief`). Tauri World Events + Help are deprecated (`apps/radar-desktop`; leftover only if `CATALYST_ENABLE_LEGACY_WORKBENCH=true`).
 
 ```mermaid
 flowchart TB
@@ -330,7 +332,7 @@ One line:
 | **Case attention** | `case_file.usefulness` / `trust_ladder.current`. May be `watch`. Not Law 3. |
 | **Coverage join** | Bars near the event + freshness. Not return-since-event. |
 | **Operator** | Person (or out-of-repo task they run) who installs the weekday file. |
-| **Newbie** | Reader of World Events. No CLI. |
+| **Newbie** | Reader of `catalyst-radar brief` JSON (or a Notion dump of it). |
 
 ## 13. Design thesis and the inverted loop
 
@@ -350,7 +352,7 @@ flowchart LR
   map --> join["join_event_ticker<br/>coverage gate + trailing ret"]
   join --> brief["discovery-brief-v1"]
   brief --> ux["apply_novice_ux<br/>discovery-novice-v1"]
-  ux --> ui["Tauri World Events"]
+  ux --> ui["CLI JSON (catalyst-radar brief)"]
   brief --> case["discovery-case-file-v1"]
   case --> human["Human + primary source"]
   human --> label["discovery_row labels"]
@@ -388,9 +390,9 @@ flowchart TB
   end
 
   subgraph surfaces["Surfaces"]
-    tauri["Tauri World Events<br/>apps/radar-desktop"]
-    snap["scripts/discovery-snapshot.py"]
-    cli["CLI: discovery-* / assert-discovery-ready"]
+    cli["CLI: hunt/convert/brief/bars/ready/product-scope"]
+    snap["scripts/discovery-snapshot.py (deprecated leftover)"]
+    tauri["Tauri World Events (deprecated)"]
   end
 
   posts --> fromp --> we
@@ -426,13 +428,13 @@ Supporting — not hero — packages: `scoring` / `features.market` (reaction ma
 | 3. Or install a ready bundle | Operator | `discovery-ingest --execute` / `scripts/refresh-world-events.ps1` | 0 provider |
 | 4. Fill coverage-join bars | Operator, optional | `discovery-bars --polygon --confirm-external-call --execute` | N = event tickers + SPY |
 | 5. Brief | Operator / tests | `discovery-brief --json` | 0 provider |
-| 6. Read | **Newbie** | Tauri World Events (refresh re-reads files) | 0 provider |
+| 6. Read | **Newbie** | `catalyst-radar brief` JSON (re-run re-reads files) | 0 provider |
 | 7. Case | Newbie click / operator CLI | Note panel / `discovery-case TICKER` | 0 provider |
 | 8. Confirm | Human | Regular news / SEC — usually **off-app** | 0 in-app |
 | 9. Label | Newbie buttons or operator CLI | snapshot `--command label` / `discovery-label` | 0 provider; local ledger if execute |
 | 10. Gate | CI / operator | `assert-discovery-ready --json` | 0 provider |
 
-Delivery to the newbie machine: **local drop.** The desktop reads `data/local/world_events.json` on that machine. There is no in-app sync. Out-of-repo work: schedule the Grok task and copy/install the file (script, drop folder, or later sync — not in-app OAuth).
+Delivery to the newbie machine: **local drop.** The CLI reads `data/local/world_events.json` on that machine. There is no in-app sync. Out-of-repo work: schedule the Grok task, install the file, and optionally file JSON into Notion — not in-app OAuth.
 
 Convenience wrapper (still explicit): `scripts/run-real-discovery.ps1 -Execute -ConfirmExternalCall` runs from-posts → polygon bars → insights → ready.
 
@@ -572,7 +574,7 @@ novice.focus_ticker
 - Drop `missing_scan` unless `origin=event`.
 - **Target add:** drop tickers not novice-eligible (§17).
 - Prefer joined event names, then other joined names.
-- Rewrite brief-level `next_action` / `next_command` to English (“Press R to refresh this briefing.”).
+- Rewrite brief-level `next_action` / `next_command` to English plus `catalyst-radar brief` (not “Press R”).
 - Headline uses company names and price in words (`_price_phrase`: “has barely moved this week” if `|ret_5d| < 1.5`). Current `_headline` with a top lead always says “N **stories**” even when `N==1`. Target: singular when `N==1`.
 
 `renderWorldEvents` prefers `novice.events` for story cards.
@@ -983,7 +985,7 @@ No paging/on-call. The “alert” is the stale headline and a failed ship gate.
 # Rollout plan
 
 1. **Accept this spec** as the narrative contract (PR 1). `PRODUCT_SCOPE.md` / README point here. Runtime flags unchanged.
-2. **Do not flip** `CATALYST_ENABLE_LEGACY_WORKBENCH`. Default remains World Events + Help.
+2. **Do not flip** `CATALYST_ENABLE_LEGACY_WORKBENCH`. Default remains headless CLI. Desktop/TUI stay deprecated.
 3. **Close spec-vs-reality gaps** in the PR order below. Each PR stays inside `discovery/` + snapshot/desktop copy + tests.
 4. **Rollback** of a UX PR is revert; data contracts are additive.
 5. **Ship gate stays** `assert-discovery-ready`.
@@ -1011,7 +1013,7 @@ Defaults below are recommendations. Several are now **decided in Key Decisions**
    **Recommend:** Expand the 38-key dict for mapped theme names; do not block on a 12k master.
 
 6. **Should CLI `discovery-brief` apply novice UX?**  
-   **Recommend:** No by default. Desktop snapshot is the novice surface. PR 9 (`discovery-insights --novice`) only if an operator asks.
+   **Recommend / decided 2026-08-29:** CLI JSON is the receive surface. `radar_grok.py brief` already applies novice UX. Desktop snapshot is deprecated leftover.
 
 7. **Outcomes language.**  
    **Recommend:** Operator-only; never “this pick made +X%” on the briefing.
@@ -1038,11 +1040,11 @@ Defaults below are recommendations. Several are now **decided in Key Decisions**
 | Polygon `/v2/aggs` for event tickers + SPY only | Grouped-daily is a universe tool. |
 | **Law 3 field is `discoveries[].usefulness`** | Social stays `research_only` on the briefing queue. Case `watch` is attention only and does not weaken `AGENTS.md`. |
 | Ship-gate freshness = bundle `generated_at` | Operator installed today. Also measure newest `available_at` so old posts converted today do not look healthy. |
-| Novice envelope on snapshot/desktop; CLI may stay operator-shaped | Newbies must never see PowerShell as the next step. |
+| Novice envelope on CLI JSON; desktop is deprecated | Newbies must never be told to open a GUI or press R. |
 | Ship gate = fresh + 50% coverage join + no advice | Measures the briefing, not paper-trading readiness. |
 | Primary confirm defaults to “go read the news” | Avoids hidden fetches. |
 | Helped/noise on; proof dollars off | Already the UI. Do not staff a feature PR to remount it. |
-| Do not revive deprecated surfaces | Gaps close inside `discovery/` and World Events copy. |
+| Do not revive deprecated surfaces | Gaps close inside `discovery/` and CLI copy. |
 | **Pending binary over post-gap tape** | MRNA 19 Aug 2026 doubled on a Phase 3 that was telegraphed in Jan/Jun. The radar object was the window, not the +130% posts. |
 
 ---

@@ -187,7 +187,7 @@ def build_operator_analysis(
     usefulness: str,
     lag_flag: bool | None,
 ) -> dict[str, object]:
-    """Deterministic operator readout for the World Events case panel."""
+    """Deterministic operator readout for a discovery case file (CLI JSON)."""
     symbol = str(ticker or "").strip().upper()
     gap = _finite(discovery.get("emotion_reaction_gap"))
     emotion = _finite(discovery.get("emotion_score"))

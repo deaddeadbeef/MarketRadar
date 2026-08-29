@@ -26,4 +26,12 @@ Skip: “JUST IN +130%”, options sympathy, theme chatter with no date, already
 - cap 8 stories; never pad
 - `investment_advice` is not a field on posts; keep copy research-only
 
-Then convert with `scripts/radar-grok.ps1 convert -Execute`.
+Then convert:
+
+```text
+catalyst-radar convert --posts data/local/inbox/x_posts_YYYY-MM-DD.json --execute
+```
+
+Equivalent: `python scripts/radar_grok.py convert --posts data/local/inbox/x_posts_YYYY-MM-DD.json --execute`.
+
+Then print the briefing with `catalyst-radar brief`. Do not open a GUI.

@@ -17,6 +17,13 @@ def _events_path() -> Path:
     return local if local.is_file() else ROOT / "data" / "sample" / "world_events.json"
 
 
+def cmd_hunt() -> int:
+    from catalyst_radar.discovery.hunt import build_hunt_status
+
+    print(json.dumps(build_hunt_status(root=ROOT), indent=2, default=str))
+    return 0
+
+
 def cmd_status() -> int:
     path = ROOT / "data" / "local" / "world_events.json"
     payload = {
@@ -145,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
+    sub.add_parser("hunt")
     sub.add_parser("brief")
     sub.add_parser("ready")
     conv = sub.add_parser("convert")
@@ -156,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "status":
         return cmd_status()
+    if args.cmd == "hunt":
+        return cmd_hunt()
     if args.cmd == "brief":
         return cmd_brief()
     if args.cmd == "ready":
