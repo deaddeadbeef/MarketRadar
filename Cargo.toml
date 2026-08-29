@@ -1,3 +1,6 @@
+# Deprecated workspace: radar-desktop (Tauri) and radar-tui are NOT required
+# to use MarketRadar. The product is the headless catalyst-radar CLI.
+# Crates remain so leftover CI/legacy builds can still compile.
 [workspace]
 members = ["crates/radar-tui", "apps/radar-desktop"]
 resolver = "2"

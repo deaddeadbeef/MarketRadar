@@ -1,12 +1,13 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Grok Build entrypoints for MarketRadar (brief, convert, ready, bars, status).
+  Headless Grok/CLI helpers for MarketRadar (hunt, brief, convert, ready, bars, status).
+  The product receive surface is catalyst-radar JSON, not the desktop GUI.
 #>
 [CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet("brief", "convert", "ready", "bars", "status")]
+  [ValidateSet("hunt", "brief", "convert", "ready", "bars", "status")]
   [string]$Action = "brief",
   [string]$PostsPath = "",
   [switch]$Execute,
@@ -26,6 +27,7 @@ $helper = Join-Path $PSScriptRoot "radar_grok.py"
 
 switch ($Action) {
   "status" { & $python $helper status; exit $LASTEXITCODE }
+  "hunt" { & $python $helper hunt; exit $LASTEXITCODE }
   "brief" { & $python $helper brief; exit $LASTEXITCODE }
   "convert" {
     if ([string]::IsNullOrWhiteSpace($PostsPath)) {

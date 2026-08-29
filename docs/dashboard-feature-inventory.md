@@ -1,14 +1,17 @@
 # Dashboard Feature Inventory
 
-Last updated: 2026-06-05
+Last updated: 2026-08-29
 
-This inventory tracks the current Market Radar dashboard features and where the
-Tauri desktop command center, Rust terminal dashboard, legacy Textual renderer,
-CLI, and API expose them. The Tauri desktop command center is the primary
-operator dashboard. It reads the same dashboard snapshot contract and data
-helpers as the terminal renderers and makes 0 Polygon, SEC, Schwab, or OpenAI
-calls while rendering, navigating, filtering, copying commands, or exporting
-local JSON evidence.
+**Deprecated inventory.** CLI discovery is primary (`catalyst-radar brief` JSON).
+The Tauri desktop command center is **not** the product receive surface. This
+file remains as a map of leftover workbench features. Do not open the GUI.
+
+This inventory tracks leftover Market Radar dashboard features and where the
+deprecated Tauri desktop, Rust terminal dashboard, legacy Textual renderer,
+CLI, and API expose them. Those renderers read the same dashboard snapshot
+contract and data helpers and make 0 Polygon, SEC, Schwab, or OpenAI calls
+while rendering, navigating, filtering, copying commands, or exporting local
+JSON evidence.
 
 ## Dashboard Entry Points
 

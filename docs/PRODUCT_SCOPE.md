@@ -1,6 +1,6 @@
 # MarketRadar product scope (event-first discovery)
 
-**Authority date:** 2026-08-15  
+**Authority date:** 2026-08-29  
 **Status:** Pointer plus ship-gate table. Not the narrative contract.
 
 **Narrative product contract:**
@@ -20,26 +20,33 @@ Runtime registry: `src/catalyst_radar/deprecation.py`. Removal plan:
 read: pending binaries and world events, mapped to companies, with honest
 recent-tape context and a trust ladder. It is decision support only.**
 
+The human reads **CLI JSON** (`catalyst-radar brief`). Ops may file that JSON
+into Notion outside this repo. CLI discovery is primary. Desktop/TUI are
+deprecated.
+
 ---
 
 ## In scope (supported)
 
 ### Operator journey
 
-1. **World events** — refresh via Grok daily task / `world-events-v1` JSON  
-2. **Discovery queue** — mapped tickers + emotion vs reaction join  
-3. **Case file** — operator analysis, trust ladder, invalidation  
-4. **Proof** — `discovery_row` value-ledger labels and history  
-5. **Supporting data path** — local bars/scan for **mapped tickers only**  
-   (so join/reaction is real)
+1. **Hunt** — Grok skill `/market-radar hunt` / `grok -p "/market-radar hunt"` writes `x-posts-v1`
+2. **Convert** — `catalyst-radar convert` → `data/local/world_events.json`
+3. **Brief** — `catalyst-radar brief` JSON (human receive surface)
+4. **Case file** — `catalyst-radar discovery-case` operator analysis, trust ladder, invalidation
+5. **Proof** — `discovery_row` value-ledger labels and history
+6. **Supporting data path** — local bars/scan for **mapped tickers only**
+   (`catalyst-radar bars`) so join/reaction is real
+7. **Ready** — `catalyst-radar ready` / `assert-discovery-ready`
+8. **Scope** — `catalyst-radar product-scope`
 
 ### Code / surfaces (keep)
 
 | Area | Path / surface | Role |
 |------|----------------|------|
 | Discovery core | `src/catalyst_radar/discovery/` | Primary product logic |
-| World-events I/O | `scripts/discovery-snapshot.py`, `scripts/import-world-events.ps1` | Daily loop |
-| Desktop home | Tauri **World Events** page (`world-events`) | Primary UI |
+| World-events I/O | `catalyst-radar convert` / `discovery-ingest`, `scripts/radar_grok.py` | Daily loop |
+| **CLI home** | `catalyst-radar hunt\|convert\|brief\|bars\|ready\|product-scope` | **Primary product surface** (JSON) |
 | Priced-in join | `scoring/priced_in.py`, `features/market.py`, `pipeline/scan.py` | Reaction join for mapped names |
 | Market bars (supporting) | `market/`, `connectors/polygon*.py`, `ingest-polygon` / `market-bars` | Fill gaps for discovery |
 | Proof ledger | `validation/value_ledger.py`, `discovery/label.py`, `discovery/proof.py` | Attention-value proof |
@@ -52,6 +59,8 @@ recent-tape context and a trust ladder. It is decision support only.**
 | Area | Path / surface | Role |
 |------|----------------|------|
 | Mapped-bar leftover | `scripts/fill-discovery-gaps.*` | Operator leftover — not the keep supporting path |
+| Desktop snapshot | `scripts/discovery-snapshot.py` | Leftover for deprecated Tauri client — not the daily reader |
+| GUI launchers | `scripts/open-market-radar.sh`, `scripts/open-market-radar.ps1` | Deprecated; refuse to launch |
 
 ### Product laws (non-negotiable)
 
@@ -60,6 +69,7 @@ recent-tape context and a trust ladder. It is decision support only.**
 - Social/X-only leads stay `research_only` until primary confirmation
 - Discovery never auto-submits broker orders
 - Do not block discovery on full-universe SEC residual fill
+- Do not tell anyone to open the GUI or press R
 
 Full law text: spec §6.
 
@@ -70,6 +80,9 @@ Full law text: spec §6.
 These may still run for legacy tests/ops, but they are **not** the product and
 must not be presented as the primary path:
 
+- Tauri desktop / World Events page (`apps/radar-desktop`)
+- Rust TUI (`crates/radar-tui`) and Python `dashboard-tui`
+- Streamlit (`apps/dashboard/Home.py`)
 - Full trading workbench (portfolio, trade planner, risk desk, paper trading,
   order tickets, broker desk as product)
 - Full-market residual-repair hero path as the daily operator loop
@@ -80,6 +93,9 @@ must not be presented as the primary path:
 - Themes / features inventory pages as primary navigation
 - Backtest / replay / shadow-investable gates as the discovery success criterion
 - Remote ops runner as product (keep only if needed for infra later)
+
+Cargo desktop crates may remain in the workspace so leftover CI can compile.
+They are **not required** to use the product.
 
 Details and removal phases: `docs/DEPRECATION.md`.
 
@@ -94,7 +110,7 @@ Details and removal phases: `docs/DEPRECATION.md`.
 | Labels on discovery_row | Ongoing; enough for value-report ≠ empty |
 | Safety | 0 accidental broker orders; social never buy-review |
 
-Ship gate: `catalyst-radar assert-discovery-ready --json`. Do not use
+Ship gate: `catalyst-radar ready` / `assert-discovery-ready --json`. Do not use
 `assert-trial-ready`, `assert-shadow-ready`, or `assert-investable-readiness`
 as the discovery success criterion.
 

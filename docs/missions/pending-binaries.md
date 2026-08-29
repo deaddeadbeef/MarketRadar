@@ -54,7 +54,8 @@ grok
 grok -p "/market-radar hunt" --cwd .
 ```
 
-The desktop is the reader. Grok Build is the operator loop.
+The CLI JSON briefing is the reader. Grok Build is the operator loop.
+Do not open the GUI. Ops may file JSON into Notion outside this repo.
 
 ## Stop conditions
 

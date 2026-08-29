@@ -80,6 +80,8 @@ def test_novice_ux_hides_theme_missing_scan_and_speaks_plain_english() -> None:
     assert tickers[0] == "SNDK"
     assert "EURN" not in tickers
     assert "powershell" not in str(payload["next_action"]).casefold()
+    assert "press r" not in str(payload.get("next_command") or "").casefold()
+    assert payload["next_command"] == "catalyst-radar brief"
     assert "Sandisk" in payload["headline"]
     assert "barely moved" in payload["headline"]
     assert payload["novice"]["focus_ticker"] == "SNDK"
@@ -324,7 +326,8 @@ def test_novice_visible_copy_has_no_operator_jargon() -> None:
 
 
 def test_cli_default_events_path_falls_back_to_sample_when_local_missing() -> None:
-    assert not LOCAL_EVENTS_PATH.is_file()
+    if LOCAL_EVENTS_PATH.is_file():
+        pytest.skip("local world_events.json is present on this checkout")
     assert SAMPLE_EVENTS_PATH.is_file()
     path = default_events_path()
     assert path == SAMPLE_EVENTS_PATH
@@ -340,7 +343,8 @@ def test_cli_default_events_path_falls_back_to_sample_when_local_missing() -> No
 
 
 def test_desktop_snapshot_default_path_is_empty_when_local_missing(capsys) -> None:
-    assert not LOCAL_EVENTS_PATH.is_file()
+    if LOCAL_EVENTS_PATH.is_file():
+        pytest.skip("local world_events.json is present on this checkout")
     snapshot = _load_discovery_snapshot()
     code = snapshot.main(["--json", "--scan-limit", "20"])
     assert code == 0

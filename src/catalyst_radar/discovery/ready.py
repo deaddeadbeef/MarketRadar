@@ -35,12 +35,11 @@ def build_discovery_readiness(
             "status": "missing_events",
             "first_blocker": "missing_events",
             "canonical_next_action": (
-                "Install a fresh world-events-v1 JSON into data/local/world_events.json."
+                "Install a fresh world-events-v1 JSON into data/local/world_events.json "
+                "(grok -p \"/market-radar hunt\", then convert)."
             ),
             "canonical_next_command": (
-                "powershell -ExecutionPolicy Bypass -File "
-                "scripts/refresh-world-events.ps1 "
-                "-EventsPath <fresh-world-events.json> -Execute"
+                "catalyst-radar discovery-ingest --events <fresh-world-events.json> --execute"
             ),
             "investment_advice": False,
             "external_calls_made": 0,
@@ -89,9 +88,10 @@ def build_discovery_readiness(
         next_command = DISCOVERY_BARS_NEXT_COMMAND
     if ready:
         next_action = (
-            "Review the top-20 event-time leads, open a case, and label from Proof."
+            "Review the top-20 event-time leads with catalyst-radar brief, "
+            "open a case, and label from the proof loop."
         )
-        next_command = f"catalyst-radar discovery-brief --events {path} --json"
+        next_command = f"catalyst-radar brief --events {path}"
 
     return {
         "schema_version": READY_SCHEMA,

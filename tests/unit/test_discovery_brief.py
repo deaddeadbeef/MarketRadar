@@ -74,7 +74,9 @@ def test_build_discovery_brief_marks_stale_events() -> None:
     # Stale must point at a real install/refresh path, never validate-only (no-op).
     next_command = str(brief["next_command"])
     assert "validate-only" not in next_command
-    assert "refresh-world-events" in next_command
+    assert "discovery-ingest" in next_command
+    assert "open-market-radar" not in next_command
+    assert "World Events" not in str(brief["next_action"])
 
 
 def test_validate_and_import_world_events(tmp_path: Path) -> None:

@@ -435,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     plan["status"] = "ready" if args.execute else "preview"
     plan["next_action"] = (
-        "Review discovery-brief join coverage and World Events desktop."
+        "Review discovery-brief join coverage with catalyst-radar brief."
         if args.execute
         else "Re-run with -Execute -ConfirmExternalCall to capture missing sessions and scan."
     )

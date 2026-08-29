@@ -21,7 +21,8 @@ def test_discovery_ready_blocks_on_stale_sample() -> None:
     assert payload["ready"] is False
     assert payload["first_blocker"] == "stale_events"
     assert payload["investment_advice"] is False
-    assert "refresh-world-events" in str(payload["canonical_next_command"])
+    assert "discovery-ingest" in str(payload["canonical_next_command"])
+    assert "open-market-radar" not in str(payload["canonical_next_command"])
 
 
 def test_discovery_ready_fresh_without_db_blocks_on_join() -> None:
