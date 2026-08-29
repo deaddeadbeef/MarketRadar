@@ -39,7 +39,7 @@ Partner / second-order names (type **D**) ride with the same `event_id`.
 1. Write `data/local/inbox/x_posts_YYYY-MM-DD.json` as `x-posts-v1` (required `event_id`, tickers or themes, `published_at`).
 2. Convert with `scripts/radar-grok.ps1 convert -Execute` (or `discovery-from-posts --execute`) into `data/local/world_events.json`.
 3. Optional: `scripts/radar-grok.ps1 bars -ConfirmExternalCall -Execute` for **event tickers + SPY only**.
-4. Cap **8** stories. Never pad with type X.
+4. Cap **16** stories. Never pad with type X.
 5. Leave `investment_advice: false`. Do not chase names that already made the violent move today.
 
 ## Grok Build
