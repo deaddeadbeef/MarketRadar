@@ -152,12 +152,12 @@ function Get-VenvPythonHome {
 }
 
 function Get-BrokenVenvMessage {
-    $home = Get-VenvPythonHome
-    $homeDetail = if ([string]::IsNullOrWhiteSpace($home)) {
+    $pythonHome = Get-VenvPythonHome
+    $homeDetail = if ([string]::IsNullOrWhiteSpace($pythonHome)) {
         "Recorded Python home: not found in .venv\pyvenv.cfg"
     }
     else {
-        "Recorded Python home: $home"
+        "Recorded Python home: $pythonHome"
     }
     return @(
         "MarketRadar local Python environment is broken.",
